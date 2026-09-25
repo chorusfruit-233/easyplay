@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8">
+  <title>KataGo static WebAssembly smoke test</title>
+  <body>waiting</body>
+  <script type="module">
+    import './katago_bridge.js';
+    try {
+      const move = await globalThis.easyPlayKataGoGenmove(JSON.stringify({
+        id: 1,
+        boardSize: 9,
+        rules: 'chinese',
+        komi: 7.5,
+        setup: [],
+        moves: [],
+        side: 'W',
+      }));
+      document.body.textContent = move;
+    } catch (error) {
+      document.body.textContent = `ERROR: ${String(error)}`;
+    }
+  </script>
+</html>
