@@ -1,0 +1,27 @@
+# Normalize line endings for text sources.
+* text=auto
+
+# Third-party license texts are redistributed verbatim, including their CRLF
+# endings. Marking them -text keeps Git from rewriting them on checkout.
+assets/katago/MODEL-LICENSE.txt -text
+assets/katago/THIRD-PARTY-LICENSES/half-2.2.0/LICENSE.txt -text
+docs/licenses/KataGo-third-party/half-2.2.0/LICENSE.txt -text
+
+# Pin the shell scripts to LF so they stay executable on every platform. The
+# Windows batch wrapper is stored verbatim with its CRLF endings: converting it
+# to LF in the repository would hand a broken script to anyone checking out with
+# core.autocrlf=false.
+*.sh text eol=lf
+*.bat -text
+
+# Binary payloads: never diff, never merge, never normalize.
+*.gz binary
+*.so binary
+*.wasm binary
+*.jar binary
+*.apks binary
+*.png binary
+*.ttf binary
+
+# Keep generated Dart and Gradle files out of diff noise.
+pubspec.lock linguist-generated=true
