@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
@@ -6,6 +7,9 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import 'game_session.dart';
+import 'go_ai_settings.dart';
+import 'go_engine_profiles.dart';
+import 'go_models.dart';
 import 'katago_web_stub.dart'
     if (dart.library.js_interop) 'katago_web.dart'
     as web_katago;
@@ -135,15 +139,19 @@ class KataGoAndroidRuntime {
   static bool get isSupported =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
-  Future<void> start({required GoConfig config}) async {
+  Future<void> start({
+    required GoConfig config,
+    GoAiSettings settings = const GoAiSettings(),
+  }) async {
     if (!isSupported) throw UnsupportedError('当前平台尚未接入 KataGo 原生引擎');
     await _enqueue(() async {
       if (_started) return;
-      final model = await KataGoCatalog.loadBundledB6();
+      final model = await GoModelLibrary.load(settings.modelId);
+      final engine = await GoEngineLibrary.byId(settings.engineProfileId);
       try {
         await _channel.invokeMethod<String>('start', {
           'model': model,
-          'config': await _configText(config),
+          'config': await _configText(config, settings, engine),
         });
         _started = true;
         await _sendNow('boardsize ${config.boardSize}');
@@ -185,43 +193,80 @@ class KataGoAndroidRuntime {
     return result;
   }
 
-  static Future<String> _configText(GoConfig config) async {
+  static Future<String> _configText(
+    GoConfig config,
+    GoAiSettings settings,
+    GoEngineProfile engine,
+  ) async {
     final source = await rootBundle.loadString('assets/katago/gtp_example.cfg');
-    final rules = switch (config.rules) {
-      GoRuleSet.chinese => 'chinese',
-      GoRuleSet.japanese => 'japanese',
-      GoRuleSet.korean => 'korean',
-    };
-    return source
-        .replaceFirst(
-          RegExp(r'^rules\s*=.*$', multiLine: true),
-          'rules = $rules',
-        )
-        .replaceFirst(
-          RegExp(r'^maxVisits\s*=.*$', multiLine: true),
-          'maxVisits = 48',
-        )
-        .replaceFirst(
-          RegExp(r'^numSearchThreads\s*=.*$', multiLine: true),
-          'numSearchThreads = 2',
-        )
-        .replaceFirst(
-          RegExp(r'^logAllGTPCommunication\s*=.*$', multiLine: true),
-          'logAllGTPCommunication = false',
-        )
-        .replaceFirst(
-          RegExp(r'^logSearchInfo\s*=.*$', multiLine: true),
-          'logSearchInfo = false',
-        )
-        .replaceFirst(
-          RegExp(r'^logToStderr\s*=.*$', multiLine: true),
-          'logToStderr = true',
-        )
-        .replaceFirst(
-          RegExp(r'^allowResignation\s*=.*$', multiLine: true),
-          'allowResignation = false',
-        );
+    return buildKataGoConfig(
+      source,
+      config: config,
+      settings: settings,
+      engine: engine,
+    );
   }
+}
+
+String buildKataGoConfig(
+  String source, {
+  required GoConfig config,
+  required GoAiSettings settings,
+  GoEngineProfile engine = GoEngineProfile.builtIn,
+}) {
+  var result = source;
+  final rules = switch (config.rules) {
+    GoRuleSet.chinese => 'chinese',
+    GoRuleSet.japanese => 'japanese',
+    GoRuleSet.korean => 'korean',
+  };
+  final styleValues = settings.style == GoAiStyle.modern
+      ? {
+          'chosenMoveTemperatureEarly': '0.3',
+          'chosenMoveTemperature': '0.1',
+          'chosenMoveTemperatureHalflife': '30',
+        }
+      : {
+          'chosenMoveTemperatureEarly': '0.7',
+          'chosenMoveTemperature': '0.5',
+          'chosenMoveTemperatureHalflife': '19',
+        };
+  final values = <String, String>{
+    'rules': rules,
+    'maxVisits': '${settings.rank.maxVisits}',
+    'numSearchThreads': '${engine.searchThreads}',
+    if (engine.maxTimeSeconds > 0) 'maxTime': '${engine.maxTimeSeconds}',
+    'logAllGTPCommunication': 'false',
+    'logSearchInfo': 'false',
+    'logToStderr': 'true',
+    'allowResignation': 'false',
+    ...styleValues,
+  };
+  for (final entry in values.entries) {
+    result = _setKataGoConfigValue(result, entry.key, entry.value);
+  }
+  for (final line in engine.configOverrides.split('\n')) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty || trimmed.startsWith('#')) continue;
+    final separator = trimmed.indexOf('=');
+    if (separator <= 0) continue;
+    result = _setKataGoConfigValue(
+      result,
+      trimmed.substring(0, separator).trim(),
+      trimmed.substring(separator + 1).trim(),
+    );
+  }
+  return result;
+}
+
+String _setKataGoConfigValue(String source, String key, String value) {
+  final expression = RegExp(
+    '^#?\\s*${RegExp.escape(key)}\\s*=.*\$',
+    multiLine: true,
+  );
+  return expression.hasMatch(source)
+      ? source.replaceFirst(expression, '$key = $value')
+      : '$source\n$key = $value\n';
 }
 
 /// Browser engine adapter. Each request runs in a same-origin Web Worker with
@@ -231,13 +276,47 @@ class KataGoWebRuntime {
 
   Future<String> genmove({
     required GoConfig config,
+    required GoAiSettings settings,
     required List<String> setup,
     required List<String> moves,
-  }) => web_katago.genmoveOnWeb(config: config, setup: setup, moves: moves);
+    required Side side,
+  }) async {
+    final modelBase64 = settings.modelId == GoModelLibrary.bundledId
+        ? null
+        : base64Encode(await GoModelLibrary.load(settings.modelId));
+    final engine = await GoEngineLibrary.byId(settings.engineProfileId);
+    return web_katago.genmoveOnWeb(
+      config: config,
+      settings: settings,
+      modelBase64: modelBase64,
+      maxTimeSeconds: engine.maxTimeSeconds,
+      searchThreads: engine.searchThreads,
+      configOverrides: engine.configOverrides,
+      setup: setup,
+      moves: moves,
+      side: side,
+    );
+  }
 
   Future<Map<String, Object?>> adjudicate({
     required GoConfig config,
+    GoAiSettings settings = const GoAiSettings(),
     required List<String> setup,
     required List<String> moves,
-  }) => web_katago.adjudicateOnWeb(config: config, setup: setup, moves: moves);
+  }) async {
+    final modelBase64 = settings.modelId == GoModelLibrary.bundledId
+        ? null
+        : base64Encode(await GoModelLibrary.load(settings.modelId));
+    final engine = await GoEngineLibrary.byId(settings.engineProfileId);
+    return web_katago.adjudicateOnWeb(
+      config: config,
+      settings: settings,
+      modelBase64: modelBase64,
+      maxTimeSeconds: engine.maxTimeSeconds,
+      searchThreads: engine.searchThreads,
+      configOverrides: engine.configOverrides,
+      setup: setup,
+      moves: moves,
+    );
+  }
 }

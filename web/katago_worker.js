@@ -2,6 +2,12 @@ import createKataGo from './katago/katago.js';
 
 const modelName = 'g170-b6c96-s175395328-d26788732.bin.gz';
 
+function setConfigValue(config, key, value) {
+  const expression = new RegExp(`^#?\\s*${key}\\s*=.*$`, 'm');
+  if (expression.test(config)) return config.replace(expression, `${key} = ${value}`);
+  return `${config}\n${key} = ${value}\n`;
+}
+
 self.onmessage = async ({ data }) => {
   let module;
   const output = [];
@@ -9,27 +15,50 @@ self.onmessage = async ({ data }) => {
     if (!self.crossOriginIsolated || typeof SharedArrayBuffer === 'undefined') {
       throw new Error('KataGo Web requires COOP/COEP response headers for WebAssembly threads.');
     }
-    const modelResponse = await fetch(
-      new URL(`assets/assets/katago/${modelName}`, self.location.href),
-    );
-    if (!modelResponse.ok) {
-      throw new Error(`KataGo model request failed: HTTP ${modelResponse.status}`);
+    let modelBytes;
+    if (data.modelBase64) {
+      const binary = atob(data.modelBase64);
+      modelBytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    } else {
+      const modelResponse = await fetch(
+        new URL(`assets/assets/katago/${modelName}`, self.location.href),
+      );
+      if (!modelResponse.ok) {
+        throw new Error(`KataGo model request failed: HTTP ${modelResponse.status}`);
+      }
+      modelBytes = new Uint8Array(await modelResponse.arrayBuffer());
     }
-    const modelBytes = new Uint8Array(await modelResponse.arrayBuffer());
     const configResponse = await fetch(
       new URL('assets/assets/katago/gtp_example.cfg', self.location.href),
     );
     if (!configResponse.ok) {
       throw new Error(`KataGo config request failed: HTTP ${configResponse.status}`);
     }
-    const configText = (await configResponse.text())
-      .replace(/^rules\s*=.*$/m, `rules = ${data.rules}`)
-      .replace(/^maxVisits\s*=.*$/m, 'maxVisits = 48')
-      .replace(/^numSearchThreads\s*=.*$/m, 'numSearchThreads = 1')
-      .replace(/^logAllGTPCommunication\s*=.*$/m, 'logAllGTPCommunication = false')
-      .replace(/^logSearchInfo\s*=.*$/m, 'logSearchInfo = false')
-      .replace(/^logToStderr\s*=.*$/m, 'logToStderr = true')
-      .replace(/^allowResignation\s*=.*$/m, 'allowResignation = false');
+    let configText = await configResponse.text();
+    const style = data.style === 'traditional'
+      ? { early: 0.7, temperature: 0.5, halfLife: 19 }
+      : { early: 0.3, temperature: 0.1, halfLife: 30 };
+    for (const [key, value] of Object.entries({
+      rules: data.rules,
+      maxVisits: Math.max(16, Math.min(10000, Number(data.maxVisits) || 500)),
+      numSearchThreads: Math.max(1, Math.min(16, Number(data.searchThreads) || 2)),
+      logAllGTPCommunication: false,
+      logSearchInfo: false,
+      logToStderr: true,
+      allowResignation: false,
+      chosenMoveTemperatureEarly: style.early,
+      chosenMoveTemperature: style.temperature,
+      chosenMoveTemperatureHalflife: style.halfLife,
+    })) {
+      configText = setConfigValue(configText, key, value);
+    }
+    if (Number(data.maxTimeSeconds) > 0) {
+      configText = setConfigValue(configText, 'maxTime', Number(data.maxTimeSeconds));
+    }
+    for (const line of String(data.configOverrides ?? '').split('\n')) {
+      const match = line.trim().match(/^([A-Za-z][A-Za-z0-9]*)\s*=\s*(.*)$/);
+      if (match) configText = setConfigValue(configText, match[1], match[2]);
+    }
     const commands = [
       `boardsize ${data.boardSize}`,
       'clear_board',

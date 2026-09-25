@@ -52,6 +52,16 @@ private class AndroidKataGoGtp(
                         "ready"
                     }
                     "command" -> command((arguments as Map<*, *>)["line"] as String)
+                    "storeModel" -> {
+                        val args = arguments as Map<*, *>
+                        storeModel(args["id"] as String, args["model"] as ByteArray)
+                        "stored"
+                    }
+                    "loadModel" -> loadModel((arguments as Map<*, *>)["id"] as String)
+                    "deleteModel" -> {
+                        deleteModel((arguments as Map<*, *>)["id"] as String)
+                        "deleted"
+                    }
                     "stop" -> {
                         stop()
                         "stopped"
@@ -63,6 +73,36 @@ private class AndroidKataGoGtp(
                 mainHandler.post { result.error("KATAGO", error.message ?: error.toString(), null) }
             }
         }
+    }
+
+    private fun modelFile(id: String): File {
+        require(Regex("[0-9a-f]{64}").matches(id)) { "Invalid model id" }
+        return File(File(filesDir, "katago/models").apply { mkdirs() }, "$id.bin.gz")
+    }
+
+    private fun storeModel(id: String, bytes: ByteArray) {
+        require(bytes.size >= 1024) { "KataGo model file is too small" }
+        val target = modelFile(id)
+        val temporary = File(target.parentFile, "${target.name}.tmp")
+        temporary.writeBytes(bytes)
+        if (target.exists() && !target.delete()) {
+            temporary.delete()
+            throw IllegalStateException("Unable to replace model file")
+        }
+        if (!temporary.renameTo(target)) {
+            temporary.delete()
+            throw IllegalStateException("Unable to save model file")
+        }
+    }
+
+    private fun loadModel(id: String): ByteArray? {
+        val file = modelFile(id)
+        return if (file.isFile) file.readBytes() else null
+    }
+
+    private fun deleteModel(id: String) {
+        val file = modelFile(id)
+        if (file.exists() && !file.delete()) throw IllegalStateException("Unable to delete model file")
     }
 
     private fun start(model: ByteArray, config: String) {
