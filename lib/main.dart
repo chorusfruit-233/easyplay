@@ -13,7 +13,7 @@ export 'game_page.dart';
 
 void main() => runApp(const EasyPlayApp());
 
-enum AppAppearance { system, light, dark, monet }
+enum AppAppearance { system, light, dark }
 
 class EasyPlayApp extends StatefulWidget {
   const EasyPlayApp({super.key});
@@ -24,6 +24,9 @@ class EasyPlayApp extends StatefulWidget {
 class _EasyPlayAppState extends State<EasyPlayApp> {
   AppAppearance _appearance = AppAppearance.system;
   Color? _monetSeed;
+  Color? _keyColorOverride;
+  DynamicSchemeVariant _paletteStyle = DynamicSchemeVariant.tonalSpot;
+  bool _amoled = false;
 
   // Indigo is one of KernelSU's key-colour presets. Generate Material tonal
   // roles from the same seed in both brightness modes.
@@ -38,13 +41,25 @@ class _EasyPlayAppState extends State<EasyPlayApp> {
     });
     SharedPreferences.getInstance().then((prefs) {
       final value = prefs.getString('appearance');
+      final savedColor = prefs.getInt('theme_key_color');
+      final savedStyle = prefs.getString('theme_palette_style');
       if (!mounted) return;
-      setState(
-        () => _appearance = AppAppearance.values.firstWhere(
-          (item) => item.name == value,
-          orElse: () => AppAppearance.system,
-        ),
-      );
+      setState(() {
+        _appearance = value == 'monet' || value == 'amoled'
+            ? AppAppearance.system
+            : AppAppearance.values.firstWhere(
+                (item) => item.name == value,
+                orElse: () => AppAppearance.system,
+              );
+        _amoled = prefs.getBool('theme_amoled') ?? value == 'amoled';
+        _keyColorOverride = savedColor == null || savedColor == 0
+            ? null
+            : Color(savedColor);
+        _paletteStyle = DynamicSchemeVariant.values.firstWhere(
+          (item) => item.name == savedStyle,
+          orElse: () => DynamicSchemeVariant.tonalSpot,
+        );
+      });
     });
   }
 
@@ -52,6 +67,44 @@ class _EasyPlayAppState extends State<EasyPlayApp> {
     setState(() => _appearance = value);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('appearance', value.name);
+  }
+
+  Future<void> _setThemeColor(Color? color) async {
+    setState(() => _keyColorOverride = color);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('theme_key_color', color?.toARGB32() ?? 0);
+  }
+
+  Future<void> _setPaletteStyle(DynamicSchemeVariant value) async {
+    setState(() => _paletteStyle = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('theme_palette_style', value.name);
+  }
+
+  Future<void> _setAmoled(bool value) async {
+    setState(() => _amoled = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('theme_amoled', value);
+  }
+
+  ColorScheme _darkScheme() {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: _keyColorOverride ?? _monetSeed ?? _keyColor,
+      dynamicSchemeVariant: _paletteStyle,
+      brightness: Brightness.dark,
+      contrastLevel: 0.05,
+    );
+    if (!_amoled) return scheme;
+    return scheme.copyWith(
+      surface: Colors.black,
+      surfaceDim: Colors.black,
+      surfaceBright: Colors.black,
+      surfaceContainerLowest: Colors.black,
+      surfaceContainerLow: Colors.black,
+      surfaceContainer: Colors.black,
+      surfaceContainerHigh: Colors.black,
+      surfaceContainerHighest: Colors.black,
+    );
   }
 
   @override
@@ -62,14 +115,12 @@ class _EasyPlayAppState extends State<EasyPlayApp> {
       AppAppearance.system => ThemeMode.system,
       AppAppearance.light => ThemeMode.light,
       AppAppearance.dark => ThemeMode.dark,
-      AppAppearance.monet => ThemeMode.system,
     },
     theme: ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: _appearance == AppAppearance.monet
-            ? (_monetSeed ?? _keyColor)
-            : _keyColor,
+        seedColor: _keyColorOverride ?? _monetSeed ?? _keyColor,
+        dynamicSchemeVariant: _paletteStyle,
         brightness: Brightness.light,
         contrastLevel: 0.05,
       ),
@@ -92,14 +143,8 @@ class _EasyPlayAppState extends State<EasyPlayApp> {
     ),
     darkTheme: ThemeData(
       useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: _appearance == AppAppearance.monet
-            ? (_monetSeed ?? _keyColor)
-            : _keyColor,
-        brightness: Brightness.dark,
-        contrastLevel: 0.05,
-      ),
-      scaffoldBackgroundColor: const Color(0xff101116),
+      colorScheme: _darkScheme(),
+      scaffoldBackgroundColor: _amoled ? Colors.black : const Color(0xff101116),
       appBarTheme: const AppBarTheme(centerTitle: false, elevation: 0),
       cardTheme: CardThemeData(
         elevation: 0,
@@ -116,17 +161,38 @@ class _EasyPlayAppState extends State<EasyPlayApp> {
         ),
       ),
     ),
-    home: Shell(appearance: _appearance, onAppearanceChanged: _setAppearance),
+    home: Shell(
+      appearance: _appearance,
+      onAppearanceChanged: _setAppearance,
+      keyColor: _keyColorOverride,
+      paletteStyle: _paletteStyle,
+      amoled: _amoled,
+      onThemeColorChanged: _setThemeColor,
+      onPaletteStyleChanged: _setPaletteStyle,
+      onAmoledChanged: _setAmoled,
+    ),
   );
 }
 
 class Shell extends StatefulWidget {
   final AppAppearance appearance;
   final ValueChanged<AppAppearance> onAppearanceChanged;
+  final Color? keyColor;
+  final DynamicSchemeVariant paletteStyle;
+  final bool amoled;
+  final ValueChanged<Color?> onThemeColorChanged;
+  final ValueChanged<DynamicSchemeVariant> onPaletteStyleChanged;
+  final ValueChanged<bool> onAmoledChanged;
   const Shell({
     super.key,
     required this.appearance,
     required this.onAppearanceChanged,
+    required this.keyColor,
+    required this.paletteStyle,
+    required this.amoled,
+    required this.onThemeColorChanged,
+    required this.onPaletteStyleChanged,
+    required this.onAmoledChanged,
   });
   @override
   State<Shell> createState() => _ShellState();
@@ -156,6 +222,12 @@ class _ShellState extends State<Shell> {
             builder: (_) => SettingsPage(
               appearance: widget.appearance,
               onAppearanceChanged: widget.onAppearanceChanged,
+              keyColor: widget.keyColor,
+              paletteStyle: widget.paletteStyle,
+              amoled: widget.amoled,
+              onThemeColorChanged: widget.onThemeColorChanged,
+              onPaletteStyleChanged: widget.onPaletteStyleChanged,
+              onAmoledChanged: widget.onAmoledChanged,
             ),
           ),
         ),
@@ -312,74 +384,77 @@ class GameCard extends StatelessWidget {
         ),
         child: Padding(
           padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    type.icon,
-                    color: active
-                        ? colors.onPrimaryContainer
-                        : available
-                        ? colors.primary
-                        : colors.onSurfaceVariant,
-                    size: 28,
-                  ),
-                  const Spacer(),
-                  if (available)
-                    Icon(
-                      Icons.arrow_outward,
-                      color: active
-                          ? colors.onPrimaryContainer
-                          : colors.onSurfaceVariant,
-                    )
-                  else
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colors.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        '未完成',
-                        style: TextStyle(
-                          color: colors.onSurfaceVariant,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                ],
+              Icon(
+                type.icon,
+                color: active
+                    ? colors.onPrimaryContainer
+                    : available
+                    ? colors.primary
+                    : colors.onSurfaceVariant,
+                size: 30,
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    type.label,
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: active
-                          ? colors.onPrimaryContainer
-                          : colors.onSurface,
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      type.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: active
+                            ? colors.onPrimaryContainer
+                            : colors.onSurface,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    type.description,
-                    style: TextStyle(
-                      color: active
-                          ? colors.onPrimaryContainer
-                          : colors.onSurfaceVariant,
+                    const SizedBox(height: 4),
+                    Text(
+                      type.description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: active
+                            ? colors.onPrimaryContainer
+                            : colors.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 12),
+              if (available)
+                Icon(
+                  Icons.arrow_outward,
+                  color: active
+                      ? colors.onPrimaryContainer
+                      : colors.onSurfaceVariant,
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: colors.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '未完成',
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -425,18 +500,169 @@ class ContinueCard extends StatelessWidget {
   );
 }
 
+class _ThemeModeChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onPressed;
+  const _ThemeModeChip({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) => ChoiceChip(
+    avatar: Icon(icon, size: 18),
+    label: Text(label),
+    selected: selected,
+    onSelected: (_) => onPressed(),
+  );
+}
+
+class _ColorChoice extends StatelessWidget {
+  final Color? color;
+  final bool selected;
+  final String tooltip;
+  final VoidCallback onPressed;
+  const _ColorChoice({
+    required this.color,
+    required this.selected,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(24),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color ?? scheme.primaryContainer,
+            border: Border.all(
+              color: selected ? scheme.onSurface : scheme.outlineVariant,
+              width: selected ? 3 : 1,
+            ),
+          ),
+          child: color == null
+              ? Icon(
+                  Icons.auto_awesome,
+                  size: 19,
+                  color: scheme.onPrimaryContainer,
+                )
+              : selected
+              ? Icon(Icons.check, size: 19, color: _onColor(color!))
+              : null,
+        ),
+      ),
+    );
+  }
+}
+
+Color _onColor(Color color) =>
+    color.computeLuminance() > 0.45 ? Colors.black : Colors.white;
+
+class _ThemePreviewCard extends StatelessWidget {
+  const _ThemePreviewCard();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                color: colors.primaryContainer,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Icon(Icons.palette_outlined, color: colors.primary),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Material 3 主题预览',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '主色、容器色和表面色会随设置即时更新。',
+                    style: TextStyle(
+                      color: colors.onSurfaceVariant,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              width: 18,
+              height: 52,
+              decoration: BoxDecoration(
+                color: colors.primary,
+                borderRadius: BorderRadius.circular(9),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class SettingsPage extends StatelessWidget {
   final AppAppearance appearance;
   final ValueChanged<AppAppearance> onAppearanceChanged;
+  final Color? keyColor;
+  final DynamicSchemeVariant paletteStyle;
+  final bool amoled;
+  final ValueChanged<Color?> onThemeColorChanged;
+  final ValueChanged<DynamicSchemeVariant> onPaletteStyleChanged;
+  final ValueChanged<bool> onAmoledChanged;
   const SettingsPage({
     super.key,
     required this.appearance,
     required this.onAppearanceChanged,
+    required this.keyColor,
+    required this.paletteStyle,
+    required this.amoled,
+    required this.onThemeColorChanged,
+    required this.onPaletteStyleChanged,
+    required this.onAmoledChanged,
   });
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('设置')),
+    appBar: AppBar(
+      title: const Text('设置'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const AboutLicensesPage()),
+          ),
+          child: const Text('关于 EasyPlay'),
+        ),
+        const SizedBox(width: 8),
+      ],
+    ),
     body: ListView(
       padding: const EdgeInsets.all(20),
       children: [
@@ -454,34 +680,131 @@ class SettingsPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
+        const _ThemePreviewCard(),
+        const SizedBox(height: 12),
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: SegmentedButton<AppAppearance>(
-              segments: const [
-                ButtonSegment(
-                  value: AppAppearance.system,
-                  icon: Icon(Icons.brightness_auto_outlined),
-                  label: Text('系统'),
+            padding: const EdgeInsets.all(16),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _ThemeModeChip(
+                  label: '系统',
+                  icon: Icons.brightness_auto_outlined,
+                  selected: appearance == AppAppearance.system,
+                  onPressed: () => onAppearanceChanged(AppAppearance.system),
                 ),
-                ButtonSegment(
-                  value: AppAppearance.light,
-                  icon: Icon(Icons.light_mode_outlined),
-                  label: Text('浅色'),
+                _ThemeModeChip(
+                  label: '浅色',
+                  icon: Icons.light_mode_outlined,
+                  selected: appearance == AppAppearance.light,
+                  onPressed: () => onAppearanceChanged(AppAppearance.light),
                 ),
-                ButtonSegment(
-                  value: AppAppearance.dark,
-                  icon: Icon(Icons.dark_mode_outlined),
-                  label: Text('深色'),
-                ),
-                ButtonSegment(
-                  value: AppAppearance.monet,
-                  icon: Icon(Icons.palette_outlined),
-                  label: Text('动态色'),
+                _ThemeModeChip(
+                  label: '深色',
+                  icon: Icons.dark_mode_outlined,
+                  selected: appearance == AppAppearance.dark,
+                  onPressed: () => onAppearanceChanged(AppAppearance.dark),
                 ),
               ],
-              selected: {appearance},
-              onSelectionChanged: (values) => onAppearanceChanged(values.first),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: SwitchListTile(
+            secondary: const Icon(Icons.brightness_1_outlined),
+            title: const Text('AMOLED 纯黑'),
+            subtitle: const Text('仅在深色模式下使用纯黑背景，适合 OLED 屏幕'),
+            value: amoled,
+            onChanged: onAmoledChanged,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('强调色', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 4),
+                Text(
+                  '动态色会读取 Android 12 及以上系统的壁纸配色。',
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    _ColorChoice(
+                      color: null,
+                      selected: keyColor == null,
+                      tooltip: '动态色',
+                      onPressed: () => onThemeColorChanged(null),
+                    ),
+                    for (final color in const [
+                      Color(0xfff44336),
+                      Color(0xffe91e63),
+                      Color(0xff9c27b0),
+                      Color(0xff673ab7),
+                      Color(0xff3f51b5),
+                      Color(0xff2196f3),
+                      Color(0xff00bcd4),
+                      Color(0xff009688),
+                      Color(0xff4caf50),
+                      Color(0xffffeb3b),
+                      Color(0xffffc107),
+                      Color(0xffff9800),
+                      Color(0xff795548),
+                      Color(0xff607d8f),
+                      Color(0xffff9ca8),
+                    ])
+                      _ColorChoice(
+                        color: color,
+                        selected: keyColor?.toARGB32() == color.toARGB32(),
+                        tooltip: '强调色',
+                        onPressed: () => onThemeColorChanged(color),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+            child: DropdownButtonFormField<DynamicSchemeVariant>(
+              initialValue: paletteStyle,
+              decoration: const InputDecoration(labelText: '调色板风格'),
+              onChanged: (value) {
+                if (value != null) onPaletteStyleChanged(value);
+              },
+              items: const [
+                DropdownMenuItem(
+                  value: DynamicSchemeVariant.tonalSpot,
+                  child: Text('Tonal Spot · 柔和'),
+                ),
+                DropdownMenuItem(
+                  value: DynamicSchemeVariant.neutral,
+                  child: Text('Neutral · 中性'),
+                ),
+                DropdownMenuItem(
+                  value: DynamicSchemeVariant.vibrant,
+                  child: Text('Vibrant · 鲜明'),
+                ),
+                DropdownMenuItem(
+                  value: DynamicSchemeVariant.expressive,
+                  child: Text('Expressive · 表现力'),
+                ),
+              ],
             ),
           ),
         ),
@@ -515,26 +838,6 @@ class SettingsPage extends StatelessWidget {
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const GoModelManagerPage()),
-            ),
-          ),
-        ),
-        const SizedBox(height: 28),
-        Text(
-          '关于',
-          style: Theme.of(
-            context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('关于 EasyPlay'),
-            subtitle: const Text('版本信息与开源组件许可证'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const AboutLicensesPage()),
             ),
           ),
         ),

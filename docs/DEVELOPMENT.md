@@ -74,7 +74,7 @@ Android Studio 应打开项目根目录 `/home/fruit/项目/easyplay`，不要�
 │   ├── main.dart             # 应用入口与首页
 │   ├── game_page.dart        # 围棋对局页面与交互调度
 │   ├── board.dart            # 棋盘绘制
-│   ├── game_session.dart     # 棋局状态、围棋规则与基础电脑走法
+│   ├── game_session.dart     # 棋局状态与围棋规则
 │   ├── games/                # 棋类页面入口（当前仅围棋可进入）
 │   ├── go_sgf.dart           # 围棋 SGF FF[4] 导入/导出、评论和变化树
 │   └── katago.dart           # KataGo 模型目录、下载客户端和 GTP 客户端
@@ -108,7 +108,7 @@ Android Studio 应打开项目根目录 `/home/fruit/项目/easyplay`，不要�
 
 - 棋盘
 - 当前回合和结束状态
-- 电脑（基础）/本地双人模式
+- KataGo 人机/本地双人模式
 - 落子或移动记录
 - 本局吃子/提子数
 - 悔棋
@@ -126,7 +126,7 @@ Android Studio 应打开项目根目录 `/home/fruit/项目/easyplay`，不要�
     -> 用户点击棋盘
     -> GameSession 校验并修改状态
     -> setState 重绘棋盘和侧栏
-    -> 若是人机模式且轮到白方，延迟约 300ms 执行 playComputerMove()
+    -> 若是 KataGo 人机模式且轮到电脑方，延迟约 300ms 请求 KataGo
     -> 对局结束或用户执行悔棋/重开
 ```
 
@@ -173,7 +173,6 @@ enum PieceKind { stone, pawn, rook, knight, bishop, queen, king, checker }
 | `legalMovesFrom(cell)` | 获取当前方某棋子的合法目标 |
 | `movePiece(from, to)` | 国际象棋/跳棋移动 |
 | `undo()` | 恢复上一步 |
-| `playComputerMove()` | 让基础电脑走一步 |
 
 状态字段的含义：
 
@@ -208,7 +207,7 @@ enum PieceKind { stone, pawn, rook, knight, bishop, queen, king, checker }
 - 中国规则（子数+地）、日本/韩国规则（地+提子）基础计分
 - 自定义贴目、2–9 子让子和标准星位布局
 - FF[4] SGF 记录的导入和导出（棋盘、规则、贴目、让子、落子、停一手）
-- 基础电脑落子
+- KataGo 人机对局；引擎不可用时自动切换为本地双人模式
 - 按路数绘制星位；九路使用四角星与天元
 
 围棋仍可继续扩展：
@@ -227,7 +226,6 @@ enum PieceKind { stone, pawn, rook, knight, bishop, queen, king, checker }
 - 将军检测
 - 基础将死/无合法着法检测
 - 移动前检查己方王是否处于将军状态
-- 基础电脑走法（优先吃子）
 
 尚未支持：
 
@@ -247,7 +245,6 @@ enum PieceKind { stone, pawn, rook, knight, bishop, queen, king, checker }
 - 有吃子时优先强制吃子
 - 普通棋子升王
 - 吃子计数
-- 基础电脑走法
 
 当前一次移动只执行一次跳吃，尚未支持连续多跳、完整结束判定变体和棋谱导出。后续添加规则时，需要先确定采用 American Checkers、International Draughts 还是其他变体，不能直接混用规则。
 
@@ -259,17 +256,11 @@ enum PieceKind { stone, pawn, rook, knight, bishop, queen, king, checker }
 4. 规则变更必须覆盖边界局面：无路可走、吃子、升变、终局、悔棋和重开。
 5. 不要让棋盘绘制代码决定合法性；`BoardPainter` 只负责显示状态。
 
-### 6.2 基础电脑行为
+### 6.2 KataGo 不可用时的回退
 
-基础电脑不是引擎，只用于验证“人机对局”的完整流程：
+围棋人机模式只使用 KataGo。Android 引擎启动失败、WebAssembly 初始化失败或局面同步失败时，当前请求会被取消，界面自动切换为本地双人模式；双方随后都由用户手动落子，不会再生成模拟电脑着法。
 
-- `GamePage` 在用户操作后发现轮到白方时，设置 `computerThinking`，等待约 300ms，再调用 `GameSession.playComputerMove()`。
-- 围棋枚举当前所有合法点，按距中心的曼哈顿距离排序，在靠近中心的候选点中随机选择；没有正式数子或布局评估。
-- 国际象棋和跳棋枚举当前所有合法移动，优先保留吃子移动，再随机选择；没有搜索深度、局面评估或开局库。
-- 悔棋、重开或切换本地双人时会使旧的延迟任务失效，避免电脑在新局面中补走一步。
-- Web 和非 Android 平台仍使用基础电脑；当前没有难度等级、提示模式或引擎统一接口。
-
-`assets/katago/` 内置约 3.8 MB 的 g170 b6 网络，运行前校验 SHA-256。Android APK 将 KataGo v1.16.5 arm64 GTP 程序作为 `jniLibs/arm64-v8a/libkatago.so` 打包，使系统提取到可执行的 `nativeLibraryDir`；不要从 `filesDir` 解压并执行，因为部分 Android 设备会对应用可写目录启用 `noexec`。Flutter 通过 `easyplay/katago` MethodChannel 启停进程并串行发送命令，CPU 使用 Eigen 后端，模型和配置复制到应用私有目录。Web 使用相同模型和 KataGo 源码编译的 WASM，在同源 Worker 中推理。WASM 的 pthread 需要浏览器 `SharedArrayBuffer`，所以静态托管必须返回 COOP/COEP 响应头；`web/_headers` 为支持该格式的静态主机提供配置。未启用跨源隔离时 Web 会提示并回退基础电脑。模型与 KataGo/Eigen 许可证位于 `assets/katago/` 和 `docs/licenses/`。Android 重建运行 `tools/build_katago_android.sh`，要求 Android NDK 28.2.13676358；Web 重建运行 `tools/build_katago_web.sh`，要求 Emscripten 6.0.3。两份脚本都会固定校验 KataGo/Eigen commit。
+`assets/katago/` 内置约 3.8 MB 的 g170 b6 网络，运行前校验 SHA-256。Android APK 将 KataGo v1.16.5 arm64 GTP 程序作为 `jniLibs/arm64-v8a/libkatago.so` 打包，使系统提取到可执行的 `nativeLibraryDir`；不要从 `filesDir` 解压并执行，因为部分 Android 设备会对应用可写目录启用 `noexec`。Flutter 通过 `easyplay/katago` MethodChannel 启停进程并串行发送命令，CPU 使用 Eigen 后端，模型和配置复制到应用私有目录。Web 使用相同模型和 KataGo 源码编译的 WASM，在同源 Worker 中推理。WASM 的 pthread 需要浏览器 `SharedArrayBuffer`，所以静态托管必须返回 COOP/COEP 响应头；`web/_headers` 为支持该格式的静态主机提供配置。未启用跨源隔离时 Web 会提示并切换本地双人模式。模型与 KataGo/Eigen 许可证位于 `assets/katago/` 和 `docs/licenses/`。Android 重建运行 `tools/build_katago_android.sh`，要求 Android NDK 28.2.13676358；Web 重建运行 `tools/build_katago_web.sh`，要求 Emscripten 6.0.3。两份脚本都会固定校验 KataGo/Eigen commit。
 
 ### 《围棋大师》APK 参考实现核查
 
@@ -333,7 +324,7 @@ rsync -av --delete build/web/ user@server:/var/www/easyplay/
 
 静态服务器建议设置以下缓存策略：`index.html`、`flutter_bootstrap.js`、`flutter_service_worker.js` 和 `version.json` 使用 `no-cache`；带内容哈希的资源可以长缓存。如果页面仍显示旧版，在浏览器开发者工具的 Application/应用 → Service Workers 中点击 Unregister，然后清除站点数据并强制刷新；使用 CDN 时还要清理 CDN 缓存。部署到子路径时需要传入对应参数，例如 `flutter build web --release --base-href /easyplay/`。
 
-Web KataGo 在 Worker 中重启搜索进程并重放当前棋局，因此不需要服务器 API；它依赖 COOP/COEP 响应头以启用 WASM pthread。Netlify/Cloudflare Pages 等支持 `_headers` 的纯静态主机可以直接部署；GitHub Pages 不能配置这些响应头，因此会自动回退基础电脑。发布前要在部署后的域名验证 `crossOriginIsolated === true`，并在 Network 面板确认 `katago/katago.wasm`、Worker、配置和 b6 模型请求成功。Web Worker 每次生成应手都会从棋谱重放开始搜索，模型可由浏览器缓存，但搜索进程状态不跨回合保留。可以在构建后运行 `python tools/test_katago_web.py`，该测试需安装 Selenium 和 Firefox，会启动本地带跨源隔离响应头的静态服务器并实际搜索一步。
+Web KataGo 在 Worker 中重启搜索进程并重放当前棋局，因此不需要服务器 API；它依赖 COOP/COEP 响应头以启用 WASM pthread。Netlify/Cloudflare Pages 等支持 `_headers` 的纯静态主机可以直接部署；GitHub Pages 不能配置这些响应头，因此会自动切换本地双人模式。发布前要在部署后的域名验证 `crossOriginIsolated === true`，并在 Network 面板确认 `katago/katago.wasm`、Worker、配置和 b6 模型请求成功。Web Worker 每次生成应手都会从棋谱重放开始搜索，模型可由浏览器缓存，但搜索进程状态不跨回合保留。可以在构建后运行 `python tools/test_katago_web.py`，该测试需安装 Selenium 和 Firefox，会启动本地带跨源隔离响应头的静态服务器并实际搜索一步。
 
 ### Android Studio
 
