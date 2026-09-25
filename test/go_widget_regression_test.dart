@@ -53,7 +53,7 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(find.text('围棋设置'), findsOneWidget);
+    expect(find.text('新建 AI 对局'), findsOneWidget);
     await tester.tap(find.text('开始对局'));
     await tester.pump();
     await tester.pump();

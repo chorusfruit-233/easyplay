@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'game_session.dart';
 import 'game_page.dart';
 import 'games/go_game.dart';
+import 'go_model_manager.dart';
+import 'go_engine_manager.dart';
 
 export 'board.dart';
 export 'game_page.dart';
 
 void main() => runApp(const EasyPlayApp());
 
-enum AppAppearance { system, light, dark }
+enum AppAppearance { system, light, dark, monet }
 
 class EasyPlayApp extends StatefulWidget {
   const EasyPlayApp({super.key});
@@ -20,10 +23,19 @@ class EasyPlayApp extends StatefulWidget {
 
 class _EasyPlayAppState extends State<EasyPlayApp> {
   AppAppearance _appearance = AppAppearance.system;
+  Color? _monetSeed;
+
+  // Indigo is one of KernelSU's key-colour presets. Generate Material tonal
+  // roles from the same seed in both brightness modes.
+  static const _keyColor = Color(0xff3f51b5);
 
   @override
   void initState() {
     super.initState();
+    DynamicColorPlugin.getCorePalette().then((palette) {
+      if (!mounted || palette == null) return;
+      setState(() => _monetSeed = Color(palette.primary.get(40)));
+    });
     SharedPreferences.getInstance().then((prefs) {
       final value = prefs.getString('appearance');
       if (!mounted) return;
@@ -50,22 +62,59 @@ class _EasyPlayAppState extends State<EasyPlayApp> {
       AppAppearance.system => ThemeMode.system,
       AppAppearance.light => ThemeMode.light,
       AppAppearance.dark => ThemeMode.dark,
+      AppAppearance.monet => ThemeMode.system,
     },
     theme: ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xff1e5eff),
+        seedColor: _appearance == AppAppearance.monet
+            ? (_monetSeed ?? _keyColor)
+            : _keyColor,
         brightness: Brightness.light,
+        contrastLevel: 0.05,
       ),
-      scaffoldBackgroundColor: const Color(0xfff5f7fb),
+      scaffoldBackgroundColor: const Color(0xfff8f8fc),
+      appBarTheme: const AppBarTheme(centerTitle: false, elevation: 0),
+      cardTheme: CardThemeData(
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(18)),
+        ),
+      ),
+      inputDecorationTheme: const InputDecorationTheme(
+        filled: true,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(14)),
+          borderSide: BorderSide.none,
+        ),
+      ),
     ),
     darkTheme: ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xff7c9cff),
+        seedColor: _appearance == AppAppearance.monet
+            ? (_monetSeed ?? _keyColor)
+            : _keyColor,
         brightness: Brightness.dark,
+        contrastLevel: 0.05,
       ),
-      scaffoldBackgroundColor: const Color(0xff11151d),
+      scaffoldBackgroundColor: const Color(0xff101116),
+      appBarTheme: const AppBarTheme(centerTitle: false, elevation: 0),
+      cardTheme: CardThemeData(
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(18)),
+        ),
+      ),
+      inputDecorationTheme: const InputDecorationTheme(
+        filled: true,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(14)),
+          borderSide: BorderSide.none,
+        ),
+      ),
     ),
     home: Shell(appearance: _appearance, onAppearanceChanged: _setAppearance),
   );
@@ -143,12 +192,12 @@ class HomePage extends StatelessWidget {
                       width: 42,
                       height: 42,
                       decoration: BoxDecoration(
-                        color: const Color(0xff1e5eff),
+                        color: Theme.of(context).colorScheme.primary,
                         borderRadius: BorderRadius.circular(13),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.blur_on,
-                        color: Colors.white,
+                        color: Theme.of(context).colorScheme.onPrimary,
                         size: 27,
                       ),
                     ),
@@ -247,7 +296,7 @@ class GameCard extends StatelessWidget {
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: active
-                ? [const Color(0xff1e5eff), const Color(0xff638dff)]
+                ? [colors.primaryContainer, colors.primaryContainer]
                 : available
                 ? [colors.surface, colors.surfaceContainerLowest]
                 : [colors.surfaceContainerHigh, colors.surfaceContainer],
@@ -272,17 +321,19 @@ class GameCard extends StatelessWidget {
                   Icon(
                     type.icon,
                     color: active
-                        ? Colors.white
+                        ? colors.onPrimaryContainer
                         : available
-                        ? const Color(0xff1e5eff)
-                        : Colors.black38,
+                        ? colors.primary
+                        : colors.onSurfaceVariant,
                     size: 28,
                   ),
                   const Spacer(),
                   if (available)
                     Icon(
                       Icons.arrow_outward,
-                      color: active ? Colors.white70 : Colors.black26,
+                      color: active
+                          ? colors.onPrimaryContainer
+                          : colors.onSurfaceVariant,
                     )
                   else
                     Container(
@@ -291,13 +342,13 @@ class GameCard extends StatelessWidget {
                         vertical: 5,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: .07),
+                        color: colors.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: const Text(
+                      child: Text(
                         '未完成',
                         style: TextStyle(
-                          color: Colors.black54,
+                          color: colors.onSurfaceVariant,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -313,14 +364,18 @@ class GameCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
-                      color: active ? Colors.white : colors.onSurface,
+                      color: active
+                          ? colors.onPrimaryContainer
+                          : colors.onSurface,
                     ),
                   ),
                   const SizedBox(height: 3),
                   Text(
                     type.description,
                     style: TextStyle(
-                      color: active ? Colors.white70 : colors.onSurfaceVariant,
+                      color: active
+                          ? colors.onPrimaryContainer
+                          : colors.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -345,10 +400,14 @@ class ContinueCard extends StatelessWidget {
         width: 56,
         height: 56,
         decoration: BoxDecoration(
-          color: const Color(0xffffe6b3),
+          color: Theme.of(context).colorScheme.tertiaryContainer,
           borderRadius: BorderRadius.circular(14),
         ),
-        child: const Icon(Icons.blur_on, color: Color(0xff9a6500), size: 31),
+        child: Icon(
+          Icons.blur_on,
+          color: Theme.of(context).colorScheme.onTertiaryContainer,
+          size: 31,
+        ),
       ),
       title: const Text(
         '开始新对局 · 19 路围棋',
@@ -415,9 +474,47 @@ class SettingsPage extends StatelessWidget {
                   icon: Icon(Icons.dark_mode_outlined),
                   label: Text('深色'),
                 ),
+                ButtonSegment(
+                  value: AppAppearance.monet,
+                  icon: Icon(Icons.palette_outlined),
+                  label: Text('动态色'),
+                ),
               ],
               selected: {appearance},
               onSelectionChanged: (values) => onAppearanceChanged(values.first),
+            ),
+          ),
+        ),
+        const SizedBox(height: 28),
+        Text(
+          '围棋 AI',
+          style: Theme.of(
+            context,
+          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.tune),
+            title: const Text('AI 引擎配置'),
+            subtitle: const Text('管理 KataGo 配置、思考时间、线程与高级参数'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const GoEngineManagerPage()),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.memory_outlined),
+            title: const Text('KataGo 引擎与模型'),
+            subtitle: const Text('选择模型，导入或下载 KataGo 网络'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const GoModelManagerPage()),
             ),
           ),
         ),

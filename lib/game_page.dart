@@ -3,6 +3,11 @@ import 'game_session.dart';
 import 'go_file_service.dart';
 import 'go_sgf.dart';
 import 'go_storage.dart';
+import 'go_ai_settings.dart';
+import 'go_models.dart';
+import 'go_model_manager.dart';
+import 'go_engine_profiles.dart';
+import 'go_engine_manager.dart';
 import 'katago.dart';
 import 'board.dart';
 
@@ -29,14 +34,22 @@ extension GameTypeX on GameType {
   };
 }
 
+class _GoGameSetup {
+  final GoConfig goConfig;
+  final GoAiSettings aiSettings;
+  const _GoGameSetup(this.goConfig, this.aiSettings);
+}
+
 class GamePage extends StatefulWidget {
   final GameType type;
   final GoConfig? goConfig;
+  final GoAiSettings? aiSettings;
   final bool? useAndroidKataGo;
   const GamePage({
     super.key,
     required this.type,
     this.goConfig,
+    this.aiSettings,
     this.useAndroidKataGo,
   });
   @override
@@ -45,7 +58,9 @@ class GamePage extends StatefulWidget {
 
 class _GamePageState extends State<GamePage> {
   late GameSession session;
+  late GoAiSettings aiSettings;
   bool vsComputer = true;
+  Side humanSide = Side.black;
   bool computerThinking = false;
   int _computerGeneration = 0;
   bool _modalOpen = false;
@@ -60,7 +75,9 @@ class _GamePageState extends State<GamePage> {
       !_modalOpen &&
       !session.gameOver &&
       !computerThinking &&
-      (!vsComputer || session.turn == Side.black);
+      (!vsComputer || session.turn == humanSide);
+
+  bool get _usesKataGo => aiSettings.opponentMode == GoOpponentMode.kataGo;
 
   bool get _androidKataGoSupported =>
       widget.useAndroidKataGo ?? KataGoAndroidRuntime.isSupported;
@@ -95,6 +112,9 @@ class _GamePageState extends State<GamePage> {
   void initState() {
     super.initState();
     session = GameSession(widget.type, goConfig: widget.goConfig);
+    aiSettings = widget.aiSettings ?? const GoAiSettings();
+    vsComputer = aiSettings.opponentMode != GoOpponentMode.local;
+    humanSide = aiSettings.resolvePlayerSide();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && widget.type == GameType.go) {
         _showGoSettings(requiredAtStart: true);
@@ -143,7 +163,7 @@ class _GamePageState extends State<GamePage> {
   }
 
   Future<void> _recordMoveForEngine(GameMove move) async {
-    if (!_kataGo.isStarted) return;
+    if (!_usesKataGo || !_kataGo.isStarted) return;
     try {
       await _kataGo.send(
         'play ${move.side == Side.black ? 'B' : 'W'} ${_gtpVertex(move)}',
@@ -164,7 +184,7 @@ class _GamePageState extends State<GamePage> {
   }
 
   Future<void> _startKataGoAndReplay() async {
-    await _kataGo.start(config: session.goConfig);
+    await _kataGo.start(config: session.goConfig, settings: aiSettings);
     for (final command in _gtpSetupCommands()) {
       await _kataGo.send(command);
     }
@@ -216,6 +236,8 @@ class _GamePageState extends State<GamePage> {
         GoSgf.exportGame(session),
         gameId: _gameId,
         vsComputer: vsComputer,
+        aiSettings: aiSettings,
+        humanSide: humanSide,
       );
     } catch (e) {
       _notice('棋局未保存，请导出 SGF 备份：$e');
@@ -227,7 +249,7 @@ class _GamePageState extends State<GamePage> {
         _modalOpen ||
         !vsComputer ||
         session.gameOver ||
-        session.turn != Side.white ||
+        session.turn == humanSide ||
         computerThinking) {
       return;
     }
@@ -239,15 +261,19 @@ class _GamePageState extends State<GamePage> {
           !vsComputer ||
           session.gameOver ||
           _modalOpen ||
-          session.turn != Side.white) {
+          session.turn == humanSide) {
         return;
       }
       var played = false;
-      if (widget.type == GameType.go && _androidKataGoSupported) {
+      if (widget.type == GameType.go &&
+          _usesKataGo &&
+          _androidKataGoSupported) {
         try {
           if (!_kataGo.isStarted) await _startKataGoAndReplay();
           if (!mounted || generation != _computerGeneration) return;
-          final vertex = (await _kataGo.send('genmove W')).trim();
+          final vertex = (await _kataGo.send(
+            'genmove ${session.turn == Side.black ? 'B' : 'W'}',
+          )).trim();
           if (!mounted || generation != _computerGeneration) return;
           if (vertex.toLowerCase() == 'pass') {
             played = session.passGo();
@@ -266,13 +292,17 @@ class _GamePageState extends State<GamePage> {
             // The platform channel may be unavailable in tests or partial hosts.
           }
         }
-      } else if (widget.type == GameType.go && KataGoWebRuntime.isSupported) {
+      } else if (widget.type == GameType.go &&
+          _usesKataGo &&
+          KataGoWebRuntime.isSupported) {
         try {
           final setup = _gtpSetupCommands();
           final vertex = (await _webKataGo.genmove(
             config: session.goConfig,
+            settings: aiSettings,
             setup: setup,
             moves: session.moves.map(_gtpCommand).toList(),
+            side: session.turn,
           )).trim();
           if (!mounted || generation != _computerGeneration) return;
           played = _playGtpVertex(vertex);
@@ -320,13 +350,16 @@ class _GamePageState extends State<GamePage> {
 
   Future<void> _undo() async {
     _computerGeneration++;
-    final undoCount = vsComputer && session.turn == Side.black ? 2 : 1;
+    final undoCount =
+        vsComputer && session.turn == humanSide && session.moves.length >= 2
+        ? 2
+        : 1;
     setState(() {
       computerThinking = false;
       _adjudicationInProgress = false;
       selected = null;
       targets = const [];
-      if (vsComputer && session.turn == Side.black) {
+      if (undoCount == 2) {
         session.undo();
         session.undo();
       } else {
@@ -392,6 +425,7 @@ class _GamePageState extends State<GamePage> {
       } else if (KataGoWebRuntime.isSupported) {
         final result = await _webKataGo.adjudicate(
           config: session.goConfig,
+          settings: aiSettings,
           setup: setup,
           moves: moves,
         );
@@ -448,15 +482,47 @@ class _GamePageState extends State<GamePage> {
     );
     var komiEdited = false;
     var handicap = session.goConfig.handicap;
-    final result = await showDialog<GoConfig>(
+    var mode = aiSettings.opponentMode;
+    var playerColor = aiSettings.playerColor;
+    var rank = aiSettings.rank;
+    var style = aiSettings.style;
+    var availableModels = <GoModelInfo>[GoModelLibrary.bundledModel];
+    var activeModel = GoModelLibrary.bundledId;
+    var engines = <GoEngineProfile>[GoEngineProfile.builtIn];
+    var activeEngine = GoEngineProfile.builtIn.id;
+    try {
+      availableModels = await GoModelLibrary.available();
+      activeModel = await GoModelLibrary.activeId();
+      engines = await GoEngineLibrary.available();
+      activeEngine = await GoEngineLibrary.activeId();
+    } catch (error) {
+      _notice('读取 KataGo 模型列表失败，暂用内置 b6 模型：$error');
+    }
+    var modelId = requiredAtStart && widget.aiSettings == null
+        ? activeModel
+        : availableModels.any((model) => model.id == aiSettings.modelId)
+        ? aiSettings.modelId
+        : activeModel;
+    var engineProfileId =
+        engines.any((engine) => engine.id == aiSettings.engineProfileId)
+        ? aiSettings.engineProfileId
+        : activeEngine;
+    if (!mounted) return;
+    var starting = false;
+    String? setupError;
+    final result = await showDialog<_GoGameSetup>(
       context: context,
       barrierDismissible: !requiredAtStart,
       builder: (context) => PopScope(
-        canPop: !requiredAtStart,
-        child: AlertDialog(
-          title: const Text('围棋设置'),
-          content: StatefulBuilder(
-            builder: (context, setDialogState) => Form(
+        canPop: !requiredAtStart && !starting,
+        child: StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 24,
+            ),
+            title: Text(requiredAtStart ? '新建 AI 对局' : '对局设置'),
+            content: Form(
               key: formKey,
               child: SingleChildScrollView(
                 child: Column(
@@ -467,8 +533,10 @@ class _GamePageState extends State<GamePage> {
                       decoration: const InputDecoration(labelText: '棋盘路数'),
                       items: [9, 13, 19]
                           .map(
-                            (v) =>
-                                DropdownMenuItem(value: v, child: Text('$v 路')),
+                            (v) => DropdownMenuItem(
+                              value: v,
+                              child: Text('$v×$v'),
+                            ),
                           )
                           .toList(),
                       onChanged: (v) => setDialogState(() => size = v ?? size),
@@ -523,33 +591,268 @@ class _GamePageState extends State<GamePage> {
                       onChanged: (v) =>
                           setDialogState(() => handicap = v ?? handicap),
                     ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'AI 设置',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    DropdownButtonFormField<GoOpponentMode>(
+                      initialValue: mode,
+                      decoration: const InputDecoration(labelText: '对局模式'),
+                      items: const [
+                        DropdownMenuItem(
+                          value: GoOpponentMode.kataGo,
+                          child: Text('人机 · KataGo'),
+                        ),
+                        DropdownMenuItem(
+                          value: GoOpponentMode.basic,
+                          child: Text('人机 · 基础电脑'),
+                        ),
+                        DropdownMenuItem(
+                          value: GoOpponentMode.local,
+                          child: Text('本地双人'),
+                        ),
+                      ],
+                      onChanged: (value) =>
+                          setDialogState(() => mode = value ?? mode),
+                    ),
+                    if (mode != GoOpponentMode.local) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        alignment: WrapAlignment.spaceEvenly,
+                        spacing: 4,
+                        children: [
+                          for (final option in const [
+                            (GoPlayerColor.black, '我执黑'),
+                            (GoPlayerColor.white, '我执白'),
+                            (GoPlayerColor.random, '猜先'),
+                          ])
+                            ChoiceChip(
+                              label: Text(option.$2),
+                              selected: playerColor == option.$1,
+                              onSelected: (_) =>
+                                  setDialogState(() => playerColor = option.$1),
+                            ),
+                        ],
+                      ),
+                    ],
+                    if (mode == GoOpponentMode.kataGo) ...[
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          DropdownButtonFormField<String>(
+                            key: ValueKey(engineProfileId),
+                            initialValue: engineProfileId,
+                            decoration: const InputDecoration(
+                              labelText: 'AI 引擎',
+                            ),
+                            items: engines
+                                .map(
+                                  (engine) => DropdownMenuItem(
+                                    value: engine.id,
+                                    child: Text(engine.name),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) => setDialogState(
+                              () => engineProfileId = value ?? engineProfileId,
+                            ),
+                          ),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: IconButton(
+                              tooltip: '管理 AI 引擎',
+                              onPressed: () async {
+                                try {
+                                  await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const GoEngineManagerPage(),
+                                    ),
+                                  );
+                                  final profiles =
+                                      await GoEngineLibrary.available();
+                                  final active =
+                                      await GoEngineLibrary.activeId();
+                                  if (!context.mounted) return;
+                                  setDialogState(() {
+                                    engines = profiles;
+                                    engineProfileId = active;
+                                  });
+                                } catch (error) {
+                                  if (context.mounted) {
+                                    setDialogState(
+                                      () => setupError = '读取引擎配置失败：$error',
+                                    );
+                                  }
+                                }
+                              },
+                              icon: const Icon(Icons.tune),
+                            ),
+                          ),
+                        ],
+                      ),
+                      DropdownButtonFormField<GoAiRank>(
+                        initialValue: rank,
+                        decoration: const InputDecoration(labelText: '棋力'),
+                        items: GoAiRank.values
+                            .map(
+                              (value) => DropdownMenuItem(
+                                value: value,
+                                child: Text(value.label),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) =>
+                            setDialogState(() => rank = value ?? rank),
+                      ),
+                      DropdownButtonFormField<GoAiStyle>(
+                        initialValue: style,
+                        decoration: const InputDecoration(labelText: '风格'),
+                        items: GoAiStyle.values
+                            .map(
+                              (value) => DropdownMenuItem(
+                                value: value,
+                                child: Text(value.label),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) =>
+                            setDialogState(() => style = value ?? style),
+                      ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              key: ValueKey(modelId),
+                              initialValue: modelId,
+                              decoration: const InputDecoration(
+                                labelText: '模型',
+                              ),
+                              items: availableModels
+                                  .map(
+                                    (model) => DropdownMenuItem(
+                                      value: model.id,
+                                      child: Text(
+                                        model.name,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) => setDialogState(
+                                () => modelId = value ?? modelId,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: '管理模型',
+                            onPressed: () async {
+                              try {
+                                await Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const GoModelManagerPage(),
+                                  ),
+                                );
+                                final models = await GoModelLibrary.available();
+                                final active = await GoModelLibrary.activeId();
+                                final profiles =
+                                    await GoEngineLibrary.available();
+                                final activeProfile =
+                                    await GoEngineLibrary.activeId();
+                                if (!context.mounted) return;
+                                setDialogState(() {
+                                  availableModels = models;
+                                  modelId = active;
+                                  engines = profiles;
+                                  engineProfileId = activeProfile;
+                                });
+                              } catch (error) {
+                                if (context.mounted) {
+                                  setDialogState(
+                                    () => setupError = '读取模型列表失败：$error',
+                                  );
+                                }
+                              }
+                            },
+                            icon: const Icon(Icons.settings_outlined),
+                          ),
+                        ],
+                      ),
+                      if (setupError != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            setupError!,
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.error,
+                            ),
+                          ),
+                        ),
+                    ],
                   ],
                 ),
               ),
             ),
-          ),
-          actions: [
-            if (!requiredAtStart)
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('取消'),
+            actions: [
+              if (!requiredAtStart)
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('取消'),
+                ),
+              FilledButton(
+                onPressed: starting
+                    ? null
+                    : () async {
+                        if (!formKey.currentState!.validate()) return;
+                        if (mode == GoOpponentMode.kataGo) {
+                          setDialogState(() {
+                            starting = true;
+                            setupError = null;
+                          });
+                          try {
+                            await GoModelLibrary.load(modelId);
+                          } catch (error) {
+                            setDialogState(() {
+                              starting = false;
+                              setupError = '模型不可用：$error';
+                            });
+                            return;
+                          }
+                        }
+                        if (!context.mounted) return;
+                        Navigator.pop(
+                          context,
+                          _GoGameSetup(
+                            GoConfig(
+                              boardSize: size,
+                              rules: rules,
+                              komi: double.parse(komiController.text),
+                              handicap: handicap,
+                            ),
+                            GoAiSettings(
+                              opponentMode: mode,
+                              playerColor: playerColor,
+                              rank: rank,
+                              style: style,
+                              modelId: modelId,
+                              engineProfileId: engineProfileId,
+                            ),
+                          ),
+                        );
+                      },
+                child: starting
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(requiredAtStart ? '开始对局' : '应用并重开'),
               ),
-            FilledButton(
-              onPressed: () {
-                if (!formKey.currentState!.validate()) return;
-                Navigator.pop(
-                  context,
-                  GoConfig(
-                    boardSize: size,
-                    rules: rules,
-                    komi: double.parse(komiController.text),
-                    handicap: handicap,
-                  ),
-                );
-              },
-              child: Text(requiredAtStart ? '开始对局' : '应用并重开'),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -560,7 +863,10 @@ class _GamePageState extends State<GamePage> {
       if (!mounted) return;
       setState(() {
         _gameId = DateTime.now().microsecondsSinceEpoch.toString();
-        session.setGoConfig(result);
+        session.setGoConfig(result.goConfig);
+        aiSettings = result.aiSettings;
+        vsComputer = aiSettings.opponentMode != GoOpponentMode.local;
+        humanSide = aiSettings.resolvePlayerSide();
         _sgfSource = null;
         selected = null;
         targets = const [];
@@ -586,6 +892,8 @@ class _GamePageState extends State<GamePage> {
     GameSession imported, {
     String? id,
     bool computer = false,
+    GoAiSettings? settings,
+    Side? restoredHumanSide,
     String? source,
   }) {
     _computerGeneration++;
@@ -594,7 +902,15 @@ class _GamePageState extends State<GamePage> {
       session = imported;
       _sgfSource = source;
       _gameId = id ?? DateTime.now().microsecondsSinceEpoch.toString();
+      aiSettings =
+          settings ??
+          GoAiSettings(
+            opponentMode: computer
+                ? GoOpponentMode.kataGo
+                : GoOpponentMode.local,
+          );
       vsComputer = computer;
+      humanSide = restoredHumanSide ?? aiSettings.resolvePlayerSide();
       selected = null;
       targets = const [];
       computerThinking = false;
@@ -688,6 +1004,8 @@ class _GamePageState extends State<GamePage> {
       final text = await GoStorage.loadLast();
       final id = await GoStorage.lastId();
       final computer = await GoStorage.lastComputerMode();
+      final restoredSettings = await GoStorage.lastAiSettings();
+      final restoredHumanSide = await GoStorage.lastHumanSide();
       if (!mounted) return;
       if (text == null) {
         _notice('暂无已保存的围棋对局');
@@ -697,6 +1015,8 @@ class _GamePageState extends State<GamePage> {
         GoSgf.importGame(text),
         id: id,
         computer: computer,
+        settings: restoredSettings,
+        restoredHumanSide: restoredHumanSide,
         source: text,
       );
     } catch (e) {
@@ -846,22 +1166,24 @@ class _GamePageState extends State<GamePage> {
                 ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
               ),
               if (session.isInCheckTurn && !session.gameOver)
-                const Padding(
-                  padding: EdgeInsets.only(top: 4),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
                   child: Text(
                     '将军',
                     style: TextStyle(
-                      color: Colors.red,
+                      color: Theme.of(context).colorScheme.error,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
               if (computerThinking)
-                const Padding(
-                  padding: EdgeInsets.only(top: 4),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
                   child: Text(
                     '电脑思考中…',
-                    style: TextStyle(color: Colors.black54),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
               const SizedBox(height: 14),
@@ -872,7 +1194,7 @@ class _GamePageState extends State<GamePage> {
                     label: Text(
                       KataGoAndroidRuntime.isSupported ||
                               KataGoWebRuntime.isSupported
-                          ? '电脑（KataGo b6）'
+                          ? '电脑（KataGo ${aiSettings.rank.label}）'
                           : '电脑（基础）',
                     ),
                     icon: Icon(Icons.smart_toy_outlined),
@@ -888,6 +1210,11 @@ class _GamePageState extends State<GamePage> {
                   _computerGeneration++;
                   setState(() {
                     vsComputer = value.first;
+                    aiSettings = aiSettings.copyWith(
+                      opponentMode: value.first
+                          ? GoOpponentMode.kataGo
+                          : GoOpponentMode.local,
+                    );
                     computerThinking = false;
                     _adjudicationInProgress = false;
                     selected = null;
@@ -902,7 +1229,9 @@ class _GamePageState extends State<GamePage> {
                 widget.type == GameType.go
                     ? '提子：黑 ${session.blackCaptures} · 白 ${session.whiteCaptures}'
                     : '吃子：黑 ${session.blackCaptures} · 白 ${session.whiteCaptures}',
-                style: const TextStyle(color: Colors.black54),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               if (widget.type == GameType.go && session.gameOver) ...[
                 const SizedBox(height: 8),
@@ -916,7 +1245,10 @@ class _GamePageState extends State<GamePage> {
                       : _adjudicationInProgress
                       ? 'KataGo 正在裁定死活与终局结果…'
                       : '点击整块棋标记死子（红叉）；确认后结束计分。',
-                  style: const TextStyle(color: Colors.black54, fontSize: 12),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12,
+                  ),
                 ),
                 if (!session.goScoreConfirmed)
                   TextButton(
@@ -952,7 +1284,9 @@ class _GamePageState extends State<GamePage> {
                   ),
                   Text(
                     '${session.moves.length} 手',
-                    style: const TextStyle(color: Colors.black54),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -960,11 +1294,15 @@ class _GamePageState extends State<GamePage> {
               SizedBox(
                 height: 108,
                 child: session.moves.isEmpty
-                    ? const Align(
+                    ? Align(
                         alignment: Alignment.topLeft,
                         child: Text(
                           '选择一个空位或棋子开始。',
-                          style: TextStyle(color: Colors.black54),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       )
                     : ListView.builder(
