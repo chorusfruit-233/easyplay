@@ -176,7 +176,6 @@ class GameSession {
   final List<_Snapshot> _undo = [];
   final List<String> _positions = [];
   int _consecutivePasses = 0;
-  final Random _random = Random();
 
   GameSession(this.type, {GoConfig? goConfig})
     : _goConfig = goConfig ?? const GoConfig() {
@@ -483,47 +482,6 @@ class GameSession {
     return true;
   }
 
-  bool playComputerMove() {
-    if (gameOver) return false;
-    if (type == GameType.go) {
-      final legal = <Cell>[];
-      for (var r = 0; r < size; r++)
-        for (var c = 0; c < size; c++) {
-          final cell = Cell(r, c);
-          if (_canPlayGo(cell, turn) && !_isOwnEye(cell, turn)) legal.add(cell);
-        }
-      if (legal.isEmpty) return passGo();
-      legal.sort((a, b) => _centerDistance(a).compareTo(_centerDistance(b)));
-      final shortlist = legal
-          .take(min(legal.length, max(1, legal.length ~/ 5)))
-          .toList();
-      return placeGo(shortlist[_random.nextInt(shortlist.length)]);
-    }
-    final legal = <GameMove>[];
-    for (var r = 0; r < size; r++)
-      for (var c = 0; c < size; c++) {
-        final from = Cell(r, c);
-        for (final to in legalMovesFrom(from)) {
-          legal.add(
-            GameMove(
-              from: from,
-              to: to,
-              captured:
-                  board[to.row][to.col] != null ||
-                  (type == GameType.checkers && (from.row - to.row).abs() == 2),
-            ),
-          );
-        }
-      }
-    if (legal.isEmpty) return false;
-    legal.sort((a, b) => (b.captured ? 1 : 0).compareTo(a.captured ? 1 : 0));
-    final best = legal
-        .where((m) => m.captured == legal.first.captured)
-        .toList();
-    final m = best[_random.nextInt(best.length)];
-    return movePiece(m.from!, m.to);
-  }
-
   GoScore calculateGoScore() {
     if (type != GameType.go) {
       throw StateError('Go scoring is only available for a Go session');
@@ -824,26 +782,6 @@ class GameSession {
     yield Cell(p.row, p.col + 1);
   }
 
-  bool _isOwnEye(Cell cell, Side side) {
-    if (_neighbors(cell).where(inside).any((n) => pieceAt(n)?.side != side)) {
-      return false;
-    }
-    var offBoard = 0, opponents = 0;
-    for (final dr in [-1, 1]) {
-      for (final dc in [-1, 1]) {
-        final n = Cell(cell.row + dr, cell.col + dc);
-        if (!inside(n)) {
-          offBoard++;
-        } else if (pieceAt(n)?.side == side.opponent) {
-          opponents++;
-        }
-      }
-    }
-    return offBoard > 0 ? opponents == 0 : opponents <= 1;
-  }
-
-  int _centerDistance(Cell c) =>
-      (c.row - size ~/ 2).abs() + (c.col - size ~/ 2).abs();
   String _signature(List<List<GamePiece?>> b) => b
       .map(
         (row) => row

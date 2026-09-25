@@ -93,7 +93,11 @@ void main() {
   testWidgets('19-line coordinates and AI response are persisted as one game', (
     tester,
   ) async {
-    await open(tester, config: const GoConfig(boardSize: 19));
+    await open(
+      tester,
+      config: const GoConfig(boardSize: 19),
+      useAndroidKataGo: true,
+    );
     final board = tester.widget<Board>(find.byType(Board));
     board.onCell(const Cell(18, 18));
     await tester.pump();
@@ -178,10 +182,10 @@ void main() {
     expect(tester.takeException(), null);
   });
 
-  testWidgets('double pass automatically applies KataGo dead stone and score', (
+  testWidgets('double pass stays manually adjudicable without KataGo', (
     tester,
   ) async {
-    await open(tester, useAndroidKataGo: true);
+    await open(tester);
     await tester.ensureVisible(find.text('本地双人'));
     await tester.tap(find.text('本地双人'));
     await tester.pump();
@@ -190,10 +194,10 @@ void main() {
     await menu(tester, '停一手');
     await menu(tester, '停一手');
     await tester.pumpAndSettle();
-    expect(session(tester).goScoreConfirmed, isTrue);
-    expect(session(tester).deadGoStones, {const Cell(4, 4)});
-    expect(session(tester).calculateGoScore().winner, Side.white);
-    expect(session(tester).calculateGoScore().margin, 6.5);
+    await tester.pumpAndSettle();
+    expect(session(tester).gameOver, isTrue);
+    expect(session(tester).goScoreConfirmed, isFalse);
+    expect(find.text('待确认计分'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

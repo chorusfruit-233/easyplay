@@ -80,14 +80,15 @@ void main() {
     expect(find.text('重新开始'), findsOneWidget);
   });
 
-  testWidgets('can start a game as White and let the AI open', (tester) async {
+  testWidgets('unavailable KataGo falls back to local play', (tester) async {
     await tester.pumpWidget(const EasyPlayApp());
     await tester.tap(find.text('围棋'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('我执白'));
     await tester.tap(find.text('开始对局'));
     await tester.pumpAndSettle(const Duration(milliseconds: 500));
-    expect(find.text('白方回合'), findsOneWidget);
-    expect(find.text('电脑（KataGo 5k）'), findsOneWidget);
+    expect(find.text('黑方回合'), findsOneWidget);
+    expect(find.text('本地双人'), findsOneWidget);
+    expect(find.text('电脑思考中…'), findsNothing);
   });
 }

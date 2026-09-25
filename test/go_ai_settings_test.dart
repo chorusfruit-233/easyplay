@@ -21,4 +21,9 @@ void main() {
     expect(visits, orderedEquals([...visits]..sort()));
     expect(GoAiRank.intermediate.maxVisits, 500);
   });
+
+  test('legacy non-KataGo modes restore as local play', () {
+    final restored = GoAiSettings.fromJson({'opponentMode': 'basic'});
+    expect(restored.opponentMode, GoOpponentMode.local);
+  });
 }

@@ -2,7 +2,7 @@ import 'dart:math';
 
 import 'game_session.dart';
 
-enum GoOpponentMode { kataGo, basic, local }
+enum GoOpponentMode { kataGo, local }
 
 enum GoPlayerColor { black, white, random }
 
@@ -79,10 +79,9 @@ class GoAiSettings {
   };
 
   factory GoAiSettings.fromJson(Map<String, Object?> json) => GoAiSettings(
-    opponentMode: GoOpponentMode.values.firstWhere(
-      (value) => value.name == json['opponentMode'],
-      orElse: () => GoOpponentMode.kataGo,
-    ),
+    opponentMode: json['opponentMode'] == GoOpponentMode.kataGo.name
+        ? GoOpponentMode.kataGo
+        : GoOpponentMode.local,
     playerColor: GoPlayerColor.values.firstWhere(
       (value) => value.name == json['playerColor'],
       orElse: () => GoPlayerColor.black,

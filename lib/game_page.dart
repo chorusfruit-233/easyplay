@@ -89,6 +89,18 @@ class _GamePageState extends State<GamePage> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _fallbackToLocalMode(String reason) {
+    _computerGeneration++;
+    if (!mounted) return;
+    setState(() {
+      vsComputer = false;
+      computerThinking = false;
+      aiSettings = aiSettings.copyWith(opponentMode: GoOpponentMode.local);
+    });
+    _notice('KataGo 不可用，已切换为本地双人模式：$reason');
+    _persistGo();
+  }
+
   void _pauseComputer() {
     _computerGeneration++;
     setState(() {
@@ -164,16 +176,22 @@ class _GamePageState extends State<GamePage> {
 
   Future<void> _recordMoveForEngine(GameMove move) async {
     if (!_usesKataGo || !_kataGo.isStarted) return;
+    final generation = _computerGeneration;
     try {
       await _kataGo.send(
         'play ${move.side == Side.black ? 'B' : 'W'} ${_gtpVertex(move)}',
       );
     } catch (error) {
-      await _kataGo.stop();
-      if (!_engineUnavailableNotified) {
-        _engineUnavailableNotified = true;
-        _notice('KataGo 局面同步失败，之后将使用基础电脑：$error');
+      if (!mounted || generation != _computerGeneration || !_usesKataGo) {
+        return;
       }
+      try {
+        await _kataGo.stop();
+      } catch (_) {
+        // Keep the game usable even when the native process is already gone.
+      }
+      _engineUnavailableNotified = true;
+      _fallbackToLocalMode('局面同步失败：$error');
     }
   }
 
@@ -284,7 +302,7 @@ class _GamePageState extends State<GamePage> {
         } catch (error) {
           if (!_engineUnavailableNotified) {
             _engineUnavailableNotified = true;
-            _notice('KataGo 无法启动，暂用基础电脑：$error');
+            _fallbackToLocalMode('引擎启动失败：$error');
           }
           try {
             await _kataGo.stop();
@@ -310,15 +328,12 @@ class _GamePageState extends State<GamePage> {
         } catch (error) {
           if (!_engineUnavailableNotified) {
             _engineUnavailableNotified = true;
-            _notice('Web KataGo 无法启动，暂用基础电脑：$error');
+            _fallbackToLocalMode('Web 引擎启动失败：$error');
           }
         }
       }
       if (!played && mounted && generation == _computerGeneration) {
-        setState(() {
-          session.playComputerMove();
-          computerThinking = false;
-        });
+        _fallbackToLocalMode('当前平台没有可用的 KataGo 引擎');
       } else if (mounted && generation == _computerGeneration) {
         setState(() => computerThinking = false);
       }
@@ -463,6 +478,23 @@ class _GamePageState extends State<GamePage> {
     }
   }
 
+  Widget _setupField(String label, Widget field) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 6),
+        field,
+      ],
+    ),
+  );
+
   Future<void> _showGoSettings({bool requiredAtStart = false}) async {
     if (widget.type != GameType.go) return;
     if (requiredAtStart) {
@@ -512,9 +544,9 @@ class _GamePageState extends State<GamePage> {
     String? setupError;
     final result = await showDialog<_GoGameSetup>(
       context: context,
-      barrierDismissible: !requiredAtStart,
+      barrierDismissible: !starting,
       builder: (context) => PopScope(
-        canPop: !requiredAtStart && !starting,
+        canPop: !starting,
         child: StatefulBuilder(
           builder: (context, setDialogState) => AlertDialog(
             insetPadding: const EdgeInsets.symmetric(
@@ -527,94 +559,109 @@ class _GamePageState extends State<GamePage> {
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  spacing: 2,
                   children: [
-                    DropdownButtonFormField<int>(
-                      initialValue: size,
-                      decoration: const InputDecoration(labelText: '棋盘路数'),
-                      items: [9, 13, 19]
-                          .map(
-                            (v) => DropdownMenuItem(
-                              value: v,
-                              child: Text('$v×$v'),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) => setDialogState(() => size = v ?? size),
-                    ),
-                    DropdownButtonFormField<GoRuleSet>(
-                      key: ValueKey(rules),
-                      initialValue: rules,
-                      decoration: const InputDecoration(labelText: '计分规则'),
-                      items: GoRuleSet.values
-                          .map(
-                            (v) => DropdownMenuItem(
-                              value: v,
-                              child: Text(v.label),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) => setDialogState(() {
-                        rules = v ?? rules;
-                        if (!komiEdited) {
-                          komiController.text = rules == GoRuleSet.chinese
-                              ? '7.5'
-                              : '6.5';
-                        }
-                      }),
-                    ),
-                    TextFormField(
-                      controller: komiController,
-                      decoration: const InputDecoration(labelText: '贴目'),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                        signed: true,
+                    _setupField(
+                      '棋盘路数',
+                      DropdownButtonFormField<int>(
+                        initialValue: size,
+                        decoration: const InputDecoration(),
+                        items: [9, 13, 19]
+                            .map(
+                              (v) => DropdownMenuItem(
+                                value: v,
+                                child: Text('$v×$v'),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) =>
+                            setDialogState(() => size = v ?? size),
                       ),
-                      validator: (v) {
-                        final n = double.tryParse(v ?? '');
-                        return n == null || !n.isFinite || n < -100 || n > 100
-                            ? '请输入 -100 至 100 的贴目'
-                            : null;
-                      },
-                      onChanged: (_) => komiEdited = true,
                     ),
-                    DropdownButtonFormField<int>(
-                      initialValue: handicap,
-                      decoration: const InputDecoration(labelText: '让子（黑方）'),
-                      items: [0, 2, 3, 4, 5, 6, 7, 8, 9]
-                          .map(
-                            (v) => DropdownMenuItem(
-                              value: v,
-                              child: Text(v == 0 ? '分先' : '$v 子'),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (v) =>
-                          setDialogState(() => handicap = v ?? handicap),
+                    _setupField(
+                      '计分规则',
+                      DropdownButtonFormField<GoRuleSet>(
+                        key: ValueKey(rules),
+                        initialValue: rules,
+                        decoration: const InputDecoration(),
+                        items: GoRuleSet.values
+                            .map(
+                              (v) => DropdownMenuItem(
+                                value: v,
+                                child: Text(v.label),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) => setDialogState(() {
+                          rules = v ?? rules;
+                          if (!komiEdited) {
+                            komiController.text = rules == GoRuleSet.chinese
+                                ? '7.5'
+                                : '6.5';
+                          }
+                        }),
+                      ),
+                    ),
+                    _setupField(
+                      '贴目',
+                      TextFormField(
+                        controller: komiController,
+                        decoration: const InputDecoration(),
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                          signed: true,
+                        ),
+                        validator: (v) {
+                          final n = double.tryParse(v ?? '');
+                          return n == null || !n.isFinite || n < -100 || n > 100
+                              ? '请输入 -100 至 100 的贴目'
+                              : null;
+                        },
+                        onChanged: (_) => komiEdited = true,
+                      ),
+                    ),
+                    _setupField(
+                      '让子（黑方）',
+                      DropdownButtonFormField<int>(
+                        initialValue: handicap,
+                        decoration: const InputDecoration(),
+                        items: [0, 2, 3, 4, 5, 6, 7, 8, 9]
+                            .map(
+                              (v) => DropdownMenuItem(
+                                value: v,
+                                child: Text(v == 0 ? '分先' : '$v 子'),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (v) =>
+                            setDialogState(() => handicap = v ?? handicap),
+                      ),
                     ),
                     const SizedBox(height: 20),
                     Text(
                       'AI 设置',
+                      textAlign: TextAlign.start,
                       style: Theme.of(context).textTheme.titleMedium,
                     ),
-                    DropdownButtonFormField<GoOpponentMode>(
-                      initialValue: mode,
-                      decoration: const InputDecoration(labelText: '对局模式'),
-                      items: const [
-                        DropdownMenuItem(
-                          value: GoOpponentMode.kataGo,
-                          child: Text('人机 · KataGo'),
-                        ),
-                        DropdownMenuItem(
-                          value: GoOpponentMode.basic,
-                          child: Text('人机 · 基础电脑'),
-                        ),
-                        DropdownMenuItem(
-                          value: GoOpponentMode.local,
-                          child: Text('本地双人'),
-                        ),
-                      ],
-                      onChanged: (value) =>
-                          setDialogState(() => mode = value ?? mode),
+                    _setupField(
+                      '对局模式',
+                      DropdownButtonFormField<GoOpponentMode>(
+                        initialValue: mode,
+                        decoration: const InputDecoration(),
+                        items: const [
+                          DropdownMenuItem(
+                            value: GoOpponentMode.kataGo,
+                            child: Text('人机 · KataGo'),
+                          ),
+                          DropdownMenuItem(
+                            value: GoOpponentMode.local,
+                            child: Text('本地双人'),
+                          ),
+                        ],
+                        onChanged: (value) =>
+                            setDialogState(() => mode = value ?? mode),
+                      ),
                     ),
                     if (mode != GoOpponentMode.local) ...[
                       const SizedBox(height: 8),
@@ -640,22 +687,24 @@ class _GamePageState extends State<GamePage> {
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          DropdownButtonFormField<String>(
-                            key: ValueKey(engineProfileId),
-                            initialValue: engineProfileId,
-                            decoration: const InputDecoration(
-                              labelText: 'AI 引擎',
-                            ),
-                            items: engines
-                                .map(
-                                  (engine) => DropdownMenuItem(
-                                    value: engine.id,
-                                    child: Text(engine.name),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: (value) => setDialogState(
-                              () => engineProfileId = value ?? engineProfileId,
+                          _setupField(
+                            'AI 引擎',
+                            DropdownButtonFormField<String>(
+                              key: ValueKey(engineProfileId),
+                              initialValue: engineProfileId,
+                              decoration: const InputDecoration(),
+                              items: engines
+                                  .map(
+                                    (engine) => DropdownMenuItem(
+                                      value: engine.id,
+                                      child: Text(engine.name),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) => setDialogState(
+                                () =>
+                                    engineProfileId = value ?? engineProfileId,
+                              ),
                             ),
                           ),
                           Align(
@@ -693,93 +742,103 @@ class _GamePageState extends State<GamePage> {
                           ),
                         ],
                       ),
-                      DropdownButtonFormField<GoAiRank>(
-                        initialValue: rank,
-                        decoration: const InputDecoration(labelText: '棋力'),
-                        items: GoAiRank.values
-                            .map(
-                              (value) => DropdownMenuItem(
-                                value: value,
-                                child: Text(value.label),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) =>
-                            setDialogState(() => rank = value ?? rank),
+                      _setupField(
+                        '棋力',
+                        DropdownButtonFormField<GoAiRank>(
+                          initialValue: rank,
+                          decoration: const InputDecoration(),
+                          items: GoAiRank.values
+                              .map(
+                                (value) => DropdownMenuItem(
+                                  value: value,
+                                  child: Text(value.label),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) =>
+                              setDialogState(() => rank = value ?? rank),
+                        ),
                       ),
-                      DropdownButtonFormField<GoAiStyle>(
-                        initialValue: style,
-                        decoration: const InputDecoration(labelText: '风格'),
-                        items: GoAiStyle.values
-                            .map(
-                              (value) => DropdownMenuItem(
-                                value: value,
-                                child: Text(value.label),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) =>
-                            setDialogState(() => style = value ?? style),
+                      _setupField(
+                        '风格',
+                        DropdownButtonFormField<GoAiStyle>(
+                          initialValue: style,
+                          decoration: const InputDecoration(),
+                          items: GoAiStyle.values
+                              .map(
+                                (value) => DropdownMenuItem(
+                                  value: value,
+                                  child: Text(value.label),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) =>
+                              setDialogState(() => style = value ?? style),
+                        ),
                       ),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              key: ValueKey(modelId),
-                              initialValue: modelId,
-                              decoration: const InputDecoration(
-                                labelText: '模型',
-                              ),
-                              items: availableModels
-                                  .map(
-                                    (model) => DropdownMenuItem(
-                                      value: model.id,
-                                      child: Text(
-                                        model.name,
-                                        overflow: TextOverflow.ellipsis,
+                      _setupField(
+                        '模型',
+                        Row(
+                          children: [
+                            Expanded(
+                              child: DropdownButtonFormField<String>(
+                                key: ValueKey(modelId),
+                                initialValue: modelId,
+                                decoration: const InputDecoration(),
+                                items: availableModels
+                                    .map(
+                                      (model) => DropdownMenuItem(
+                                        value: model.id,
+                                        child: Text(
+                                          model.name,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
                                       ),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (value) => setDialogState(
-                                () => modelId = value ?? modelId,
+                                    )
+                                    .toList(),
+                                onChanged: (value) => setDialogState(
+                                  () => modelId = value ?? modelId,
+                                ),
                               ),
                             ),
-                          ),
-                          IconButton(
-                            tooltip: '管理模型',
-                            onPressed: () async {
-                              try {
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const GoModelManagerPage(),
-                                  ),
-                                );
-                                final models = await GoModelLibrary.available();
-                                final active = await GoModelLibrary.activeId();
-                                final profiles =
-                                    await GoEngineLibrary.available();
-                                final activeProfile =
-                                    await GoEngineLibrary.activeId();
-                                if (!context.mounted) return;
-                                setDialogState(() {
-                                  availableModels = models;
-                                  modelId = active;
-                                  engines = profiles;
-                                  engineProfileId = activeProfile;
-                                });
-                              } catch (error) {
-                                if (context.mounted) {
-                                  setDialogState(
-                                    () => setupError = '读取模型列表失败：$error',
+                            IconButton(
+                              tooltip: '管理模型',
+                              onPressed: () async {
+                                try {
+                                  await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const GoModelManagerPage(),
+                                    ),
                                   );
+                                  final models =
+                                      await GoModelLibrary.available();
+                                  final active =
+                                      await GoModelLibrary.activeId();
+                                  final profiles =
+                                      await GoEngineLibrary.available();
+                                  final activeProfile =
+                                      await GoEngineLibrary.activeId();
+                                  if (!context.mounted) return;
+                                  setDialogState(() {
+                                    availableModels = models;
+                                    modelId = active;
+                                    engines = profiles;
+                                    engineProfileId = activeProfile;
+                                  });
+                                } catch (error) {
+                                  if (context.mounted) {
+                                    setDialogState(
+                                      () => setupError = '读取模型列表失败：$error',
+                                    );
+                                  }
                                 }
-                              }
-                            },
-                            icon: const Icon(Icons.settings_outlined),
-                          ),
-                        ],
+                              },
+                              icon: const Icon(Icons.settings_outlined),
+                            ),
+                          ],
+                        ),
                       ),
                       if (setupError != null)
                         Padding(
@@ -797,11 +856,10 @@ class _GamePageState extends State<GamePage> {
               ),
             ),
             actions: [
-              if (!requiredAtStart)
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('取消'),
-                ),
+              TextButton(
+                onPressed: starting ? null : () => Navigator.pop(context),
+                child: Text(requiredAtStart ? '返回主页' : '取消'),
+              ),
               FilledButton(
                 onPressed: starting
                     ? null
@@ -858,6 +916,11 @@ class _GamePageState extends State<GamePage> {
     );
     if (!mounted) return;
     setState(() => _modalOpen = false);
+    if (result == null && requiredAtStart) {
+      await _kataGo.stop();
+      if (mounted) Navigator.of(context).maybePop();
+      return;
+    }
     if (result != null) {
       await _kataGo.stop();
       if (!mounted) return;
@@ -866,6 +929,7 @@ class _GamePageState extends State<GamePage> {
         session.setGoConfig(result.goConfig);
         aiSettings = result.aiSettings;
         vsComputer = aiSettings.opponentMode != GoOpponentMode.local;
+        _engineUnavailableNotified = false;
         humanSide = aiSettings.resolvePlayerSide();
         _sgfSource = null;
         selected = null;
@@ -909,7 +973,8 @@ class _GamePageState extends State<GamePage> {
                 ? GoOpponentMode.kataGo
                 : GoOpponentMode.local,
           );
-      vsComputer = computer;
+      _engineUnavailableNotified = false;
+      vsComputer = computer && aiSettings.opponentMode == GoOpponentMode.kataGo;
       humanSide = restoredHumanSide ?? aiSettings.resolvePlayerSide();
       selected = null;
       targets = const [];
@@ -1195,7 +1260,7 @@ class _GamePageState extends State<GamePage> {
                       KataGoAndroidRuntime.isSupported ||
                               KataGoWebRuntime.isSupported
                           ? '电脑（KataGo ${aiSettings.rank.label}）'
-                          : '电脑（基础）',
+                          : '电脑（KataGo）',
                     ),
                     icon: Icon(Icons.smart_toy_outlined),
                   ),
@@ -1215,6 +1280,7 @@ class _GamePageState extends State<GamePage> {
                           ? GoOpponentMode.kataGo
                           : GoOpponentMode.local,
                     );
+                    if (value.first) _engineUnavailableNotified = false;
                     computerThinking = false;
                     _adjudicationInProgress = false;
                     selected = null;
