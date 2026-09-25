@@ -8,6 +8,7 @@ import io.flutter.plugin.common.MethodChannel
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.File
+import java.io.IOException
 import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.util.concurrent.Executors
@@ -90,7 +91,18 @@ private class AndroidKataGoGtp(
         input = BufferedWriter(OutputStreamWriter(child.outputStream, Charsets.UTF_8))
         output = BufferedReader(InputStreamReader(child.inputStream, Charsets.UTF_8))
         // Drain diagnostics so a verbose engine cannot block on a full stderr pipe.
-        Thread({ child.errorStream.bufferedReader().useLines { lines -> lines.forEach { android.util.Log.i("EasyPlayKataGo", it) } } }, "katago-stderr").apply { isDaemon = true; start() }
+        Thread({
+            try {
+                child.errorStream.bufferedReader().useLines { lines ->
+                    lines.forEach { android.util.Log.i("EasyPlayKataGo", it) }
+                }
+            } catch (_: IOException) {
+                // Destroying KataGo closes stderr while this daemon is blocked
+                // in readLine(). This is the normal stop/restart path.
+            } catch (error: Exception) {
+                android.util.Log.w("EasyPlayKataGo", "stderr reader stopped", error)
+            }
+        }, "katago-stderr").apply { isDaemon = true; start() }
         val ready = command("protocol_version")
         if (!ready.contains("2")) {
             stop()

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:easyplay/main.dart';
 
@@ -34,6 +35,32 @@ void main() {
     await tester.tap(find.text('跳棋'));
     await tester.pumpAndSettle();
     expect(find.text('今天，\n来一局好棋。'), findsOneWidget);
+  });
+
+  testWidgets('settings expose appearance and bundled licenses', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const EasyPlayApp());
+    await tester.tap(find.byTooltip('设置'));
+    await tester.pumpAndSettle();
+    expect(find.text('外观显示'), findsOneWidget);
+    expect(find.text('系统'), findsOneWidget);
+    expect(find.text('浅色'), findsOneWidget);
+    expect(find.text('深色'), findsOneWidget);
+
+    await tester.tap(find.text('深色'));
+    await tester.pumpAndSettle();
+    expect(
+      Theme.of(tester.element(find.byType(Scaffold).first)).brightness,
+      Brightness.dark,
+    );
+
+    await tester.tap(find.text('关于 EasyPlay'));
+    await tester.pumpAndSettle();
+    expect(find.text('KataGo 神经网络模型'), findsOneWidget);
+    await tester.tap(find.text('KataGo'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('KataGo'), findsWidgets);
   });
 
   testWidgets('can open a new Go game', (tester) async {
