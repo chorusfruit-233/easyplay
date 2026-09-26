@@ -74,18 +74,22 @@ class GoScore {
   final GoRuleSet rules;
   final Side? winnerOverride;
   final double? marginOverride;
+  final bool resignation;
   const GoScore({
     required this.black,
     required this.white,
     required this.rules,
     this.winnerOverride,
     this.marginOverride,
+    this.resignation = false,
   });
   double get margin => marginOverride ?? (black - white).abs();
   Side? get winner =>
       winnerOverride ??
       (black == white ? null : (black > white ? Side.black : Side.white));
-  String get result => winner == null
+  String get result => resignation
+      ? '${winner == Side.black ? '黑' : '白'}中盘胜'
+      : winner == null
       ? '和棋'
       : '${winner == Side.black ? '黑' : '白'}胜 ${margin.toStringAsFixed(margin == margin.roundToDouble() ? 0 : 1)}目';
 }
@@ -158,6 +162,7 @@ class GameSession {
   GoConfig _goConfig;
   GoConfig get goConfig => _goConfig;
   bool goScoreConfirmed = false;
+  Side? goResignedSide;
   Side? _adjudicatedWinner;
   double? _adjudicatedMargin;
   late List<List<GamePiece?>> initialGoBoard;
@@ -251,12 +256,14 @@ class GameSession {
 
   bool resumeGo() {
     if (type != GameType.go || !gameOver) return false;
+    if (goResignedSide != null) return undo();
     // Remove both ending passes so continuing cannot immediately end again.
     while (moves.isNotEmpty && moves.last.pass) {
       undo();
     }
     deadGoStones.clear();
     goScoreConfirmed = false;
+    goResignedSide = null;
     _adjudicatedWinner = null;
     _adjudicatedMargin = null;
     winner = null;
@@ -290,6 +297,7 @@ class GameSession {
     if (type == GameType.go) goConfig.validate();
     revision++;
     goScoreConfirmed = false;
+    goResignedSide = null;
     _adjudicatedWinner = null;
     _adjudicatedMargin = null;
     board = List.generate(size, (_) => List<GamePiece?>.filled(size, null));
@@ -388,6 +396,16 @@ class GameSession {
     return true;
   }
 
+  bool resignGo([Side? side]) {
+    if (type != GameType.go || gameOver) return false;
+    _save();
+    goResignedSide = side ?? turn;
+    winner = goResignedSide!.opponent;
+    gameOver = true;
+    goScoreConfirmed = true;
+    return true;
+  }
+
   bool passGo() {
     if (type != GameType.go || gameOver) return false;
     _save();
@@ -477,6 +495,7 @@ class GameSession {
     _consecutivePasses = s.consecutivePasses;
     deadGoStones.clear();
     goScoreConfirmed = false;
+    goResignedSide = null;
     _adjudicatedWinner = null;
     _adjudicatedMargin = null;
     return true;
@@ -545,7 +564,8 @@ class GameSession {
       black: black,
       white: white,
       rules: goConfig.rules,
-      winnerOverride: _adjudicatedWinner,
+      winnerOverride: goResignedSide?.opponent ?? _adjudicatedWinner,
+      resignation: goResignedSide != null,
       marginOverride: _adjudicatedMargin,
     );
   }

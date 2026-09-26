@@ -2,13 +2,17 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'game_session.dart';
+import 'go_placement.dart';
 
-class Board extends StatelessWidget {
+class Board extends StatefulWidget {
   final GameType type;
   final GameSession session;
   final Cell? selected;
   final List<Cell> targets;
   final ValueChanged<Cell> onCell;
+  final GoPlacementMode placementMode;
+  final ValueChanged<Cell>? onPreviewCell;
+  final VoidCallback? onCancelPreview;
   const Board({
     super.key,
     required this.type,
@@ -16,43 +20,166 @@ class Board extends StatelessWidget {
     required this.selected,
     required this.targets,
     required this.onCell,
+    this.placementMode = GoPlacementMode.direct,
+    this.onPreviewCell,
+    this.onCancelPreview,
   });
+
+  @override
+  State<Board> createState() => _BoardState();
+}
+
+class _BoardState extends State<Board> {
+  Cell? _preview;
+  int? _activePointer;
+  double _pointerStartY = 0;
+  double _pointerDeltaY = 0;
+  bool _pressReleaseActive = false;
+
+  @override
+  void didUpdateWidget(covariant Board oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.placementMode != widget.placementMode) {
+      _preview = null;
+      _activePointer = null;
+      _pressReleaseActive = false;
+    }
+  }
+
+  Cell? _cellAt(Offset local, BoxConstraints constraints) {
+    final n = widget.session.size;
+    final cellSize = constraints.maxWidth / n;
+    final col = widget.type == GameType.go
+        ? ((local.dx - cellSize / 2) / cellSize).round()
+        : (local.dx / cellSize).floor();
+    final row = widget.type == GameType.go
+        ? ((local.dy - cellSize / 2) / cellSize).round()
+        : (local.dy / cellSize).floor();
+    final cell = Cell(row, col);
+    return widget.session.inside(cell) ? cell : null;
+  }
+
+  GoPlacementMode _resolvedMode(BoxConstraints constraints) {
+    if (widget.placementMode != GoPlacementMode.automatic ||
+        widget.type != GameType.go) {
+      return widget.placementMode;
+    }
+    return constraints.maxWidth / widget.session.size >= 24
+        ? GoPlacementMode.direct
+        : GoPlacementMode.doubleTap;
+  }
+
+  void _previewCell(Cell? cell) {
+    if (cell == null) return;
+    _preview = cell;
+    widget.onPreviewCell?.call(cell);
+  }
+
+  void _cancelPreview() {
+    _preview = null;
+    widget.onCancelPreview?.call();
+  }
+
+  void _commit(Cell? cell) {
+    if (cell == null) return;
+    _preview = null;
+    widget.onCell(cell);
+  }
 
   @override
   Widget build(BuildContext context) => AspectRatio(
     aspectRatio: 1,
     child: LayoutBuilder(
-      builder: (context, constraints) => GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapUp: (details) {
-          final n = session.size;
-          final cellSize = constraints.maxWidth / n;
-          final local = details.localPosition;
-          final col = type == GameType.go
-              ? ((local.dx - cellSize / 2) / cellSize).round()
-              : (local.dx / cellSize).floor();
-          final row = type == GameType.go
-              ? ((local.dy - cellSize / 2) / cellSize).round()
-              : (local.dy / cellSize).floor();
-          final cell = Cell(row, col);
-          if (session.inside(cell)) onCell(cell);
-        },
-        child: CustomPaint(
-          painter: BoardPainter(
-            type: type,
-            board: session.board
-                .map((row) => List<GamePiece?>.of(row))
-                .toList(),
-            selected: selected,
-            targets: List.of(targets),
-            deadStones: Set.of(session.deadGoStones),
-            lastMove: session.moves.isEmpty || session.moves.last.pass
-                ? null
-                : session.moves.last.to,
+      builder: (context, constraints) {
+        final mode = _resolvedMode(constraints);
+        return Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (event) {
+            if (mode == GoPlacementMode.pressRelease) {
+              _activePointer = event.pointer;
+              _pressReleaseActive = true;
+              _previewCell(_cellAt(event.localPosition, constraints));
+            } else if ((mode == GoPlacementMode.swipeConfirm ||
+                    mode == GoPlacementMode.doubleTap) &&
+                _preview != null) {
+              _activePointer = event.pointer;
+              _pointerStartY = event.localPosition.dy;
+              _pointerDeltaY = 0;
+            }
+          },
+          onPointerMove: (event) {
+            if (_activePointer != event.pointer) return;
+            if (_pressReleaseActive) {
+              _previewCell(_cellAt(event.localPosition, constraints));
+            } else {
+              _pointerDeltaY = event.localPosition.dy - _pointerStartY;
+            }
+          },
+          onPointerUp: (event) {
+            if (_activePointer != event.pointer) return;
+            if (_pressReleaseActive) {
+              _commit(_cellAt(event.localPosition, constraints) ?? _preview);
+            } else if (mode == GoPlacementMode.swipeConfirm) {
+              if (_pointerDeltaY >= 24) {
+                _commit(_preview);
+              } else if (_pointerDeltaY <= -24) {
+                _cancelPreview();
+              }
+            } else if (mode == GoPlacementMode.doubleTap &&
+                _pointerDeltaY <= -24) {
+              _cancelPreview();
+            }
+            _activePointer = null;
+            _pressReleaseActive = false;
+            _pointerDeltaY = 0;
+          },
+          onPointerCancel: (event) {
+            if (_activePointer != event.pointer) return;
+            if (_pressReleaseActive) _cancelPreview();
+            _activePointer = null;
+            _pressReleaseActive = false;
+            _pointerDeltaY = 0;
+          },
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapUp: (details) {
+              final cell = _cellAt(details.localPosition, constraints);
+              switch (mode) {
+                case GoPlacementMode.direct:
+                  _commit(cell);
+                case GoPlacementMode.doubleTap:
+                  if (_preview == cell) {
+                    _commit(cell);
+                  } else {
+                    _previewCell(cell);
+                  }
+                case GoPlacementMode.swipeConfirm:
+                case GoPlacementMode.automatic:
+                  _previewCell(cell);
+                case GoPlacementMode.pressRelease:
+                  break;
+              }
+            },
+            child: CustomPaint(
+              painter: BoardPainter(
+                type: widget.type,
+                board: widget.session.board
+                    .map((row) => List<GamePiece?>.of(row))
+                    .toList(),
+                selected: widget.selected,
+                targets: List.of(widget.targets),
+                deadStones: Set.of(widget.session.deadGoStones),
+                lastMove:
+                    widget.session.moves.isEmpty ||
+                        widget.session.moves.last.pass
+                    ? null
+                    : widget.session.moves.last.to,
+              ),
+              child: const SizedBox.expand(),
+            ),
           ),
-          child: const SizedBox.expand(),
-        ),
-      ),
+        );
+      },
     ),
   );
 }
@@ -100,7 +227,7 @@ class BoardPainter extends CustomPainter {
       }
       final star = Paint()..color = const Color(0xff573b25);
       final d = n == 9 ? 2 : 3;
-      for (final r in [d, n ~/ 2, n - 1 - d])
+      for (final r in [d, n ~/ 2, n - 1 - d]) {
         for (final c in [d, n ~/ 2, n - 1 - d]) {
           if (n == 9 && ((r == n ~/ 2) != (c == n ~/ 2))) continue;
           canvas.drawCircle(
@@ -109,8 +236,9 @@ class BoardPainter extends CustomPainter {
             star,
           );
         }
+      }
     } else {
-      for (var r = 0; r < 8; r++)
+      for (var r = 0; r < 8; r++) {
         for (var c = 0; c < 8; c++) {
           final dark = (r + c).isOdd;
           final color = type == GameType.chess
@@ -121,6 +249,7 @@ class BoardPainter extends CustomPainter {
             Paint()..color = color,
           );
         }
+      }
     }
     if (selected != null) {
       canvas.drawRect(
@@ -147,7 +276,7 @@ class BoardPainter extends CustomPainter {
         );
       }
     }
-    for (var r = 0; r < n; r++)
+    for (var r = 0; r < n; r++) {
       for (var c = 0; c < n; c++) {
         final piece = board[r][c];
         if (piece == null) continue;
@@ -219,6 +348,7 @@ class BoardPainter extends CustomPainter {
           );
         }
       }
+    }
     for (final cell in deadStones) {
       final center = _center(cell, step);
       final offset = Offset(step * .25, step * .25);

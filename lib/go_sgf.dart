@@ -202,7 +202,7 @@ class GoSgf {
       root.properties['RE'] = [
         score.winner == null
             ? '0'
-            : '${score.winner == Side.black ? 'B' : 'W'}+${score.margin}',
+            : '${score.winner == Side.black ? 'B' : 'W'}+${score.resignation ? 'R' : score.margin}',
       ];
     } else if (!reuse ||
         prefix != imported.moves.length ||
@@ -330,6 +330,9 @@ class GoSgf {
       game.deadGoStones.add(cell);
     }
     if (last.properties['XSC']?.first == '1') game.confirmGoScore();
+    final result = root.properties['RE']?.first.toUpperCase();
+    if (result == 'B+R' || result == 'B+RESIGN') game.resignGo(Side.white);
+    if (result == 'W+R' || result == 'W+RESIGN') game.resignGo(Side.black);
     _imports[game] = _ImportedGame(exportRecord(record), game, selectedChoices);
     return game;
   }

@@ -1,6 +1,7 @@
 import 'package:easyplay/game_session.dart';
 import 'package:easyplay/go_sgf.dart';
 import 'package:easyplay/go_storage.dart';
+import 'package:easyplay/go_placement.dart';
 import 'package:easyplay/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -79,6 +80,77 @@ void main() {
     expect(session(tester).pieceAt(const Cell(3, 3))?.side, Side.black);
     expect(find.textContaining('D16'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets(
+    'swipe placement previews, cancels upward and confirms downward',
+    (tester) async {
+      await GoPlacementPreferences.save(GoPlacementMode.swipeConfirm);
+      await open(tester, config: const GoConfig(boardSize: 19));
+      await tester.pumpAndSettle();
+
+      final rect = tester.getRect(find.byType(Board));
+      final step = rect.width / 19;
+      final point = rect.topLeft + Offset(step * 5.5, step * 5.5);
+      await tester.tapAt(point);
+      await tester.pump();
+      expect(session(tester).moves, isEmpty);
+
+      await tester.dragFrom(point, const Offset(0, -40));
+      await tester.pump();
+      expect(session(tester).moves, isEmpty);
+
+      await tester.tapAt(point);
+      await tester.pump();
+      await tester.dragFrom(point, const Offset(0, 40));
+      await tester.pump();
+      expect(session(tester).moves, hasLength(1));
+      expect(session(tester).pieceAt(const Cell(5, 5))?.side, Side.black);
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(seconds: 1));
+    },
+  );
+
+  testWidgets('press release placement follows the held pointer', (
+    tester,
+  ) async {
+    await GoPlacementPreferences.save(GoPlacementMode.pressRelease);
+    await open(tester, config: const GoConfig(boardSize: 19));
+    await tester.pumpAndSettle();
+
+    final rect = tester.getRect(find.byType(Board));
+    final step = rect.width / 19;
+    final start = rect.topLeft + Offset(step * 2.5, step * 2.5);
+    final finish = rect.topLeft + Offset(step * 7.5, step * 7.5);
+    final gesture = await tester.startGesture(start);
+    await gesture.moveTo(finish);
+    await gesture.up();
+    await tester.pump();
+
+    expect(session(tester).moves, hasLength(1));
+    expect(session(tester).pieceAt(const Cell(7, 7))?.side, Side.black);
+    expect(session(tester).pieceAt(const Cell(2, 2)), isNull);
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('double tap placement requires the same intersection twice', (
+    tester,
+  ) async {
+    await GoPlacementPreferences.save(GoPlacementMode.doubleTap);
+    await open(tester, config: const GoConfig(boardSize: 19));
+    await tester.pumpAndSettle();
+
+    final rect = tester.getRect(find.byType(Board));
+    final step = rect.width / 19;
+    final point = rect.topLeft + Offset(step * 4.5, step * 4.5);
+    await tester.tapAt(point);
+    await tester.pump();
+    expect(session(tester).moves, isEmpty);
+    await tester.tapAt(point);
+    await tester.pump();
+    expect(session(tester).moves, hasLength(1));
+    expect(session(tester).pieceAt(const Cell(4, 4))?.side, Side.black);
     await tester.pump(const Duration(seconds: 1));
   });
 

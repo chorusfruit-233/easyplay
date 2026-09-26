@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:easyplay/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:easyplay/go_placement.dart';
 
 void main() {
   const kataGo = MethodChannel('easyplay/katago');
@@ -50,7 +51,7 @@ void main() {
     expect(find.text('浅色'), findsOneWidget);
     expect(find.text('深色'), findsOneWidget);
 
-    await tester.tap(find.text('深色'));
+    await tester.tap(find.widgetWithText(ChoiceChip, '深色'));
     await tester.pumpAndSettle();
     expect(
       Theme.of(tester.element(find.byType(Scaffold).first)).brightness,
@@ -63,6 +64,28 @@ void main() {
     await tester.tap(find.text('KataGo'));
     await tester.pumpAndSettle();
     expect(find.textContaining('KataGo'), findsWidgets);
+  });
+
+  testWidgets('placement mode settings persist a selection', (tester) async {
+    await tester.pumpWidget(const EasyPlayApp());
+    await tester.tap(find.byTooltip('设置'));
+    await tester.pumpAndSettle();
+    final placement = find.text('落子模式');
+    await tester.scrollUntilVisible(
+      placement,
+      300,
+      scrollable: find.descendant(
+        of: find.byType(Scaffold).last,
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.tap(placement);
+    await tester.pumpAndSettle();
+    expect(find.text('落子模式设置'), findsOneWidget);
+    expect(find.text('自动'), findsOneWidget);
+    await tester.tap(find.text('滑动确认'));
+    await tester.pumpAndSettle();
+    expect(await GoPlacementPreferences.load(), GoPlacementMode.swipeConfirm);
   });
 
   testWidgets('can open a new Go game', (tester) async {
@@ -84,7 +107,9 @@ void main() {
     await tester.pumpWidget(const EasyPlayApp());
     await tester.tap(find.text('围棋'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('我执白'));
+    final white = find.widgetWithText(ChoiceChip, '我执白');
+    await tester.ensureVisible(white);
+    await tester.tap(white);
     await tester.tap(find.text('开始对局'));
     await tester.pumpAndSettle(const Duration(milliseconds: 500));
     expect(find.text('黑方回合'), findsOneWidget);

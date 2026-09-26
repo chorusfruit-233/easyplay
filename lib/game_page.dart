@@ -8,8 +8,10 @@ import 'go_models.dart';
 import 'go_model_manager.dart';
 import 'go_engine_profiles.dart';
 import 'go_engine_manager.dart';
+import 'go_engine_runtime.dart';
 import 'katago.dart';
 import 'board.dart';
+import 'go_placement.dart';
 
 extension GameTypeX on GameType {
   String get label => switch (this) {
@@ -70,6 +72,7 @@ class _GamePageState extends State<GamePage> {
   final KataGoAndroidRuntime _kataGo = KataGoAndroidRuntime();
   final KataGoWebRuntime _webKataGo = KataGoWebRuntime();
   bool _engineUnavailableNotified = false;
+  GoPlacementMode placementMode = GoPlacementMode.automatic;
 
   bool get _canPlay =>
       !_modalOpen &&
@@ -127,11 +130,24 @@ class _GamePageState extends State<GamePage> {
     aiSettings = widget.aiSettings ?? const GoAiSettings();
     vsComputer = aiSettings.opponentMode != GoOpponentMode.local;
     humanSide = aiSettings.resolvePlayerSide();
+    GoPlacementPreferences.load().then((value) {
+      if (mounted) setState(() => placementMode = value);
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && widget.type == GameType.go) {
         _showGoSettings(requiredAtStart: true);
       }
     });
+  }
+
+  void _previewGoCell(Cell cell) {
+    if (widget.type != GameType.go || !_canPlay) return;
+    setState(() => selected = cell);
+  }
+
+  void _cancelGoPreview() {
+    if (widget.type != GameType.go) return;
+    if (selected != null) setState(() => selected = null);
   }
 
   void _onCell(Cell cell) {
@@ -293,11 +309,7 @@ class _GamePageState extends State<GamePage> {
             'genmove ${session.turn == Side.black ? 'B' : 'W'}',
           )).trim();
           if (!mounted || generation != _computerGeneration) return;
-          if (vertex.toLowerCase() == 'pass') {
-            played = session.passGo();
-          } else {
-            played = session.placeGo(_cellFromGtp(vertex));
-          }
+          played = _playGtpVertex(vertex);
           if (!played) throw StateError('KataGo 返回了非法着手：$vertex');
         } catch (error) {
           if (!_engineUnavailableNotified) {
@@ -357,6 +369,7 @@ class _GamePageState extends State<GamePage> {
 
   bool _playGtpVertex(String vertex) {
     if (vertex.toLowerCase() == 'pass') return session.passGo();
+    if (vertex.toLowerCase() == 'resign') return session.resignGo();
     return session.placeGo(_cellFromGtp(vertex));
   }
 
@@ -518,6 +531,12 @@ class _GamePageState extends State<GamePage> {
     var playerColor = aiSettings.playerColor;
     var rank = aiSettings.rank;
     var style = aiSettings.style;
+    var humanModelId = aiSettings.humanModelId;
+    var humanRank = aiSettings.resolvedHumanStyleRank;
+    final humanProfile = TextEditingController(
+      text: aiSettings.humanSLProfile ?? '',
+    );
+    var useBuiltinHumanStyle = aiSettings.useBuiltinHumanStyle;
     var availableModels = <GoModelInfo>[GoModelLibrary.bundledModel];
     var activeModel = GoModelLibrary.bundledId;
     var engines = <GoEngineProfile>[GoEngineProfile.builtIn];
@@ -535,10 +554,46 @@ class _GamePageState extends State<GamePage> {
         : availableModels.any((model) => model.id == aiSettings.modelId)
         ? aiSettings.modelId
         : activeModel;
-    var engineProfileId =
-        engines.any((engine) => engine.id == aiSettings.engineProfileId)
+    var engineProfileId = requiredAtStart && widget.aiSettings == null
+        ? activeEngine
+        : engines.any((engine) => engine.id == aiSettings.engineProfileId)
         ? aiSettings.engineProfileId
         : activeEngine;
+    void applyModelSelection() {
+      useBuiltinHumanStyle = availableModels
+          .firstWhere((m) => m.id == modelId)
+          .isHumanModel;
+      if (useBuiltinHumanStyle) {
+        humanModelId = null;
+        style = GoAiStyle.human;
+      }
+    }
+
+    void applyEngineSelection() {
+      final selected = engines.firstWhere((e) => e.id == engineProfileId);
+      if (availableModels.any((m) => m.id == selected.modelId)) {
+        modelId = selected.modelId!;
+      }
+      humanModelId =
+          availableModels.any(
+            (m) => m.id == selected.humanModelId && m.isHumanModel,
+          )
+          ? selected.humanModelId
+          : null;
+      applyModelSelection();
+      if (humanModelId != null) {
+        style = GoAiStyle.human;
+      } else if (!useBuiltinHumanStyle && style == GoAiStyle.human) {
+        style = GoAiStyle.modern;
+      }
+    }
+
+    if (requiredAtStart && widget.aiSettings == null) {
+      applyEngineSelection();
+    }
+    if (humanModelId != null &&
+        !availableModels.any((m) => m.id == humanModelId && m.isHumanModel))
+      humanModelId = null;
     if (!mounted) return;
     var starting = false;
     String? setupError;
@@ -690,6 +745,7 @@ class _GamePageState extends State<GamePage> {
                           _setupField(
                             'AI 引擎',
                             DropdownButtonFormField<String>(
+                              isExpanded: true,
                               key: ValueKey(engineProfileId),
                               initialValue: engineProfileId,
                               decoration: const InputDecoration(),
@@ -701,10 +757,10 @@ class _GamePageState extends State<GamePage> {
                                     ),
                                   )
                                   .toList(),
-                              onChanged: (value) => setDialogState(
-                                () =>
-                                    engineProfileId = value ?? engineProfileId,
-                              ),
+                              onChanged: (value) => setDialogState(() {
+                                engineProfileId = value ?? engineProfileId;
+                                applyEngineSelection();
+                              }),
                             ),
                           ),
                           Align(
@@ -728,6 +784,7 @@ class _GamePageState extends State<GamePage> {
                                   setDialogState(() {
                                     engines = profiles;
                                     engineProfileId = active;
+                                    applyEngineSelection();
                                   });
                                 } catch (error) {
                                   if (context.mounted) {
@@ -742,26 +799,28 @@ class _GamePageState extends State<GamePage> {
                           ),
                         ],
                       ),
-                      _setupField(
-                        '棋力',
-                        DropdownButtonFormField<GoAiRank>(
-                          initialValue: rank,
-                          decoration: const InputDecoration(),
-                          items: GoAiRank.values
-                              .map(
-                                (value) => DropdownMenuItem(
-                                  value: value,
-                                  child: Text(value.label),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (value) =>
-                              setDialogState(() => rank = value ?? rank),
+                      if (style != GoAiStyle.human)
+                        _setupField(
+                          '棋力',
+                          DropdownButtonFormField<GoAiRank>(
+                            initialValue: rank,
+                            decoration: const InputDecoration(),
+                            items: GoAiRank.values
+                                .map(
+                                  (value) => DropdownMenuItem(
+                                    value: value,
+                                    child: Text(value.label),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) =>
+                                setDialogState(() => rank = value ?? rank),
+                          ),
                         ),
-                      ),
                       _setupField(
                         '风格',
                         DropdownButtonFormField<GoAiStyle>(
+                          key: ValueKey(style),
                           initialValue: style,
                           decoration: const InputDecoration(),
                           items: GoAiStyle.values
@@ -776,12 +835,75 @@ class _GamePageState extends State<GamePage> {
                               setDialogState(() => style = value ?? style),
                         ),
                       ),
+                      if (style == GoAiStyle.human) ...[
+                        _setupField(
+                          '人类棋风段位',
+                          DropdownButtonFormField<int>(
+                            initialValue: humanRank,
+                            items: [
+                              for (var n = 20; n >= -8; n--)
+                                DropdownMenuItem(
+                                  value: n,
+                                  child: Text(GoAiSettings.humanRankLabel(n)),
+                                ),
+                            ],
+                            onChanged: (v) => setDialogState(
+                              () => humanRank = v ?? humanRank,
+                            ),
+                          ),
+                        ),
+                        _setupField(
+                          '自定义 humanSLProfile（可选）',
+                          TextFormField(
+                            controller: humanProfile,
+                            decoration: const InputDecoration(
+                              hintText: '留空按段位生成，例如 rank_5k；传统棋风可填 preaz_5k',
+                            ),
+                          ),
+                        ),
+                        SwitchListTile.adaptive(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('使用主模型内置人类棋风'),
+                          subtitle: const Text('启用后不再加载独立 human model'),
+                          value: useBuiltinHumanStyle,
+                          onChanged: (value) => setDialogState(() {
+                            useBuiltinHumanStyle = value;
+                            if (value) humanModelId = null;
+                          }),
+                        ),
+                        if (!useBuiltinHumanStyle)
+                          _setupField(
+                            '人类棋风模型',
+                            DropdownButtonFormField<String?>(
+                              isExpanded: true,
+                              key: ValueKey(humanModelId),
+                              initialValue: humanModelId,
+                              decoration: const InputDecoration(
+                                hintText: '请选择已导入的人类棋风模型',
+                              ),
+                              items: availableModels
+                                  .where(
+                                    (model) => model.kind == GoModelKind.human,
+                                  )
+                                  .map(
+                                    (model) => DropdownMenuItem<String?>(
+                                      value: model.id,
+                                      child: Text(model.name),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: (value) =>
+                                  setDialogState(() => humanModelId = value),
+                            ),
+                          ),
+                      ],
                       _setupField(
                         '模型',
                         Row(
                           children: [
                             Expanded(
                               child: DropdownButtonFormField<String>(
+                                isExpanded: true,
                                 key: ValueKey(modelId),
                                 initialValue: modelId,
                                 decoration: const InputDecoration(),
@@ -796,9 +918,10 @@ class _GamePageState extends State<GamePage> {
                                       ),
                                     )
                                     .toList(),
-                                onChanged: (value) => setDialogState(
-                                  () => modelId = value ?? modelId,
-                                ),
+                                onChanged: (value) => setDialogState(() {
+                                  modelId = value ?? modelId;
+                                  applyModelSelection();
+                                }),
                               ),
                             ),
                             IconButton(
@@ -824,8 +947,14 @@ class _GamePageState extends State<GamePage> {
                                   setDialogState(() {
                                     availableModels = models;
                                     modelId = active;
+                                    if (humanModelId != null &&
+                                        !models.any(
+                                          (m) => m.id == humanModelId,
+                                        ))
+                                      humanModelId = null;
                                     engines = profiles;
                                     engineProfileId = activeProfile;
+                                    applyModelSelection();
                                   });
                                 } catch (error) {
                                   if (context.mounted) {
@@ -840,6 +969,52 @@ class _GamePageState extends State<GamePage> {
                           ],
                         ),
                       ),
+                      if (engines
+                              .firstWhere((e) => e.id == engineProfileId)
+                              .backend ==
+                          GoEngineBackend.opencl)
+                        TextButton.icon(
+                          icon: const Icon(Icons.speed),
+                          label: const Text('检测 GPU / 调优当前配置'),
+                          onPressed: () async {
+                            if (!formKey.currentState!.validate()) return;
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => GoEngineRuntimePage(
+                                  profile: engines.firstWhere(
+                                    (e) => e.id == engineProfileId,
+                                  ),
+                                  config: GoConfig(
+                                    boardSize: size,
+                                    rules: rules,
+                                    komi: double.parse(komiController.text),
+                                    handicap: handicap,
+                                  ),
+                                  settings: GoAiSettings(
+                                    modelId: modelId,
+                                    engineProfileId: engineProfileId,
+                                    rank: rank,
+                                    style: style,
+                                    humanStyleRank: humanRank,
+                                    humanSLProfile:
+                                        humanProfile.text.trim().isEmpty
+                                        ? null
+                                        : humanProfile.text.trim(),
+                                    humanModelId:
+                                        style == GoAiStyle.human &&
+                                            !useBuiltinHumanStyle
+                                        ? humanModelId
+                                        : null,
+                                    useBuiltinHumanStyle:
+                                        style == GoAiStyle.human &&
+                                        useBuiltinHumanStyle,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                       if (setupError != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
@@ -872,7 +1047,51 @@ class _GamePageState extends State<GamePage> {
                           });
                           try {
                             await GoModelLibrary.load(modelId);
+                            final selectedModel = await GoModelLibrary.byId(
+                              modelId,
+                            );
+                            final selectedEngine = await GoEngineLibrary.byId(
+                              engineProfileId,
+                            );
+                            final human =
+                                style != GoAiStyle.human ||
+                                    useBuiltinHumanStyle ||
+                                    humanModelId == null
+                                ? null
+                                : await GoModelLibrary.byId(humanModelId!);
+                            final checkedSettings = GoAiSettings(
+                              style: style,
+                              humanModelId: human?.id,
+                              humanStyleRank: humanRank,
+                              humanSLProfile: humanProfile.text.trim().isEmpty
+                                  ? null
+                                  : humanProfile.text.trim(),
+                              useBuiltinHumanStyle:
+                                  style == GoAiStyle.human &&
+                                  useBuiltinHumanStyle,
+                            );
+                            checkedSettings.validateHumanStyle();
+                            if (human != null)
+                              await GoModelLibrary.load(human.id);
+                            GoModelCompatibility.validate(
+                              model: selectedModel,
+                              engine: selectedEngine,
+                              humanModel: human,
+                              useBuiltinHumanStyle:
+                                  style == GoAiStyle.human &&
+                                  useBuiltinHumanStyle,
+                            );
+                            if (selectedModel.isHumanModel &&
+                                style != GoAiStyle.human) {
+                              throw StateError('人类棋风主模型需要选择人类棋风和有效段位');
+                            }
+                            if (style == GoAiStyle.human &&
+                                !useBuiltinHumanStyle &&
+                                human == null) {
+                              throw StateError('人类棋风模式需要选择 human model');
+                            }
                           } catch (error) {
+                            if (!context.mounted) return;
                             setDialogState(() {
                               starting = false;
                               setupError = '模型不可用：$error';
@@ -897,6 +1116,18 @@ class _GamePageState extends State<GamePage> {
                               style: style,
                               modelId: modelId,
                               engineProfileId: engineProfileId,
+                              humanModelId:
+                                  style == GoAiStyle.human &&
+                                      !useBuiltinHumanStyle
+                                  ? humanModelId
+                                  : null,
+                              humanStyleRank: humanRank,
+                              humanSLProfile: humanProfile.text.trim().isEmpty
+                                  ? null
+                                  : humanProfile.text.trim(),
+                              useBuiltinHumanStyle:
+                                  style == GoAiStyle.human &&
+                                  useBuiltinHumanStyle,
                             ),
                           ),
                         );
@@ -1190,6 +1421,9 @@ class _GamePageState extends State<GamePage> {
           selected: selected,
           targets: targets,
           onCell: _onCell,
+          placementMode: placementMode,
+          onPreviewCell: _previewGoCell,
+          onCancelPreview: _cancelGoPreview,
         );
         final side = _sidePanel(context);
         return SingleChildScrollView(
@@ -1307,7 +1541,9 @@ class _GamePageState extends State<GamePage> {
                 ),
                 Text(
                   session.goScoreConfirmed
-                      ? '计分已确认'
+                      ? (session.goResignedSide != null
+                            ? 'KataGo 已认输'
+                            : '计分已确认')
                       : _adjudicationInProgress
                       ? 'KataGo 正在裁定死活与终局结果…'
                       : '点击整块棋标记死子（红叉）；确认后结束计分。',

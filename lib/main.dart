@@ -7,6 +7,7 @@ import 'game_page.dart';
 import 'games/go_game.dart';
 import 'go_model_manager.dart';
 import 'go_engine_manager.dart';
+import 'go_placement.dart';
 
 export 'board.dart';
 export 'game_page.dart';
@@ -361,10 +362,25 @@ class GameCard extends StatelessWidget {
     final available = type == GameType.go;
     final active = selected && available;
     final colors = Theme.of(context).colorScheme;
-    return InkWell(
+    // Deliberately not an InkWell/Ink pair.
+    //
+    // With the ink pair in place the card did not react to the Material 3
+    // stretch overscroll effect while the surrounding text did. Removing it
+    // fixes that, confirmed on device: debugPaintLayerBordersEnabled showed the
+    // card owning a compositing layer that the text did not have, and the card
+    // began stretching once the pair was replaced. Verified by elimination that
+    // neither borderRadius nor boxShadow is responsible, so both stay below.
+    //
+    // The mechanism is not fully established. The working theory is that the
+    // ink features create a separate layer the shader-based stretch
+    // ImageFilter does not reach; what is established is that this widget
+    // structure behaves correctly on device.
+    //
+    // Trade-off: no ripple on tap. Add a pressed-state animation here rather
+    // than going back to InkWell if that feedback is wanted.
+    return GestureDetector(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
-      child: Ink(
+      child: DecoratedBox(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: active
@@ -809,6 +825,21 @@ class SettingsPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 28),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.touch_app_outlined),
+            title: const Text('落子模式'),
+            subtitle: const Text('选择围棋棋盘的点击、预览和确认方式'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const GoPlacementSettingsPage(),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 28),
         Text(
           '围棋 AI',
           style: Theme.of(
@@ -843,6 +874,73 @@ class SettingsPage extends StatelessWidget {
         ),
       ],
     ),
+  );
+}
+
+class GoPlacementSettingsPage extends StatefulWidget {
+  const GoPlacementSettingsPage({super.key});
+
+  @override
+  State<GoPlacementSettingsPage> createState() =>
+      _GoPlacementSettingsPageState();
+}
+
+class _GoPlacementSettingsPageState extends State<GoPlacementSettingsPage> {
+  GoPlacementMode? _mode;
+
+  @override
+  void initState() {
+    super.initState();
+    GoPlacementPreferences.load().then((value) {
+      if (mounted) setState(() => _mode = value);
+    });
+  }
+
+  Future<void> _select(GoPlacementMode value) async {
+    setState(() => _mode = value);
+    await GoPlacementPreferences.save(value);
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('落子模式设置')),
+    body: _mode == null
+        ? const Center(child: CircularProgressIndicator())
+        : ListView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+            children: [
+              Card(
+                clipBehavior: Clip.antiAlias,
+                child: RadioGroup<GoPlacementMode>(
+                  groupValue: _mode,
+                  onChanged: (value) {
+                    if (value != null) _select(value);
+                  },
+                  child: Column(
+                    children: [
+                      for (final mode in GoPlacementMode.values)
+                        RadioListTile<GoPlacementMode>(
+                          value: mode,
+                          title: Text(mode.label),
+                          subtitle: Text(mode.description),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                '选择会保存在本机，并应用于之后开始的围棋对局。自动模式会根据棋盘在屏幕上的网格大小选择直接落子或二次确认。',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
   );
 }
 

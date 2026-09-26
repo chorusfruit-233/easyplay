@@ -26,4 +26,19 @@ void main() {
     final restored = GoAiSettings.fromJson({'opponentMode': 'basic'});
     expect(restored.opponentMode, GoOpponentMode.local);
   });
+
+  test('human style settings roundtrip rank and model fields', () {
+    const settings = GoAiSettings(
+      style: GoAiStyle.human,
+      humanModelId: 'human-model',
+      humanStyleRank: -5,
+      humanSLProfile: 'human_5d_6d',
+      useBuiltinHumanStyle: false,
+    );
+    final restored = GoAiSettings.fromJson(settings.toJson());
+    expect(restored.usesHumanStyle, isTrue);
+    expect(restored.resolvedHumanStyleRank, -5);
+    expect(restored.humanModelId, 'human-model');
+    expect(restored.humanSLProfile, 'human_5d_6d');
+  });
 }
