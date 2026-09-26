@@ -121,7 +121,7 @@ class _GoEngineEditorState extends State<GoEngineEditor> {
         ),
       );
     }
-    if (mounted)
+    if (mounted) {
       setState(() {
         if (human) {
           _human = defaults;
@@ -129,6 +129,7 @@ class _GoEngineEditorState extends State<GoEngineEditor> {
           _normal = defaults;
         }
       });
+    }
   }
 
   Future<void> _editRule(bool human, [int? index]) async {
@@ -232,14 +233,16 @@ class _GoEngineEditorState extends State<GoEngineEditor> {
       });
       final main = _models.where((m) => m.id == _modelId).firstOrNull;
       final human = _models.where((m) => m.id == _humanId).firstOrNull;
-      if (main != null)
+      if (main != null) {
         GoModelCompatibility.validate(
           model: main,
           engine: profile,
           humanModel: human,
         );
-      if (_backend == GoEngineBackend.tflite && human != null)
+      }
+      if (_backend == GoEngineBackend.tflite && human != null) {
         throw ArgumentError('TFLite 不支持 human model');
+      }
       await GoEngineLibrary.save(profile);
       if (mounted) Navigator.pop(context, profile);
     } catch (error) {

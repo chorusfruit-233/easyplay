@@ -110,9 +110,9 @@ class GoAiSettings {
     'style': style.name,
     'modelId': modelId,
     'engineProfileId': engineProfileId,
-    if (humanModelId != null) 'humanModelId': humanModelId!,
-    if (humanStyleRank != null) 'humanStyleRank': humanStyleRank!,
-    if (humanSLProfile != null) 'humanSLProfile': humanSLProfile!,
+    'humanModelId': ?humanModelId,
+    'humanStyleRank': ?humanStyleRank,
+    'humanSLProfile': ?humanSLProfile,
     'useBuiltinHumanStyle': useBuiltinHumanStyle,
   };
 

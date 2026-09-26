@@ -209,8 +209,8 @@ class GoEngineProfile {
       'searchThreads': searchThreads,
       'configOverrides': configOverrides,
       'customConfig': customConfig,
-      if (modelId != null) 'modelId': modelId!,
-      if (humanModelId != null) 'humanModelId': humanModelId!,
+      'modelId': ?modelId,
+      'humanModelId': ?humanModelId,
       'backend': backend.name,
     };
     if (openclGpuIdx != null) result['openclGpuIdx'] = openclGpuIdx!;
@@ -271,9 +271,9 @@ class GoEngineProfile {
     List<String>? snapshotKeys,
   }) => GoEngineProfile.fromJson({
     ...toJson(),
-    if (name != null) 'name': name,
+    'name': ?name,
     if (tuningState != null) 'openclTuningState': tuningState.name,
-    if (snapshotKeys != null) 'openclTunedSnapshotKeys': snapshotKeys,
+    'openclTunedSnapshotKeys': ?snapshotKeys,
   });
 
   static List<String> _stringList(Object? value) => value is List

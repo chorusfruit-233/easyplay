@@ -66,11 +66,12 @@ class _GoEngineRuntimePageState extends State<GoEngineRuntimePage> {
                   ? '浏览器实际使用 WASM CPU；OpenCL 调优仅支持 Android。'
                   : '此平台暂未提供原生引擎。',
             };
-      if (mounted)
+      if (mounted) {
         setState(() {
           _models = models;
           _preflight = check;
         });
+      }
     } catch (error) {
       if (mounted) setState(() => _error = '$error');
     }
@@ -146,12 +147,13 @@ class _GoEngineRuntimePageState extends State<GoEngineRuntimePage> {
       _timer = Timer.periodic(const Duration(seconds: 2), (_) => _poll());
       await _poll();
     } catch (error) {
-      if (mounted && generation == _generation)
+      if (mounted && generation == _generation) {
         setState(() {
           _busy = false;
           _state = 'failed';
           _error = '$error';
         });
+      }
     }
   }
 
@@ -182,7 +184,7 @@ class _GoEngineRuntimePageState extends State<GoEngineRuntimePage> {
               tuningState: GoOpenClTuningState.ready,
               snapshotKeys: {
                 ...current.openclTunedSnapshotKeys,
-                if (fingerprint != null) fingerprint,
+                ?fingerprint,
               }.toList(),
             ),
           );
@@ -190,11 +192,12 @@ class _GoEngineRuntimePageState extends State<GoEngineRuntimePage> {
       }
     } catch (error) {
       _timer?.cancel();
-      if (mounted && generation == _generation)
+      if (mounted && generation == _generation) {
         setState(() {
           _busy = false;
           _error = '$error';
         });
+      }
     } finally {
       _polling = false;
     }
@@ -204,16 +207,18 @@ class _GoEngineRuntimePageState extends State<GoEngineRuntimePage> {
     _generation++;
     _timer?.cancel();
     try {
-      if (_id != null)
+      if (_id != null) {
         await _channel.invokeMethod<Object?>('openclTuningCancel', {'id': _id});
+      }
     } catch (error) {
       if (mounted) setState(() => _error = '$error');
     }
-    if (mounted)
+    if (mounted) {
       setState(() {
         _busy = false;
         _state = 'cancelled';
       });
+    }
   }
 
   Future<void> _diagnostics() async {
@@ -221,8 +226,9 @@ class _GoEngineRuntimePageState extends State<GoEngineRuntimePage> {
       final data = await _channel.invokeMapMethod<String, Object?>(
         'diagnostics',
       );
-      if (mounted)
+      if (mounted) {
         setState(() => _log = const JsonEncoder.withIndent('  ').convert(data));
+      }
     } catch (error) {
       if (mounted) setState(() => _error = '$error');
     }
@@ -232,12 +238,13 @@ class _GoEngineRuntimePageState extends State<GoEngineRuntimePage> {
   void dispose() {
     _generation++;
     _timer?.cancel();
-    if (_busy && _id != null)
+    if (_busy && _id != null) {
       unawaited(
         _channel
             .invokeMethod<Object?>('openclTuningCancel', {'id': _id})
             .then<void>((_) {}, onError: (Object _) {}),
       );
+    }
     super.dispose();
   }
 
@@ -346,11 +353,12 @@ class _GoEngineRuntimePageState extends State<GoEngineRuntimePage> {
                           snapshotKeys: [],
                         ),
                       );
-                      if (mounted)
+                      if (mounted) {
                         setState(() {
                           _state = 'idle';
                           _log = '已清除本机 OpenCL 调优缓存';
                         });
+                      }
                     } catch (error) {
                       if (mounted) setState(() => _error = '$error');
                     }

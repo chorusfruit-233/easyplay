@@ -204,6 +204,7 @@ class GoModelLibrary {
   );
 
   static Future<List<GoModelInfo>> available() async {
+    if (kIsWeb) return const [bundledModel];
     final prefs = await SharedPreferences.getInstance();
     final stored = prefs.getStringList(_recordsKey) ?? const <String>[];
     final result = <GoModelInfo>[bundledModel];
@@ -221,12 +222,16 @@ class GoModelLibrary {
   }
 
   static Future<String> activeId() async {
+    if (kIsWeb) return bundledId;
     final id = (await SharedPreferences.getInstance()).getString(_activeKey);
     final models = await available();
     return models.any((model) => model.id == id) ? id! : bundledId;
   }
 
   static Future<void> setActive(String id) async {
+    if (kIsWeb && id != bundledId) {
+      throw UnsupportedError('Web 端只支持应用内置的 KataGo 模型');
+    }
     final models = await available();
     if (!models.any((model) => model.id == id)) {
       throw ArgumentError.value(id, 'id', 'KataGo 模型不存在');
@@ -241,6 +246,9 @@ class GoModelLibrary {
       );
 
   static Future<Uint8List> load(String id) async {
+    if (kIsWeb && id != bundledId) {
+      throw UnsupportedError('Web 端只支持应用内置的 KataGo 模型');
+    }
     if (id == bundledId) {
       final data = await rootBundle.load(_b6Asset);
       final bytes = data.buffer.asUint8List(
@@ -295,6 +303,9 @@ class GoModelLibrary {
     String? expectedSha256,
     GoModelKind kind = GoModelKind.standard,
   }) async {
+    if (kIsWeb) {
+      throw UnsupportedError('Web 端只允许使用应用内置的 KataGo 模型');
+    }
     final cleanName = name.trim();
     final cleanFileName = fileName.trim();
     if (cleanName.isEmpty) throw ArgumentError('请填写模型名称');

@@ -150,55 +150,64 @@ class _GoEngineManagerPageState extends State<GoEngineManagerPage> {
           return const Center(child: CircularProgressIndicator());
         }
         final data = snapshot.data!;
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            const Text('AI 引擎配置可调整搜索时间、线程和 KataGo 参数。主网络模型在新局设置中选择。'),
-            const SizedBox(height: 12),
-            for (final profile in data.profiles)
-              Card(
-                child: ListTile(
-                  leading: Radio<String>(
-                    value: profile.id,
-                    groupValue: data.activeId,
-                    onChanged: (_) => _activate(profile),
-                  ),
-                  title: Text(profile.name),
-                  subtitle: Text(
-                    '${profile.backend.label} · maxTime=${profile.maxTimeSeconds == 0 ? '无限制' : '${profile.maxTimeSeconds}s'} · ${profile.searchThreads} 线程'
-                    '${profile.configOverrides.isEmpty ? '' : ' · 自定义参数'}',
-                  ),
-                  onTap: () => _activate(profile),
-                  trailing: PopupMenuButton<String>(
-                    onSelected: (value) async {
-                      if (value == 'edit') await _edit(profile);
-                      if (value == 'runtime') await _runtime(profile);
-                      if (value == 'export') await _export(profile);
-                      if (value == 'remove') await _remove(profile);
-                      if (value == 'reset') {
-                        await GoEngineLibrary.resetBuiltIn();
-                        if (mounted) setState(_reload);
-                      }
-                    },
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(value: 'edit', child: Text('编辑')),
-                      const PopupMenuItem(
-                        value: 'runtime',
-                        child: Text('运行检测与 OpenCL 调优'),
-                      ),
-                      const PopupMenuItem(value: 'export', child: Text('导出配置')),
-                      if (profile.id == GoEngineProfile.builtIn.id)
+        return RadioGroup<String>(
+          groupValue: data.activeId,
+          onChanged: (id) {
+            if (id == null) return;
+            _activate(data.profiles.firstWhere((profile) => profile.id == id));
+          },
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              const Text('AI 引擎配置可调整搜索时间、线程和 KataGo 参数。主网络模型在新局设置中选择。'),
+              const SizedBox(height: 12),
+              for (final profile in data.profiles)
+                Card(
+                  child: ListTile(
+                    leading: Radio<String>(value: profile.id),
+                    title: Text(profile.name),
+                    subtitle: Text(
+                      '${profile.backend.label} · maxTime=${profile.maxTimeSeconds == 0 ? '无限制' : '${profile.maxTimeSeconds}s'} · ${profile.searchThreads} 线程'
+                      '${profile.configOverrides.isEmpty ? '' : ' · 自定义参数'}',
+                    ),
+                    onTap: () => _activate(profile),
+                    trailing: PopupMenuButton<String>(
+                      onSelected: (value) async {
+                        if (value == 'edit') await _edit(profile);
+                        if (value == 'runtime') await _runtime(profile);
+                        if (value == 'export') await _export(profile);
+                        if (value == 'remove') await _remove(profile);
+                        if (value == 'reset') {
+                          await GoEngineLibrary.resetBuiltIn();
+                          if (mounted) setState(_reload);
+                        }
+                      },
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(value: 'edit', child: Text('编辑')),
                         const PopupMenuItem(
-                          value: 'reset',
-                          child: Text('恢复内置配置'),
-                        )
-                      else
-                        const PopupMenuItem(value: 'remove', child: Text('删除')),
-                    ],
+                          value: 'runtime',
+                          child: Text('运行检测与 OpenCL 调优'),
+                        ),
+                        const PopupMenuItem(
+                          value: 'export',
+                          child: Text('导出配置'),
+                        ),
+                        if (profile.id == GoEngineProfile.builtIn.id)
+                          const PopupMenuItem(
+                            value: 'reset',
+                            child: Text('恢复内置配置'),
+                          )
+                        else
+                          const PopupMenuItem(
+                            value: 'remove',
+                            child: Text('删除'),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         );
       },
     ),

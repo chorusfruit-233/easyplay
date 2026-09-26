@@ -212,7 +212,7 @@ class KataGoAndroidRuntime {
           'modelFileName': (await GoModelLibrary.byId(
             settings.modelId,
           )).fileName,
-          if (humanModel != null) 'humanModel': humanModel,
+          'humanModel': ?humanModel,
           if (humanModel != null)
             'humanModelFileName': (await GoModelLibrary.info(
               settings.humanModelId!,
@@ -349,8 +349,9 @@ class KataGoWebRuntime {
   }) async {
     final engine = await GoEngineLibrary.byId(settings.engineProfileId);
     await validateKataGoSelection(settings, engine);
-    if (engine.backend == GoEngineBackend.tflite)
+    if (engine.backend == GoEngineBackend.tflite) {
       throw UnsupportedError('静态 Web 不支持 TFLite');
+    }
     final mainModelId = settings.modelId;
     await GoModelLibrary.validateForEngine(
       id: mainModelId,

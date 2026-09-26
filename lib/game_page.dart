@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'game_session.dart';
 import 'go_file_service.dart';
@@ -142,6 +143,7 @@ class _GamePageState extends State<GamePage> {
 
   void _previewGoCell(Cell cell) {
     if (widget.type != GameType.go || !_canPlay) return;
+    if (!session.isLegalGoMove(cell)) return;
     setState(() => selected = cell);
   }
 
@@ -161,9 +163,7 @@ class _GamePageState extends State<GamePage> {
     final before = session.moves.length;
     setState(() {
       if (widget.type == GameType.go) {
-        if (!session.placeGo(cell)) {
-          _notice('不能在此落子：请检查占位、气和劫争。');
-        }
+        session.placeGo(cell);
         selected = null;
         targets = const [];
       } else if (selected == null) {
@@ -549,7 +549,9 @@ class _GamePageState extends State<GamePage> {
     } catch (error) {
       _notice('读取 KataGo 模型列表失败，暂用内置 b6 模型：$error');
     }
-    var modelId = requiredAtStart && widget.aiSettings == null
+    var modelId = kIsWeb
+        ? GoModelLibrary.bundledId
+        : requiredAtStart && widget.aiSettings == null
         ? activeModel
         : availableModels.any((model) => model.id == aiSettings.modelId)
         ? aiSettings.modelId
@@ -571,7 +573,7 @@ class _GamePageState extends State<GamePage> {
 
     void applyEngineSelection() {
       final selected = engines.firstWhere((e) => e.id == engineProfileId);
-      if (availableModels.any((m) => m.id == selected.modelId)) {
+      if (!kIsWeb && availableModels.any((m) => m.id == selected.modelId)) {
         modelId = selected.modelId!;
       }
       humanModelId =
@@ -592,8 +594,9 @@ class _GamePageState extends State<GamePage> {
       applyEngineSelection();
     }
     if (humanModelId != null &&
-        !availableModels.any((m) => m.id == humanModelId && m.isHumanModel))
+        !availableModels.any((m) => m.id == humanModelId && m.isHumanModel)) {
       humanModelId = null;
+    }
     if (!mounted) return;
     var starting = false;
     String? setupError;
@@ -950,8 +953,9 @@ class _GamePageState extends State<GamePage> {
                                     if (humanModelId != null &&
                                         !models.any(
                                           (m) => m.id == humanModelId,
-                                        ))
+                                        )) {
                                       humanModelId = null;
+                                    }
                                     engines = profiles;
                                     engineProfileId = activeProfile;
                                     applyModelSelection();
@@ -1071,8 +1075,9 @@ class _GamePageState extends State<GamePage> {
                                   useBuiltinHumanStyle,
                             );
                             checkedSettings.validateHumanStyle();
-                            if (human != null)
+                            if (human != null) {
                               await GoModelLibrary.load(human.id);
+                            }
                             GoModelCompatibility.validate(
                               model: selectedModel,
                               engine: selectedEngine,

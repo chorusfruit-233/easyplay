@@ -52,6 +52,13 @@ void main() {
         nineteen.board.expand((row) => row).where((p) => p != null).length,
         3,
       );
+      expect(nineteen.placeGo(const Cell(9, 9)), isTrue);
+      expect(nineteen.undo(), isTrue);
+      expect(nineteen.turn, Side.white);
+      expect(
+        nineteen.board.expand((row) => row).where((p) => p != null),
+        hasLength(3),
+      );
     });
 
     test('stopping twice ends the game and scoring applies komi', () {
@@ -64,6 +71,12 @@ void main() {
       expect(game.passGo(), isTrue);
       expect(game.gameOver, isTrue);
       expect(game.calculateGoScore().white, 6.5);
+      expect(game.undo(), isTrue);
+      expect(game.gameOver, isFalse);
+      expect(game.moves, hasLength(1));
+      expect(game.turn, Side.white);
+      expect(game.passGo(), isTrue);
+      expect(game.gameOver, isTrue);
     });
 
     test('exports and imports SGF moves', () {
@@ -105,6 +118,7 @@ void main() {
     test('rejects occupied points and undo restores the turn', () {
       final game = GameSession(GameType.go);
       expect(game.placeGo(const Cell(4, 4)), isTrue);
+      expect(game.isLegalGoMove(const Cell(4, 4)), isFalse);
       expect(game.placeGo(const Cell(4, 4)), isFalse);
       expect(game.turn, Side.white);
       expect(game.undo(), isTrue);
@@ -125,6 +139,7 @@ void main() {
           PieceKind.stone,
         );
       }
+      expect(game.isLegalGoMove(const Cell(4, 4)), isFalse);
       expect(game.placeGo(const Cell(4, 4)), isFalse);
 
       game.reset();
@@ -134,6 +149,30 @@ void main() {
       game.board[4][3] = const GamePiece(Side.black, PieceKind.stone);
       expect(game.placeGo(const Cell(4, 5)), isTrue);
       expect(game.pieceAt(const Cell(4, 4)), isNull);
+      expect(game.blackCaptures, 1);
+    });
+
+    test('rejects immediate ko recapture and restores ko after undo', () {
+      final game = GameSession(
+        GameType.go,
+        goConfig: const GoConfig(rules: GoRuleSet.japanese),
+      );
+      game.setupGo({
+        const Cell(0, 1): Side.black,
+        const Cell(1, 0): Side.black,
+        const Cell(2, 1): Side.black,
+        const Cell(1, 1): Side.white,
+        const Cell(0, 2): Side.white,
+        const Cell(2, 2): Side.white,
+        const Cell(1, 3): Side.white,
+      }, Side.black);
+      expect(game.isLegalGoMove(const Cell(1, 2)), isTrue);
+      expect(game.placeGo(const Cell(1, 2)), isTrue);
+      expect(game.isLegalGoMove(const Cell(1, 1)), isFalse);
+      expect(game.placeGo(const Cell(1, 1)), isFalse);
+      expect(game.placeGo(const Cell(8, 8)), isTrue);
+      expect(game.undo(), isTrue);
+      expect(game.isLegalGoMove(const Cell(1, 1)), isFalse);
       expect(game.blackCaptures, 1);
     });
   });

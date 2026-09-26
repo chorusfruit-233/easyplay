@@ -1,4 +1,5 @@
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'go_models.dart';
@@ -34,6 +35,15 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _activate(String id) async {
+    try {
+      await GoModelLibrary.setActive(id);
+      if (mounted) setState(_reload);
+    } catch (error) {
+      _message('无法选择模型：$error');
+    }
   }
 
   Future<void> _importFile() async {
@@ -77,8 +87,9 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
         bytes: bytes,
         kind: kind,
       );
-      if (info.kind == GoModelKind.standard)
+      if (info.kind == GoModelKind.standard) {
         await GoModelLibrary.setActive(info.id);
+      }
       if (!mounted) return;
       setState(_reload);
       _message('模型已导入：${info.name}（${info.kind.label}）');
@@ -241,11 +252,13 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
                             expectedSha256: spec.sha256,
                             kind: kind,
                           );
-                          if (info.kind == GoModelKind.standard)
+                          if (info.kind == GoModelKind.standard) {
                             await GoModelLibrary.setActive(info.id);
+                          }
                           installed = true;
-                          if (dialogContext.mounted)
+                          if (dialogContext.mounted) {
                             Navigator.pop(dialogContext);
+                          }
                         } catch (error) {
                           if (dialogContext.mounted) {
                             setDialogState(() {
@@ -311,19 +324,21 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: const Text('KataGo 引擎与模型'),
-      actions: [
-        PopupMenuButton<String>(
-          tooltip: '添加模型',
-          onSelected: (value) {
-            if (value == 'import') _importFile();
-            if (value == 'download') _download();
-          },
-          itemBuilder: (context) => const [
-            PopupMenuItem(value: 'import', child: Text('导入模型文件')),
-            PopupMenuItem(value: 'download', child: Text('从 URL 下载')),
-          ],
-        ),
-      ],
+      actions: kIsWeb
+          ? const []
+          : [
+              PopupMenuButton<String>(
+                tooltip: '添加模型',
+                onSelected: (value) {
+                  if (value == 'import') _importFile();
+                  if (value == 'download') _download();
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(value: 'import', child: Text('导入模型文件')),
+                  PopupMenuItem(value: 'download', child: Text('从 URL 下载')),
+                ],
+              ),
+            ],
     ),
     body: FutureBuilder<_ModelSnapshot>(
       future: _snapshot,
@@ -335,68 +350,59 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
           return const Center(child: CircularProgressIndicator());
         }
         final data = snapshot.data!;
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text(
-              '选择默认模型。导入或下载的模型只保存在本机浏览器或设备中，不需要服务端。',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 12),
-            for (final model in data.models)
-              Card(
-                child: ListTile(
-                  leading: Radio<String>(
-                    value: model.id,
-                    groupValue: data.activeId,
-                    onChanged: (id) async {
-                      if (id == null) return;
-                      try {
-                        await GoModelLibrary.setActive(id);
-                        if (mounted) setState(_reload);
-                      } catch (error) {
-                        _message('无法选择模型：$error');
-                      }
-                    },
-                  ),
-                  title: Text(model.name),
-                  subtitle: Text(
-                    '${model.kind.label} · ${model.fileName} · ${_size(model.bytes)}\nSHA-256 ${model.sha256}',
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  isThreeLine: true,
-                  trailing: model.bundled
-                      ? const Chip(label: Text('内置'))
-                      : IconButton(
-                          tooltip: '删除模型',
-                          onPressed: () => _remove(model),
-                          icon: const Icon(Icons.delete_outline),
-                        ),
-                  onTap: () async {
-                    try {
-                      await GoModelLibrary.setActive(model.id);
-                      if (mounted) setState(_reload);
-                    } catch (error) {
-                      _message('无法选择模型：$error');
-                    }
-                  },
+        return RadioGroup<String>(
+          groupValue: data.activeId,
+          onChanged: (id) {
+            if (id != null) _activate(id);
+          },
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Text(
+                kIsWeb
+                    ? 'Web 静态部署只使用随应用发布的 KataGo b6 模型。'
+                    : '选择默认模型。导入或下载的模型只保存在本机设备中，不需要服务端。',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: _importFile,
-              icon: const Icon(Icons.file_open_outlined),
-              label: const Text('导入标准、人类棋风或 TFLite 模型'),
-            ),
-            OutlinedButton.icon(
-              onPressed: _download,
-              icon: const Icon(Icons.download_outlined),
-              label: const Text('从 URL 下载模型'),
-            ),
-          ],
+              const SizedBox(height: 12),
+              for (final model in data.models)
+                Card(
+                  child: ListTile(
+                    leading: Radio<String>(value: model.id),
+                    title: Text(model.name),
+                    subtitle: Text(
+                      '${model.kind.label} · ${model.fileName} · ${_size(model.bytes)}\nSHA-256 ${model.sha256}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    isThreeLine: true,
+                    trailing: model.bundled
+                        ? const Chip(label: Text('内置'))
+                        : IconButton(
+                            tooltip: '删除模型',
+                            onPressed: () => _remove(model),
+                            icon: const Icon(Icons.delete_outline),
+                          ),
+                    onTap: () => _activate(model.id),
+                  ),
+                ),
+              if (!kIsWeb) ...[
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _importFile,
+                  icon: const Icon(Icons.file_open_outlined),
+                  label: const Text('导入标准、人类棋风或 TFLite 模型'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _download,
+                  icon: const Icon(Icons.download_outlined),
+                  label: const Text('从 URL 下载模型'),
+                ),
+              ],
+            ],
+          ),
         );
       },
     ),

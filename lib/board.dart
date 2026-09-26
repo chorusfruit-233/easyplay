@@ -44,6 +44,9 @@ class _BoardState extends State<Board> {
       _activePointer = null;
       _pressReleaseActive = false;
     }
+    if (widget.selected == null && oldWidget.selected != null) {
+      _preview = null;
+    }
   }
 
   Cell? _cellAt(Offset local, BoxConstraints constraints) {
@@ -168,6 +171,8 @@ class _BoardState extends State<Board> {
                     .toList(),
                 selected: widget.selected,
                 targets: List.of(widget.targets),
+                preview: _preview,
+                previewSide: widget.session.turn,
                 deadStones: Set.of(widget.session.deadGoStones),
                 lastMove:
                     widget.session.moves.isEmpty ||
@@ -190,6 +195,8 @@ class BoardPainter extends CustomPainter {
   final Cell? selected;
   final List<Cell> targets;
   final Cell? lastMove;
+  final Cell? preview;
+  final Side previewSide;
   final Set<Cell> deadStones;
   BoardPainter({
     required this.type,
@@ -197,6 +204,8 @@ class BoardPainter extends CustomPainter {
     required this.selected,
     required this.targets,
     required this.lastMove,
+    this.preview,
+    this.previewSide = Side.black,
     this.deadStones = const {},
   });
 
@@ -349,6 +358,28 @@ class BoardPainter extends CustomPainter {
         }
       }
     }
+    if (type == GameType.go &&
+        preview != null &&
+        insideBoard(preview!, n) &&
+        board[preview!.row][preview!.col] == null) {
+      final center = _center(preview!, step);
+      canvas.drawCircle(
+        center,
+        step * .39,
+        Paint()
+          ..color = previewSide == Side.black
+              ? const Color(0x88909090)
+              : const Color(0x99fff4d6),
+      );
+      canvas.drawCircle(
+        center,
+        step * .39,
+        Paint()
+          ..color = const Color(0x88705040)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1,
+      );
+    }
     for (final cell in deadStones) {
       final center = _center(cell, step);
       final offset = Offset(step * .25, step * .25);
@@ -375,6 +406,9 @@ class BoardPainter extends CustomPainter {
   Offset _center(Cell cell, double step) => type == GameType.go
       ? Offset(cell.col * step + step / 2, cell.row * step + step / 2)
       : Offset((cell.col + .5) * step, (cell.row + .5) * step);
+
+  bool insideBoard(Cell cell, int n) =>
+      cell.row >= 0 && cell.col >= 0 && cell.row < n && cell.col < n;
   Rect _cellRect(Cell cell, double step) =>
       Rect.fromLTWH(cell.col * step, cell.row * step, step, step);
 

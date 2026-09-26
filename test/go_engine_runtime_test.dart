@@ -31,8 +31,9 @@ void main() {
           .setMockMethodCallHandler(channel, (call) async {
             called.add(call.method);
             if (call.method == 'command' &&
-                (call.arguments as Map)['line'] == 'genmove B')
+                (call.arguments as Map)['line'] == 'genmove B') {
               return search.future;
+            }
             if (call.method == 'stop') {
               search.complete('D4');
               return 'stopped';

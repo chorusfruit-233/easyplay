@@ -396,6 +396,9 @@ class GameSession {
     return true;
   }
 
+  bool isLegalGoMove(Cell cell) =>
+      type == GameType.go && !gameOver && _canPlayGo(cell, turn);
+
   bool resignGo([Side? side]) {
     if (type != GameType.go || gameOver) return false;
     _save();
@@ -572,13 +575,13 @@ class GameSession {
 
   Iterable<GameMove> _allCheckerMoves(Side side) {
     final moves = <GameMove>[];
-    for (var r = 0; r < 8; r++)
+    for (var r = 0; r < 8; r++) {
       for (var c = 0; c < 8; c++) {
         final p = board[r][c];
         if (p == null || p.side != side) continue;
         final forward = side == Side.white ? -1 : 1;
         final dirs = p.kind == PieceKind.king ? const [-1, 1] : [forward];
-        for (final dr in dirs)
+        for (final dr in dirs) {
           for (final dc in const [-1, 1]) {
             final one = Cell(r + dr, c + dc);
             if (inside(one) && board[one.row][one.col] == null) {
@@ -592,7 +595,9 @@ class GameSession {
               moves.add(GameMove(from: Cell(r, c), to: two, captured: true));
             }
           }
+        }
       }
+    }
     final captures = moves.where((m) => m.captured).toList();
     return captures.isNotEmpty ? captures : moves;
   }
@@ -618,10 +623,11 @@ class GameSession {
         addStep(d.$1, d.$2);
       }
     } else if (p.kind == PieceKind.king) {
-      for (var dr = -1; dr <= 1; dr++)
+      for (var dr = -1; dr <= 1; dr++) {
         for (var dc = -1; dc <= 1; dc++) {
           if (dr != 0 || dc != 0) addStep(dr, dc);
         }
+      }
     } else if (p.kind == PieceKind.pawn) {
       final dir = p.side == Side.white ? -1 : 1;
       final one = Cell(from.row + dir, from.col);
@@ -668,18 +674,20 @@ class GameSession {
   bool _isInCheck(Side side, [List<List<GamePiece?>>? state]) {
     final b = state ?? board;
     Cell? king;
-    for (var r = 0; r < 8; r++)
+    for (var r = 0; r < 8; r++) {
       for (var c = 0; c < 8; c++) {
         final p = b[r][c];
         if (p?.side == side && p?.kind == PieceKind.king) king = Cell(r, c);
       }
+    }
     if (king == null) return false;
-    for (var r = 0; r < 8; r++)
+    for (var r = 0; r < 8; r++) {
       for (var c = 0; c < 8; c++) {
         final p = b[r][c];
         if (p == null || p.side == side) continue;
         if (_attacks(b, Cell(r, c), king, p)) return true;
       }
+    }
     return false;
   }
 
@@ -714,10 +722,11 @@ class GameSession {
     final old = turn;
     turn = side;
     var found = false;
-    for (var r = 0; r < size && !found; r++)
+    for (var r = 0; r < size && !found; r++) {
       for (var c = 0; c < size && !found; c++) {
         if (legalMovesFrom(Cell(r, c)).isNotEmpty) found = true;
       }
+    }
     turn = old;
     return found;
   }
@@ -788,8 +797,9 @@ class GameSession {
         final p = b[n.row][n.col];
         if (p == null) {
           liberties.add(n);
-        } else if (p.side == color && !group.contains(n))
+        } else if (p.side == color && !group.contains(n)) {
           stack.add(n);
+        }
       }
     }
     return (group, liberties);
