@@ -38,9 +38,28 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
 
   Future<void> _importFile() async {
     try {
+      var kind = GoModelKind.standard;
+      if (!mounted) return;
+      final selectedKind = await showDialog<GoModelKind>(
+        context: context,
+        builder: (context) => SimpleDialog(
+          title: const Text('模型类型'),
+          children: [
+            for (final value in GoModelKind.values)
+              SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, value),
+                child: Text(value.label),
+              ),
+          ],
+        ),
+      );
+      if (selectedKind == null) return;
+      kind = selectedKind;
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['gz'],
+        allowedExtensions: kind == GoModelKind.tflite
+            ? ['tflite', 'lite']
+            : ['gz'],
         withData: true,
       );
       if (result == null) return;
@@ -56,11 +75,13 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
         name: label,
         fileName: filename,
         bytes: bytes,
+        kind: kind,
       );
-      await GoModelLibrary.setActive(info.id);
+      if (info.kind == GoModelKind.standard)
+        await GoModelLibrary.setActive(info.id);
       if (!mounted) return;
       setState(_reload);
-      _message('模型已导入并设为默认：${info.name}');
+      _message('模型已导入：${info.name}（${info.kind.label}）');
     } catch (error) {
       _message('导入模型失败：$error');
     }
@@ -71,6 +92,8 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
     final name = TextEditingController();
     final url = TextEditingController();
     final checksum = TextEditingController();
+    var kind = GoModelKind.standard;
+    KataGoDownloadClient? activeClient;
     var downloading = false;
     var progress = 0.0;
     String? failure;
@@ -88,7 +111,35 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
               child: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  spacing: 16,
                   children: [
+                    DropdownButtonFormField<GoModelKind>(
+                      key: ValueKey(kind),
+                      initialValue: kind,
+                      decoration: const InputDecoration(labelText: '模型类型'),
+                      items: GoModelKind.values
+                          .map(
+                            (v) => DropdownMenuItem(
+                              value: v,
+                              child: Text(v.label),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: downloading
+                          ? null
+                          : (v) => setDialogState(() => kind = v ?? kind),
+                    ),
+                    TextButton(
+                      onPressed: downloading
+                          ? null
+                          : () => setDialogState(() {
+                              kind = GoModelKind.human;
+                              name.text = 'KataGo b18 人类棋风';
+                              url.text =
+                                  'https://github.com/lightvector/KataGo/releases/download/v1.15.0/b18c384nbt-humanv0.bin.gz';
+                            }),
+                      child: const Text('填写官方人类棋风模型地址'),
+                    ),
                     TextFormField(
                       controller: name,
                       enabled: !downloading,
@@ -142,9 +193,10 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
             ),
             actions: [
               TextButton(
-                onPressed: downloading
-                    ? null
-                    : () => Navigator.pop(dialogContext),
+                onPressed: () {
+                  activeClient?.client.close();
+                  Navigator.pop(dialogContext);
+                },
                 child: const Text('取消'),
               ),
               FilledButton(
@@ -166,6 +218,7 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
                               : checksum.text.trim(),
                         );
                         final client = KataGoDownloadClient();
+                        activeClient = client;
                         try {
                           final bytes = await client.download(
                             spec,
@@ -186,8 +239,10 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
                                 : uri.pathSegments.last,
                             bytes: bytes,
                             expectedSha256: spec.sha256,
+                            kind: kind,
                           );
-                          await GoModelLibrary.setActive(info.id);
+                          if (info.kind == GoModelKind.standard)
+                            await GoModelLibrary.setActive(info.id);
                           installed = true;
                           if (dialogContext.mounted)
                             Navigator.pop(dialogContext);
@@ -214,7 +269,7 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
     checksum.dispose();
     if (installed && mounted) {
       setState(_reload);
-      _message('KataGo 模型已安装并设为默认');
+      _message('KataGo 模型已安装');
     }
   }
 
@@ -308,7 +363,7 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
                   ),
                   title: Text(model.name),
                   subtitle: Text(
-                    '${model.fileName} · ${_size(model.bytes)}\nSHA-256 ${model.sha256}',
+                    '${model.kind.label} · ${model.fileName} · ${_size(model.bytes)}\nSHA-256 ${model.sha256}',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -334,7 +389,7 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
             OutlinedButton.icon(
               onPressed: _importFile,
               icon: const Icon(Icons.file_open_outlined),
-              label: const Text('导入 KataGo .bin.gz / .txt.gz 模型'),
+              label: const Text('导入标准、人类棋风或 TFLite 模型'),
             ),
             OutlinedButton.icon(
               onPressed: _download,

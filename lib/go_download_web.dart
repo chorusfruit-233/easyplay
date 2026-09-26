@@ -6,7 +6,11 @@ import 'package:web/web.dart' as web;
 Future<bool> downloadSgf(Uint8List bytes, String fileName) async {
   final blob = web.Blob(
     [bytes.toJS].toJS,
-    web.BlobPropertyBag(type: 'application/x-go-sgf;charset=utf-8'),
+    web.BlobPropertyBag(
+      type: fileName.toLowerCase().endsWith('.json')
+          ? 'application/json;charset=utf-8'
+          : 'application/x-go-sgf;charset=utf-8',
+    ),
   );
   final url = web.URL.createObjectURL(blob);
   final anchor = web.HTMLAnchorElement()
