@@ -236,4 +236,28 @@ void main() {
     expect(replay.pieceAt(const Cell(2, 2))?.side, Side.black);
     expect(replay.pieceAt(const Cell(6, 6))?.side, Side.black);
   });
+
+  test(
+    'node annotations and deletion can preserve or remove continuations',
+    () {
+      final record = GoSgfController(config: const GoConfig(boardSize: 9));
+      final first = record.appendMove(
+        const GameMove(to: Cell(1, 1), side: Side.black),
+      );
+      record.setCurrentProperty('C', ['review this']);
+      record.setCurrentProperty('TR', ['bb']);
+      record.appendMove(const GameMove(to: Cell(2, 2), side: Side.white));
+      expect(record.exportSgf(), contains('C[review this]TR[bb]'));
+
+      expect(record.deleteCurrent(preserveChildren: false), isTrue);
+      expect(record.current, same(first));
+      expect(first.children, isEmpty);
+
+      record.appendMove(const GameMove(to: Cell(2, 2), side: Side.white));
+      record.navigateParent();
+      expect(record.deleteCurrent(preserveChildren: true), isTrue);
+      expect(record.root.children, hasLength(1));
+      expect(record.root.children.single.move?.to, const Cell(2, 2));
+    },
+  );
 }

@@ -13,6 +13,7 @@ class Board extends StatefulWidget {
   final GoPlacementMode placementMode;
   final ValueChanged<Cell>? onPreviewCell;
   final VoidCallback? onCancelPreview;
+  final Map<String, List<String>> annotations;
   const Board({
     super.key,
     required this.type,
@@ -23,6 +24,7 @@ class Board extends StatefulWidget {
     this.placementMode = GoPlacementMode.direct,
     this.onPreviewCell,
     this.onCancelPreview,
+    this.annotations = const {},
   });
 
   @override
@@ -174,6 +176,7 @@ class _BoardState extends State<Board> {
                 preview: _preview,
                 previewSide: widget.session.turn,
                 deadStones: Set.of(widget.session.deadGoStones),
+                annotations: widget.annotations,
                 lastMove:
                     widget.session.moves.isEmpty ||
                         widget.session.moves.last.pass
@@ -198,6 +201,7 @@ class BoardPainter extends CustomPainter {
   final Cell? preview;
   final Side previewSide;
   final Set<Cell> deadStones;
+  final Map<String, List<String>> annotations;
   BoardPainter({
     required this.type,
     required this.board,
@@ -207,6 +211,7 @@ class BoardPainter extends CustomPainter {
     this.preview,
     this.previewSide = Side.black,
     this.deadStones = const {},
+    this.annotations = const {},
   });
 
   @override
@@ -421,6 +426,57 @@ class BoardPainter extends CustomPainter {
         Paint()..color = const Color(0xffef5b35),
       );
     }
+    if (type == GameType.go) {
+      for (final (property, color, shape) in [
+        ('TR', const Color(0xffb3261e), 'triangle'),
+        ('SQ', const Color(0xffb3261e), 'square'),
+        ('CR', const Color(0xffb3261e), 'circle'),
+      ]) {
+        for (final raw in annotations[property] ?? const <String>[]) {
+          final cell = _sgfCell(raw, n);
+          if (cell == null) continue;
+          final center = _center(cell, step);
+          final radius = step * .17;
+          final paint = Paint()
+            ..color = color
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = max(1.5, step * .045);
+          if (shape == 'circle') {
+            canvas.drawCircle(center, radius, paint);
+          } else if (shape == 'square') {
+            canvas.drawRect(
+              Rect.fromCenter(
+                center: center,
+                width: radius * 2,
+                height: radius * 2,
+              ),
+              paint,
+            );
+          } else {
+            final path = Path()
+              ..moveTo(center.dx, center.dy - radius)
+              ..lineTo(center.dx + radius, center.dy + radius)
+              ..lineTo(center.dx - radius, center.dy + radius)
+              ..close();
+            canvas.drawPath(path, paint);
+          }
+        }
+      }
+      for (final raw in annotations['LB'] ?? const <String>[]) {
+        final separator = raw.indexOf(':');
+        if (separator != 2) continue;
+        final cell = _sgfCell(raw.substring(0, separator), n);
+        if (cell == null) continue;
+        _drawText(
+          canvas,
+          raw.substring(separator + 1),
+          _center(cell, step),
+          step * .28,
+          const Color(0xffb3261e),
+          outline: true,
+        );
+      }
+    }
   }
 
   Offset _center(Cell cell, double step) => type == GameType.go
@@ -429,6 +485,12 @@ class BoardPainter extends CustomPainter {
 
   bool insideBoard(Cell cell, int n) =>
       cell.row >= 0 && cell.col >= 0 && cell.row < n && cell.col < n;
+  Cell? _sgfCell(String raw, int n) {
+    if (raw.length != 2) return null;
+    final cell = Cell(raw.codeUnitAt(1) - 97, raw.codeUnitAt(0) - 97);
+    return insideBoard(cell, n) ? cell : null;
+  }
+
   Rect _cellRect(Cell cell, double step) =>
       Rect.fromLTWH(cell.col * step, cell.row * step, step, step);
 

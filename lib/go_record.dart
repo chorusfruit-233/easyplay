@@ -12,7 +12,7 @@ class GoRecordNode {
     Map<String, List<String>>? properties,
   }) : properties = properties ?? <String, List<String>>{};
 
-  final GoRecordNode? parent;
+  GoRecordNode? parent;
   final GameMove? move;
   Side? resignedSide;
   final List<GoRecordNode> children = <GoRecordNode>[];
@@ -190,6 +190,47 @@ class GoSgfController {
     current.children.add(node);
     current = node;
     return node;
+  }
+
+  /// Adds a property-only node after the cursor, for comments and annotations
+  /// that need their own SGF node rather than being attached to a move.
+  GoRecordNode appendProperties(Map<String, List<String>> properties) {
+    if (properties.isEmpty) throw ArgumentError('Properties cannot be empty');
+    final node = GoRecordNode._(
+      parent: current,
+      properties: _copyProperties(properties),
+    );
+    current.children.add(node);
+    current = node;
+    return node;
+  }
+
+  /// Updates properties on the current node. Passing null removes a property.
+  void setCurrentProperty(String key, List<String>? values) {
+    if (values == null || values.isEmpty) {
+      current.properties.remove(key);
+    } else {
+      current.properties[key] = List<String>.of(values);
+    }
+  }
+
+  /// Deletes the current node. With [preserveChildren], its children are
+  /// promoted into its position in the parent variation list.
+  bool deleteCurrent({required bool preserveChildren}) {
+    final node = current;
+    final parent = node.parent;
+    if (parent == null) return false;
+    final index = parent.children.indexOf(node);
+    if (index < 0) return false;
+    parent.children.removeAt(index);
+    if (preserveChildren) {
+      for (var i = 0; i < node.children.length; i++) {
+        final child = node.children[i]..parent = parent;
+        parent.children.insert(index + i, child);
+      }
+    }
+    current = parent;
+    return true;
   }
 
   bool navigateParent() {
