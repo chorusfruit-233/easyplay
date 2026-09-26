@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'game_session.dart';
 import 'go_file_service.dart';
 import 'go_sgf.dart';
@@ -71,6 +72,7 @@ class _GamePageState extends State<GamePage> {
   int _computerGeneration = 0;
   bool _modalOpen = false;
   bool _adjudicationInProgress = false;
+  String? _activeMarkup;
   String _gameId = DateTime.now().microsecondsSinceEpoch.toString();
   final KataGoAndroidRuntime _kataGo = KataGoAndroidRuntime();
   final KataGoWebRuntime _webKataGo = KataGoWebRuntime();
@@ -166,7 +168,9 @@ class _GamePageState extends State<GamePage> {
   }
 
   void _previewGoCell(Cell cell) {
-    if (widget.type != GameType.go || !_canPlay) return;
+    if (widget.type != GameType.go || !_canPlay || _activeMarkup != null) {
+      return;
+    }
     if (!session.isLegalGoMove(cell)) return;
     setState(() => selected = cell);
   }
@@ -178,6 +182,27 @@ class _GamePageState extends State<GamePage> {
 
   void _onCell(Cell cell) {
     if (_modalOpen || _adjudicationInProgress) return;
+    if (widget.type == GameType.go && _activeMarkup != null) {
+      final markup = _activeMarkup!;
+      final coordinates = _goRecord.current.properties[markup] ?? <String>[];
+      final coordinate = _sgfCoordinate(cell);
+      if (markup == 'LB') {
+        _editLabelAt(cell);
+      } else {
+        setState(() {
+          final updated = List<String>.of(coordinates);
+          if (updated.contains(coordinate)) {
+            updated.remove(coordinate);
+          } else {
+            updated.add(coordinate);
+          }
+          _goRecord.setCurrentProperty(markup, updated);
+          _activeMarkup = null;
+        });
+        _persistGo();
+      }
+      return;
+    }
     if (session.gameOver && widget.type == GameType.go) {
       setState(() => session.toggleDeadGoStone(cell));
       _persistGo();
@@ -230,6 +255,202 @@ class _GamePageState extends State<GamePage> {
       _recordMoveForEngine(session.moves.last);
     }
     _scheduleComputerMove();
+  }
+
+  Future<void> _editComment() async {
+    final controller = TextEditingController(
+      text: _goRecord.current.properties['C']?.firstOrNull ?? '',
+    );
+    final comment = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('编辑节点注释'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 3,
+          maxLines: 8,
+          decoration: const InputDecoration(hintText: '输入注释...'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (comment == null || !mounted) return;
+    setState(() {
+      _goRecord.setCurrentProperty(
+        'C',
+        comment.trim().isEmpty ? null : [comment.trim()],
+      );
+    });
+    await _persistGo();
+  }
+
+  Future<void> _editLabelAt(Cell cell) async {
+    final coordinate = _sgfCoordinate(cell);
+    final values = List<String>.of(
+      _goRecord.current.properties['LB'] ?? const <String>[],
+    );
+    final old = values
+        .where((value) => value.startsWith('$coordinate:'))
+        .firstOrNull;
+    final controller = TextEditingController(text: old?.substring(3) ?? '');
+    final label = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('文字标记'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLength: 8,
+          decoration: const InputDecoration(hintText: '输入文字；留空移除标记'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    if (label == null || !mounted) return;
+    values.removeWhere((value) => value.startsWith('$coordinate:'));
+    if (label.trim().isNotEmpty) values.add('$coordinate:${label.trim()}');
+    setState(() {
+      _goRecord.setCurrentProperty('LB', values);
+      _activeMarkup = null;
+    });
+    await _persistGo();
+  }
+
+  Future<void> _chooseRecordTool() async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.comment_outlined),
+              title: const Text('编辑注释'),
+              onTap: () => Navigator.pop(context, 'comment'),
+            ),
+            for (final entry in const [
+              ('TR', '三角标记', Icons.change_history_outlined),
+              ('SQ', '方形标记', Icons.crop_square_outlined),
+              ('CR', '圆形标记', Icons.circle_outlined),
+              ('LB', '文字标记', Icons.label_outline),
+            ])
+              ListTile(
+                leading: Icon(entry.$3),
+                title: Text(entry.$2),
+                onTap: () => Navigator.pop(context, entry.$1),
+              ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('删除当前节点…'),
+              onTap: () => Navigator.pop(context, 'delete'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'comment':
+        await _editComment();
+      case 'delete':
+        await _deleteCurrentNode();
+      default:
+        setState(() => _activeMarkup = action);
+        _notice(
+          '点击棋盘交叉点添加${switch (action) {
+            'TR' => '三角',
+            'SQ' => '方形',
+            'CR' => '圆形',
+            _ => '文字',
+          }}标记；再打开工具可取消。',
+        );
+    }
+  }
+
+  Future<void> _deleteCurrentNode() async {
+    if (_goRecord.current.isRoot) {
+      _notice('棋谱起点不能删除');
+      return;
+    }
+    final preserveChildren = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('删除当前节点'),
+        content: const Text('是否保留当前节点的后续着手并提升到上一级？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('删除节点及其后续变化'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('保留后续着手'),
+          ),
+        ],
+      ),
+    );
+    if (preserveChildren == null || !mounted) return;
+    _computerGeneration++;
+    await _kataGo.stop();
+    if (!mounted) return;
+    setState(() {
+      _goRecord.deleteCurrent(preserveChildren: preserveChildren);
+      session = _goRecord.replayCurrentPath();
+      _activeMarkup = null;
+      selected = null;
+      targets = const [];
+      computerThinking = false;
+    });
+    await _persistGo();
+    _scheduleComputerMove();
+  }
+
+  Future<void> _showSgfText() async {
+    final text = _persistedRecordSgf();
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('SGF 内容'),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: SelectableText(text, style: const TextStyle(fontSize: 12)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: text));
+              if (context.mounted) Navigator.pop(context);
+              _notice('SGF 内容已复制');
+            },
+            child: const Text('复制'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _recordMoveForEngine(GameMove move) async {
@@ -1595,6 +1816,8 @@ class _GamePageState extends State<GamePage> {
             if (value == 'sgf') _exportSgf();
             if (value == 'import') _importSgf();
             if (value == 'variations') _chooseSgfVariation();
+            if (value == 'record_tools') _chooseRecordTool();
+            if (value == 'show_sgf') _showSgfText();
           },
           itemBuilder: (_) => [
             if (widget.type == GameType.go)
@@ -1611,6 +1834,13 @@ class _GamePageState extends State<GamePage> {
               const PopupMenuItem(value: 'sgf', child: Text('导出 SGF')),
             if (widget.type == GameType.go)
               const PopupMenuItem(value: 'import', child: Text('导入 SGF')),
+            if (widget.type == GameType.go)
+              const PopupMenuItem(value: 'record_tools', child: Text('棋谱工具')),
+            if (widget.type == GameType.go)
+              const PopupMenuItem(
+                value: 'show_sgf',
+                child: Text('显示 / 复制 SGF'),
+              ),
             if (widget.type == GameType.go &&
                 _goRecord.current.children.isNotEmpty)
               const PopupMenuItem(value: 'variations', child: Text('切换复盘变化')),
@@ -1632,6 +1862,9 @@ class _GamePageState extends State<GamePage> {
           placementMode: placementMode,
           onPreviewCell: _previewGoCell,
           onCancelPreview: _cancelGoPreview,
+          annotations: widget.type == GameType.go
+              ? _goRecord.current.properties
+              : const {},
         );
         final side = _sidePanel(context);
         return SingleChildScrollView(
@@ -1693,6 +1926,37 @@ class _GamePageState extends State<GamePage> {
                     ),
                   ),
                 ),
+              if (widget.type == GameType.go) ...[
+                const SizedBox(height: 12),
+                InkWell(
+                  onTap: _editComment,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.comment_outlined, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _goRecord.current.properties['C']?.firstOrNull ??
+                                '暂无注释，点击编辑。',
+                            style: TextStyle(
+                              color: _goRecord.current.properties['C'] == null
+                                  ? Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant
+                                  : null,
+                            ),
+                          ),
+                        ),
+                        const Icon(Icons.edit_outlined, size: 16),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(height: 14),
               SegmentedButton<bool>(
                 segments: [
