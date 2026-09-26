@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'go_ai_settings.dart';
 import 'go_engine_profiles.dart';
@@ -250,196 +249,461 @@ class _GoEngineEditorState extends State<GoEngineEditor> {
     }
   }
 
+  GoModelInfo? get _mainModel =>
+      _models.where((m) => m.id == _modelId).firstOrNull;
+  GoModelInfo? get _humanModel =>
+      _models.where((m) => m.id == _humanId).firstOrNull;
+
+  /// Badges follow the reference layout: whether the network is a human-style
+  /// one, whether it is the standard kind, and whether it is already on device.
+  List<_Badge> _badgesFor(GoModelInfo? model) {
+    if (model == null) return const [];
+    return [
+      if (model.isHumanModel)
+        const _Badge('人类棋风', _BadgeTone.accent)
+      else
+        const _Badge('普通', _BadgeTone.muted),
+      const _Badge('标准', _BadgeTone.warn),
+      if (model.bundled)
+        const _Badge('内置', _BadgeTone.ok)
+      else
+        const _Badge('已下载', _BadgeTone.ok),
+    ];
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(widget.profile == null ? '新增 AI 引擎' : '编辑 AI 引擎'),
-    ),
-    body: Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 720),
-        child: Form(
-          key: _form,
-          child: ListView(
-            padding: const EdgeInsets.all(20),
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final backendDescription = switch (_backend) {
+      GoEngineBackend.cpu => '兼容性最好，使用标准 KataGo 模型。',
+      GoEngineBackend.opencl => '使用 GPU / OpenCL 加速，支持标准 KataGo 模型。',
+      GoEngineBackend.tflite => '需要设备端 LiteRT 运行库，当前构建尚未包含。',
+    };
+
+    return Form(
+      key: _form,
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 8,
+          bottom: MediaQuery.viewInsetsOf(context).bottom + 20,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _field(
-                '配置名称',
+                '引擎名称',
                 TextFormField(
                   controller: _name,
                   validator: (v) =>
                       v == null || v.trim().isEmpty ? '请输入名称' : null,
                 ),
               ),
-              _field(
-                '运行方式',
-                DropdownButtonFormField<GoEngineBackend>(
-                  isExpanded: true,
-                  initialValue: _backend,
-                  items: GoEngineBackend.values
-                      .map(
-                        (v) => DropdownMenuItem(
-                          value: v,
-                          child: Text(
-                            v == GoEngineBackend.tflite
-                                ? '${v.label}（当前不可用）'
-                                : v.label,
-                          ),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) => setState(() => _backend = v ?? _backend),
-                ),
+              _sectionTitle('主模型'),
+              _pickerCard(
+                title: _mainModel?.name ?? '内置',
+                badges: _badgesFor(_mainModel),
+                subtitle: _mainModel?.fileName,
+                onTap: _pickMainModel,
               ),
-              if (kIsWeb)
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 20),
+              _sectionTitle('人类棋风模型'),
+              _pickerCard(
+                title: _humanModel?.name ?? '点击选择',
+                badges: _badgesFor(_humanModel),
+                subtitle: _humanModel?.fileName,
+                leadingIcon: _humanModel == null ? Icons.add : null,
+                onTap: _pickHumanModel,
+              ),
+              if (_humanModel != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
                   child: Text(
-                    '静态 Web 使用 WASM CPU；OpenCL 配置在浏览器中以 CPU 运行，TFLite 模型不能在浏览器使用。',
+                    '这个引擎已配置人类棋风模型，因此段位难度会使用人类棋风下法。'
+                    'Max 只使用主模型。',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: colors.onSurfaceVariant,
+                    ),
                   ),
                 ),
-              _field(
-                '主模型',
-                DropdownButtonFormField<String>(
-                  key: ValueKey('main-$_modelId-${_models.length}'),
-                  initialValue: _models.any((m) => m.id == _modelId)
-                      ? _modelId
-                      : '',
-                  isExpanded: true,
-                  items: [
-                    const DropdownMenuItem(value: '', child: Text('在新局设置中选择')),
-                    ..._models.map(
-                      (m) => DropdownMenuItem(
-                        value: m.id,
-                        child: Text(
-                          '${m.name} · ${m.kind.label}',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                  ],
-                  onChanged: (v) =>
-                      setState(() => _modelId = v == '' ? null : v),
-                ),
-              ),
-              _field(
-                '独立人类棋风模型',
-                DropdownButtonFormField<String>(
-                  key: ValueKey('human-$_humanId-${_models.length}'),
-                  initialValue:
-                      _models.any((m) => m.id == _humanId && m.isHumanModel)
-                      ? _humanId
-                      : '',
-                  isExpanded: true,
-                  items: [
-                    const DropdownMenuItem(value: '', child: Text('不使用')),
-                    ..._models
-                        .where((m) => m.isHumanModel)
-                        .map(
-                          (m) => DropdownMenuItem(
-                            value: m.id,
-                            child: Text(
-                              m.name,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ),
-                  ],
-                  onChanged: (v) =>
-                      setState(() => _humanId = v == '' ? null : v),
-                ),
+              _sectionTitle('运行方式'),
+              _pickerCard(
+                title: _backend.label,
+                subtitle: backendDescription,
+                onTap: _pickBackend,
               ),
               if (_backend == GoEngineBackend.opencl) ...[
-                _field(
-                  'OpenCL GPU 编号',
-                  TextFormField(
-                    controller: _gpu,
-                    keyboardType: TextInputType.number,
-                    validator: (v) =>
-                        (int.tryParse(v ?? '') ?? -1) < 0 ? '请输入非负整数' : null,
-                  ),
-                ),
-                _field(
-                  '设备 OpenCL 驱动库',
-                  TextFormField(
-                    controller: _library,
-                    decoration: const InputDecoration(
-                      hintText: 'libOpenCL.so 或 /vendor/lib64/libOpenCL.so',
-                    ),
+                _sectionTitle('OpenCL 调优'),
+                _tuningRow('主模型', widget.profile?.openclTuningState),
+                _tuningRow('人类模型', widget.profile?.openclTuningState),
+                const SizedBox(height: 4),
+                Text(
+                  '设备 OpenCL 驱动：${_library.text.trim().isEmpty ? '自动' : _library.text.trim()}'
+                  '　GPU ${_gpu.text.trim().isEmpty ? '0' : _gpu.text.trim()}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colors.onSurfaceVariant,
                   ),
                 ),
               ],
-              _field(
-                '每手思考时间（秒，0 为不限）',
-                TextFormField(
-                  controller: _time,
-                  keyboardType: TextInputType.number,
-                  validator: (v) {
-                    final n = int.tryParse(v ?? '');
-                    return n == null || n < 0 || n > 120 ? '请输入 0 至 120' : null;
-                  },
-                ),
+              _sectionTitle('配置'),
+              _pickerCard(
+                title: _cfg.text.trim().isEmpty ? '内置配置' : '自定义配置',
+                badges: [
+                  if (_cfg.text.trim().isEmpty)
+                    const _Badge('内置', _BadgeTone.ok)
+                  else
+                    const _Badge('自定义', _BadgeTone.accent),
+                ],
+                onTap: _editConfig,
               ),
-              _field(
-                '搜索线程（1–16）',
-                TextFormField(
-                  controller: _threads,
-                  keyboardType: TextInputType.number,
-                  validator: (v) {
-                    final n = int.tryParse(v ?? '');
-                    return n == null || n < 1 || n > 16 ? '请输入 1 至 16' : null;
-                  },
-                ),
+              _sectionTitle('Override 规则'),
+              _pickerCard(
+                title: '${_normal.length + _human.length} 条规则',
+                subtitle: [
+                  if (_normal.isNotEmpty) '普通棋风 ${_normal.length} 条',
+                  if (_human.isNotEmpty) '人类棋风 ${_human.length} 条',
+                ].join(' · '),
+                onTap: _editRules,
               ),
-              Text('自定义配置', style: Theme.of(context).textTheme.titleMedium),
-              const Text(
-                '合并顺序：内置参数 → 自定义 cfg → 全局/段位规则 → 最终参数覆盖。棋盘、规则和人类段位以新局设置为准。',
-              ),
-              TextButton.icon(
-                onPressed: _importConfig,
-                icon: const Icon(Icons.file_open_outlined),
-                label: const Text('导入 .cfg 文件'),
-              ),
-              _field(
-                '自定义 cfg',
-                TextFormField(
-                  controller: _cfg,
-                  minLines: 4,
-                  maxLines: 12,
-                  validator: _configValidator,
-                ),
-              ),
-              _rules(false),
-              _rules(true),
-              _field(
-                '最终 KataGo 参数覆盖',
-                TextFormField(
-                  controller: _overrides,
-                  minLines: 3,
-                  maxLines: 8,
-                  validator: _configValidator,
-                  decoration: const InputDecoration(
-                    hintText: 'maxVisits = 800\nallowResignation = false',
-                  ),
-                ),
-              ),
+              const SizedBox(height: 12),
               if (_error != null)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Text(
-                    _error!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(_error!, style: TextStyle(color: colors.error)),
+                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('取消'),
                     ),
                   ),
-                ),
-              FilledButton(onPressed: _save, child: const Text('保存配置')),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: _save,
+                      child: const Text('保存'),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget _sectionTitle(String text) => Padding(
+    padding: const EdgeInsets.only(top: 16, bottom: 6),
+    child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600)),
+  );
+
+  /// A tappable card standing in for a secondary screen, as in the reference
+  /// layout: the sheet itself stays a short list of summaries.
+  Widget _pickerCard({
+    required String title,
+    required VoidCallback onTap,
+    List<_Badge> badges = const [],
+    String? subtitle,
+    IconData? leadingIcon,
+  }) => Card(
+    margin: EdgeInsets.zero,
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Row(
+          children: [
+            if (leadingIcon != null) ...[
+              Icon(leadingIcon, size: 20),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (badges.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Wrap(spacing: 6, runSpacing: 4, children: badges),
+                    ),
+                  if (subtitle != null && subtitle.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right),
+          ],
+        ),
+      ),
     ),
   );
+
+  /// Tuning is per network, so the main and human models are listed separately.
+  /// Re-tuning itself is not wired up yet.
+  Widget _tuningRow(String label, GoOpenClTuningState? state) => Padding(
+    padding: const EdgeInsets.only(bottom: 6),
+    child: Row(
+      children: [
+        Expanded(child: Text(label)),
+        Text(
+          state?.label ?? GoOpenClTuningState.unknown.label,
+          style: TextStyle(
+            fontSize: 13,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton.icon(
+          onPressed: _retune,
+          icon: const Icon(Icons.refresh, size: 16),
+          label: const Text('重调'),
+        ),
+      ],
+    ),
+  );
+
+  Future<void> _retune() async {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('OpenCL 调优尚未接入，暂不能重新调优')));
+  }
+
+  Future<void> _pickBackend() async {
+    final picked = await showModalBottomSheet<GoEngineBackend>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: RadioGroup<GoEngineBackend>(
+          groupValue: _backend,
+          onChanged: (v) => Navigator.pop(sheetContext, v ?? _backend),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final value in GoEngineBackend.values)
+                RadioListTile<GoEngineBackend>(
+                  value: value,
+                  title: Text(value.label),
+                  subtitle: Text(switch (value) {
+                    GoEngineBackend.cpu => '兼容性最好，使用标准 KataGo 模型。',
+                    GoEngineBackend.opencl =>
+                      '使用 GPU / OpenCL 加速，支持标准 KataGo 模型。',
+                    GoEngineBackend.tflite => '需要设备端 LiteRT 运行库，当前构建尚未包含。',
+                  }),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (picked != null && mounted) setState(() => _backend = picked);
+  }
+
+  Future<void> _pickMainModel() async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              title: const Text('在新局设置中选择'),
+              onTap: () => Navigator.pop(sheetContext, ''),
+            ),
+            for (final model in _models)
+              ListTile(
+                title: Text(model.name),
+                subtitle: Text('${model.kind.label} · ${model.fileName}'),
+                trailing: model.id == _modelId ? const Icon(Icons.check) : null,
+                onTap: () => Navigator.pop(sheetContext, model.id),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null && mounted) {
+      setState(() => _modelId = picked.isEmpty ? null : picked);
+    }
+  }
+
+  Future<void> _pickHumanModel() async {
+    final candidates = _models.where((m) => m.isHumanModel).toList();
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            ListTile(
+              title: const Text('不使用'),
+              onTap: () => Navigator.pop(sheetContext, ''),
+            ),
+            for (final model in candidates)
+              ListTile(
+                title: Text(model.name),
+                subtitle: Text(model.fileName),
+                trailing: model.id == _humanId ? const Icon(Icons.check) : null,
+                onTap: () => Navigator.pop(sheetContext, model.id),
+              ),
+            if (candidates.isEmpty)
+              const ListTile(
+                title: Text('尚无人类棋风模型'),
+                subtitle: Text('请先在 AI 模型中下载人类棋风网络'),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null && mounted) {
+      setState(() => _humanId = picked.isEmpty ? null : picked);
+    }
+  }
+
+  Future<void> _editConfig() async {
+    final text = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 8,
+          bottom: MediaQuery.viewInsetsOf(sheetContext).bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('自定义配置', style: TextStyle(fontWeight: FontWeight.w600)),
+            const Padding(
+              padding: EdgeInsets.only(top: 6, bottom: 12),
+              child: Text(
+                '合并顺序：内置参数 → 自定义 cfg → 全局/段位规则 → 最终参数覆盖。'
+                '棋盘、规则和人类段位以新局设置为准。',
+                style: TextStyle(fontSize: 12),
+              ),
+            ),
+            TextFormField(
+              controller: _cfg,
+              minLines: 6,
+              maxLines: 14,
+              validator: _configValidator,
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton.icon(
+                    onPressed: _importConfig,
+                    icon: const Icon(Icons.file_open_outlined, size: 18),
+                    label: const Text('导入 .cfg'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () => Navigator.pop(sheetContext, 'ok'),
+                    child: const Text('完成'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    if (text != null && mounted) setState(() {});
+  }
+
+  Future<void> _editRules() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Override 规则',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+              ),
+              _rules(false),
+              _rules(true),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  child: const Text('完成'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+}
+
+/// Small coloured pill used on the picker cards.
+enum _BadgeTone { muted, accent, warn, ok }
+
+class _Badge extends StatelessWidget {
+  final String text;
+  final _BadgeTone tone;
+  const _Badge(this.text, this.tone);
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final (bg, fg) = switch (tone) {
+      _BadgeTone.muted => (
+        colors.surfaceContainerHighest,
+        colors.onSurfaceVariant,
+      ),
+      _BadgeTone.accent => (colors.primaryContainer, colors.onPrimaryContainer),
+      _BadgeTone.warn => (colors.tertiaryContainer, colors.onTertiaryContainer),
+      _BadgeTone.ok => (colors.secondaryContainer, colors.onSecondaryContainer),
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: fg),
+      ),
+    );
+  }
 }
 
 class _OverrideDialog extends StatefulWidget {

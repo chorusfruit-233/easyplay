@@ -40,9 +40,26 @@ class _GoEngineManagerPageState extends State<GoEngineManagerPage> {
   }
 
   Future<void> _edit([GoEngineProfile? existing]) async {
-    final saved = await Navigator.push<GoEngineProfile>(
-      context,
-      MaterialPageRoute(builder: (_) => GoEngineEditor(profile: existing)),
+    // A sheet rather than a route: the editor is a short list of summaries, and
+    // each card opens its own secondary screen.
+    final saved = await showModalBottomSheet<GoEngineProfile>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
+            child: Text(
+              existing == null ? '新增引擎' : '编辑引擎',
+              style: Theme.of(sheetContext).textTheme.titleLarge,
+            ),
+          ),
+          Flexible(child: GoEngineEditor(profile: existing)),
+        ],
+      ),
     );
     if (saved == null || !mounted) return;
     await GoEngineLibrary.setActive(saved.id);

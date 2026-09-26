@@ -31,19 +31,43 @@ void main() {
         ],
       );
       await GoEngineLibrary.save(profile);
+      // The editor is a sheet in the real app, so host it the same way: a
+      // column that keeps the sheet body scrollable under a title.
       await tester.pumpWidget(
-        const MaterialApp(home: GoEngineEditor(profile: profile)),
+        MaterialApp(
+          home: Scaffold(body: GoEngineEditor(profile: profile)),
+        ),
       );
       await tester.pumpAndSettle();
+
+      // Rename through the name field.
       await tester.enterText(find.byType(TextFormField).first, 'renamed GPU');
       tester.testTextInput.hide();
-      await tester.scrollUntilVisible(
-        find.text('保存配置'),
-        400,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.tap(find.text('保存配置'));
       await tester.pumpAndSettle();
+
+      // The cfg text now lives behind the summary card, so open that screen,
+      // leave the value alone and come back.
+      await tester.ensureVisible(find.text('自定义配置'));
+      await tester.tap(find.text('自定义配置'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text(
+          '合并顺序：内置参数 → 自定义 cfg → 全局/段位规则 → 最终参数覆盖。'
+          '棋盘、规则和人类段位以新局设置为准。',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('nnCacheSizePowerOfTwo=18'), findsOneWidget);
+      await tester.tap(find.text('完成'));
+      await tester.pumpAndSettle();
+
+      // OpenCL tuning rows are only shown for the OpenCL backend.
+      expect(find.text('OpenCL 调优'), findsOneWidget);
+      expect(find.text('已调优'), findsNWidgets(2));
+      await tester.ensureVisible(find.text('保存'));
+      await tester.tap(find.text('保存'));
+      await tester.pumpAndSettle();
+
       expect(tester.takeException(), isNull);
       final saved = await GoEngineLibrary.byId(profile.id);
       expect(saved.name, 'renamed GPU');
@@ -54,4 +78,63 @@ void main() {
       expect(saved.openclTunedSnapshotKeys, ['verified']);
     },
   );
+
+  testWidgets('the OpenCL section is hidden for the CPU backend', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GoEngineEditor(
+            profile: const GoEngineProfile(
+              id: 'cpu',
+              name: 'CPU',
+              backend: GoEngineBackend.cpu,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('OpenCL 调优'), findsNothing);
+    expect(find.text('重调'), findsNothing);
+    // The backend card summarises the current choice. "CPU" can legitimately
+    // appear more than once (picker card plus a badge), so assert presence.
+    expect(find.text('CPU'), findsWidgets);
+  });
+
+  testWidgets('the human model card offers a picker when nothing is chosen', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: GoEngineEditor(
+            profile: const GoEngineProfile(
+              id: 'plain',
+              name: 'Plain',
+              backend: GoEngineBackend.cpu,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('点击选择'), findsOneWidget);
+    expect(find.text('保存'), findsOneWidget);
+  });
 }
