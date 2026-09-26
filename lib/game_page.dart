@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'game_session.dart';
 import 'go_file_service.dart';
 import 'go_sgf.dart';
+import 'go_record.dart';
 import 'go_storage.dart';
 import 'go_ai_settings.dart';
 import 'go_models.dart';
@@ -61,6 +62,7 @@ class GamePage extends StatefulWidget {
 
 class _GamePageState extends State<GamePage> {
   late GameSession session;
+  late GoSgfController _goRecord;
   late GoAiSettings aiSettings;
   bool vsComputer = true;
   Side humanSide = Side.black;
@@ -69,7 +71,6 @@ class _GamePageState extends State<GamePage> {
   bool _modalOpen = false;
   bool _adjudicationInProgress = false;
   String _gameId = DateTime.now().microsecondsSinceEpoch.toString();
-  String? _sgfSource;
   final KataGoAndroidRuntime _kataGo = KataGoAndroidRuntime();
   final KataGoWebRuntime _webKataGo = KataGoWebRuntime();
   bool _engineUnavailableNotified = false;
@@ -128,6 +129,7 @@ class _GamePageState extends State<GamePage> {
   void initState() {
     super.initState();
     session = GameSession(widget.type, goConfig: widget.goConfig);
+    _goRecord = _newRecordForSession(session);
     aiSettings = widget.aiSettings ?? const GoAiSettings();
     vsComputer = aiSettings.opponentMode != GoOpponentMode.local;
     humanSide = aiSettings.resolvePlayerSide();
@@ -139,6 +141,27 @@ class _GamePageState extends State<GamePage> {
         _showGoSettings(requiredAtStart: true);
       }
     });
+  }
+
+  GoSgfController _newRecordForSession(GameSession game) {
+    final record = GoSgfController(config: game.goConfig);
+    final black = <String>[];
+    final white = <String>[];
+    for (var row = 0; row < game.size; row++) {
+      for (var col = 0; col < game.size; col++) {
+        final stone = game.initialGoBoard[row][col];
+        if (stone == null) continue;
+        (stone.side == Side.black ? black : white).add(
+          _sgfCoordinate(Cell(row, col)),
+        );
+      }
+    }
+    if (black.isNotEmpty) record.root.properties['AB'] = black;
+    if (white.isNotEmpty) record.root.properties['AW'] = white;
+    record.root.properties['PL'] = [
+      game.initialGoTurn == Side.black ? 'B' : 'W',
+    ];
+    return record;
   }
 
   void _previewGoCell(Cell cell) {
@@ -160,6 +183,24 @@ class _GamePageState extends State<GamePage> {
       return;
     }
     if (!_canPlay) return;
+    if (widget.type == GameType.go) {
+      final candidate = _goRecord.replayCurrentPath();
+      if (!candidate.placeGo(cell)) return;
+      _goRecord.appendMove(candidate.moves.last);
+      setState(() {
+        session = _goRecord.replayCurrentPath();
+        selected = null;
+        targets = const [];
+      });
+      _persistGo();
+      // Keep the engine and the record cursor in lockstep before asking for
+      // the reply. This also prevents a stale search from using the previous
+      // branch when a human move was appended at a historical node.
+      _recordMoveForEngine(
+        session.moves.last,
+      ).whenComplete(_scheduleComputerMove);
+      return;
+    }
     final before = session.moves.length;
     setState(() {
       if (widget.type == GameType.go) {
@@ -256,18 +297,11 @@ class _GamePageState extends State<GamePage> {
     ];
   }
 
-  Future<void> _undoKataGo(int count) async {
-    if (!_kataGo.isStarted) return;
-    for (var i = 0; i < count; i++) {
-      await _kataGo.send('undo');
-    }
-  }
-
   Future<void> _persistGo() async {
     if (widget.type != GameType.go) return;
     try {
       await GoStorage.saveLast(
-        GoSgf.exportGame(session),
+        _persistedRecordSgf(),
         gameId: _gameId,
         vsComputer: vsComputer,
         aiSettings: aiSettings,
@@ -277,6 +311,39 @@ class _GamePageState extends State<GamePage> {
       _notice('棋局未保存，请导出 SGF 备份：$e');
     }
   }
+
+  String _persistedRecordSgf() {
+    if (widget.type != GameType.go) return '';
+    final currentProperties = _goRecord.current.properties;
+    if (session.deadGoStones.isEmpty) {
+      currentProperties.remove('XDS');
+    } else {
+      currentProperties['XDS'] = session.deadGoStones
+          .map(_sgfCoordinate)
+          .toList();
+    }
+    if (session.goScoreConfirmed) {
+      currentProperties['XSC'] = ['1'];
+      final score = session.calculateGoScore();
+      _goRecord.root.properties['RE'] = [
+        score.winner == null
+            ? '0'
+            : '${score.winner == Side.black ? 'B' : 'W'}+${score.resignation ? 'R' : score.margin}',
+      ];
+    } else {
+      currentProperties.remove('XSC');
+      if (session.goResignedSide == null) {
+        final result = _goRecord.root.properties['RE']?.first.toUpperCase();
+        if (result != 'B+R' && result != 'W+R') {
+          _goRecord.root.properties.remove('RE');
+        }
+      }
+    }
+    return _goRecord.exportSgf();
+  }
+
+  String _sgfCoordinate(Cell cell) =>
+      '${String.fromCharCode(97 + cell.col)}${String.fromCharCode(97 + cell.row)}';
 
   void _scheduleComputerMove() {
     if (!mounted ||
@@ -299,16 +366,25 @@ class _GamePageState extends State<GamePage> {
         return;
       }
       var played = false;
+      final recordNodeBeforeSearch = _goRecord.current;
       if (widget.type == GameType.go &&
           _usesKataGo &&
           _androidKataGoSupported) {
         try {
           if (!_kataGo.isStarted) await _startKataGoAndReplay();
-          if (!mounted || generation != _computerGeneration) return;
+          if (!mounted ||
+              generation != _computerGeneration ||
+              !identical(recordNodeBeforeSearch, _goRecord.current)) {
+            return;
+          }
           final vertex = (await _kataGo.send(
             'genmove ${session.turn == Side.black ? 'B' : 'W'}',
           )).trim();
-          if (!mounted || generation != _computerGeneration) return;
+          if (!mounted ||
+              generation != _computerGeneration ||
+              !identical(recordNodeBeforeSearch, _goRecord.current)) {
+            return;
+          }
           played = _playGtpVertex(vertex);
           if (!played) throw StateError('KataGo 返回了非法着手：$vertex');
         } catch (error) {
@@ -334,7 +410,11 @@ class _GamePageState extends State<GamePage> {
             moves: session.moves.map(_gtpCommand).toList(),
             side: session.turn,
           )).trim();
-          if (!mounted || generation != _computerGeneration) return;
+          if (!mounted ||
+              generation != _computerGeneration ||
+              !identical(recordNodeBeforeSearch, _goRecord.current)) {
+            return;
+          }
           played = _playGtpVertex(vertex);
           if (!played) throw StateError('KataGo 返回了非法着手：$vertex');
         } catch (error) {
@@ -368,9 +448,21 @@ class _GamePageState extends State<GamePage> {
   }
 
   bool _playGtpVertex(String vertex) {
-    if (vertex.toLowerCase() == 'pass') return session.passGo();
-    if (vertex.toLowerCase() == 'resign') return session.resignGo();
-    return session.placeGo(_cellFromGtp(vertex));
+    if (widget.type != GameType.go) return false;
+    final candidate = _goRecord.replayCurrentPath();
+    final ok = vertex.toLowerCase() == 'pass'
+        ? candidate.passGo()
+        : vertex.toLowerCase() == 'resign'
+        ? candidate.resignGo()
+        : candidate.placeGo(_cellFromGtp(vertex));
+    if (!ok) return false;
+    if (vertex.toLowerCase() == 'resign') {
+      _goRecord.appendResignation(candidate.goResignedSide ?? candidate.turn);
+    } else {
+      _goRecord.appendMove(candidate.moves.last);
+    }
+    session = _goRecord.replayCurrentPath();
+    return true;
   }
 
   String _gtpCommand(GameMove move) =>
@@ -387,18 +479,21 @@ class _GamePageState extends State<GamePage> {
       _adjudicationInProgress = false;
       selected = null;
       targets = const [];
-      if (undoCount == 2) {
+      if (widget.type == GameType.go) {
+        for (var i = 0; i < undoCount; i++) {
+          _goRecord.navigateParent();
+        }
+        session = _goRecord.replayCurrentPath();
+      } else if (undoCount == 2) {
         session.undo();
         session.undo();
       } else {
         session.undo();
       }
     });
-    try {
-      await _undoKataGo(undoCount);
-    } catch (_) {
-      await _kataGo.stop();
-    }
+    // Rebuild the engine from the selected SGF path on its next turn. A GTP
+    // undo count cannot represent setup nodes, resignation nodes or branches.
+    await _kataGo.stop();
     _persistGo();
     _scheduleComputerMove();
   }
@@ -407,8 +502,14 @@ class _GamePageState extends State<GamePage> {
     final generation = ++_computerGeneration;
     setState(() {
       _gameId = DateTime.now().microsecondsSinceEpoch.toString();
-      session.reset();
-      _sgfSource = null;
+      if (widget.type == GameType.go) {
+        _goRecord = _newRecordForSession(
+          GameSession(GameType.go, goConfig: session.goConfig),
+        );
+        session = _goRecord.replayCurrentPath();
+      } else {
+        session.reset();
+      }
       selected = null;
       targets = const [];
       computerThinking = false;
@@ -426,7 +527,10 @@ class _GamePageState extends State<GamePage> {
 
   Future<void> _pass() async {
     if (!_canPlay) return;
-    setState(() => session.passGo());
+    final candidate = _goRecord.replayCurrentPath();
+    if (!candidate.passGo()) return;
+    _goRecord.appendMove(candidate.moves.last);
+    setState(() => session = _goRecord.replayCurrentPath());
     if (session.moves.isNotEmpty) {
       await _recordMoveForEngine(session.moves.last);
     }
@@ -438,8 +542,34 @@ class _GamePageState extends State<GamePage> {
     }
   }
 
+  Future<void> _continueGo() async {
+    if (widget.type != GameType.go || !session.gameOver) return;
+    _computerGeneration++;
+    // A double pass is a terminal branch. Continuing means returning to the
+    // first pass node and leaving the second pass as an intact sibling; the
+    // next move appended by the user therefore becomes a new SGF variation.
+    if (_goRecord.current.move?.pass == true &&
+        _goRecord.current.parent?.move?.pass == true) {
+      _goRecord.navigateParent();
+    } else if (_goRecord.current.parent != null) {
+      _goRecord.navigateParent();
+    }
+    await _kataGo.stop();
+    if (!mounted) return;
+    setState(() {
+      session = _goRecord.replayCurrentPath();
+      selected = null;
+      targets = const [];
+      computerThinking = false;
+      _adjudicationInProgress = false;
+    });
+    await _persistGo();
+    _scheduleComputerMove();
+  }
+
   Future<void> _autoAdjudicate(int generation) async {
     if (_adjudicationInProgress || !session.gameOver || !mounted) return;
+    final recordNodeBeforeAdjudication = _goRecord.current;
     setState(() => _adjudicationInProgress = true);
     try {
       final setup = _gtpSetupCommands();
@@ -462,7 +592,12 @@ class _GamePageState extends State<GamePage> {
       } else {
         throw UnsupportedError('当前平台没有可用的 KataGo 终局裁定引擎');
       }
-      if (!mounted || generation != _computerGeneration) return;
+      if (!mounted) return;
+      if (generation != _computerGeneration ||
+          !identical(recordNodeBeforeAdjudication, _goRecord.current)) {
+        setState(() => _adjudicationInProgress = false);
+        return;
+      }
       final dead = <Cell>{};
       for (final vertex in deadResponse.split(RegExp(r'\s+'))) {
         if (vertex.trim().isEmpty) continue;
@@ -485,7 +620,12 @@ class _GamePageState extends State<GamePage> {
       });
       _persistGo();
     } catch (error) {
-      if (!mounted || generation != _computerGeneration) return;
+      if (!mounted) return;
+      if (generation != _computerGeneration ||
+          !identical(recordNodeBeforeAdjudication, _goRecord.current)) {
+        setState(() => _adjudicationInProgress = false);
+        return;
+      }
       setState(() => _adjudicationInProgress = false);
       _notice('自动死活裁定失败，请双方核对死子后手动确认：$error');
     }
@@ -1162,12 +1302,12 @@ class _GamePageState extends State<GamePage> {
       if (!mounted) return;
       setState(() {
         _gameId = DateTime.now().microsecondsSinceEpoch.toString();
-        session.setGoConfig(result.goConfig);
+        session = GameSession(GameType.go, goConfig: result.goConfig);
+        _goRecord = _newRecordForSession(session);
         aiSettings = result.aiSettings;
         vsComputer = aiSettings.opponentMode != GoOpponentMode.local;
         _engineUnavailableNotified = false;
         humanSide = aiSettings.resolvePlayerSide();
-        _sgfSource = null;
         selected = null;
         targets = const [];
         _adjudicationInProgress = false;
@@ -1179,7 +1319,7 @@ class _GamePageState extends State<GamePage> {
 
   Future<void> _exportSgf() async {
     if (widget.type != GameType.go) return;
-    final sgf = GoSgf.exportGame(session);
+    final sgf = _persistedRecordSgf();
     try {
       final saved = await GoFileService.saveSgf(sgf);
       _notice(saved ? 'SGF 已保存或提交浏览器下载' : '已取消保存');
@@ -1190,17 +1330,25 @@ class _GamePageState extends State<GamePage> {
 
   void _replaceGo(
     GameSession imported, {
+    GoSgfController? record,
     String? id,
     bool computer = false,
     GoAiSettings? settings,
     Side? restoredHumanSide,
-    String? source,
   }) {
     _computerGeneration++;
     _kataGo.stop();
     setState(() {
-      session = imported;
-      _sgfSource = source;
+      _goRecord = record ?? _newRecordForSession(imported);
+      if (record == null) {
+        for (final move in imported.moves) {
+          _goRecord.appendMove(move);
+        }
+        if (imported.goResignedSide != null) {
+          _goRecord.appendResignation(imported.goResignedSide!);
+        }
+      }
+      session = _goRecord.replayCurrentPath();
       _gameId = id ?? DateTime.now().microsecondsSinceEpoch.toString();
       aiSettings =
           settings ??
@@ -1244,10 +1392,11 @@ class _GamePageState extends State<GamePage> {
         if (selection == null || !mounted) return;
         selectedPath = selection;
       }
-      _replaceGo(
-        GoSgf.importGame(text, variation: paths[selectedPath].choices),
-        source: text,
+      final record = GoSgfController.fromSgf(
+        text,
+        variation: paths[selectedPath].choices,
       );
+      _replaceGo(record.replayCurrentPath(), record: record);
       _notice(paths.length > 1 ? '已导入所选变化；导出时会保留原棋谱分支。' : 'SGF 已导入，切换为本地双人。');
     } catch (e) {
       _notice('SGF 导入失败，原棋局已保留：$e');
@@ -1260,34 +1409,41 @@ class _GamePageState extends State<GamePage> {
   }
 
   Future<void> _chooseSgfVariation() async {
-    final source = _sgfSource;
-    if (source == null || widget.type != GameType.go) return;
-    final paths = GoSgf.variations(source);
-    if (paths.length < 2) {
-      _notice('当前棋谱没有其他变化');
+    if (widget.type != GameType.go || _goRecord.current.children.isEmpty) {
+      _notice('当前位置没有其他变化');
       return;
     }
     _pauseComputer();
     try {
-      if (!mounted) return;
       final selectedPath = await showDialog<int>(
         context: context,
         builder: (context) => SimpleDialog(
-          title: const Text('切换复盘变化'),
+          title: const Text('选择后续着手'),
           children: [
-            for (var i = 0; i < paths.length; i++)
+            for (var i = 0; i < _goRecord.current.children.length; i++)
               SimpleDialogOption(
                 onPressed: () => Navigator.pop(context, i),
-                child: Text(paths[i].label),
+                child: Text(_recordChildLabel(i)),
               ),
           ],
         ),
       );
       if (selectedPath != null && mounted) {
-        _replaceGo(
-          GoSgf.importGame(source, variation: paths[selectedPath].choices),
-          source: source,
-        );
+        final previous = _goRecord.current;
+        if (_goRecord.navigateChild(selectedPath)) {
+          try {
+            setState(() {
+              session = _goRecord.replayCurrentPath();
+              selected = null;
+              targets = const [];
+            });
+            await _kataGo.stop();
+            await _persistGo();
+          } catch (error) {
+            _goRecord.navigateTo(previous);
+            _notice('此变化无法重放：$error');
+          }
+        }
       }
     } catch (e) {
       _notice('切换变化失败：$e');
@@ -1297,6 +1453,38 @@ class _GamePageState extends State<GamePage> {
         _scheduleComputerMove();
       }
     }
+  }
+
+  String _recordChildLabel(int index) {
+    final node = _goRecord.current.children[index];
+    if (node.resignedSide case final resigned?) {
+      return '变化 ${index + 1} · ${resigned.label}认输';
+    }
+    final move = node.move;
+    if (move == null) return '变化 ${index + 1}';
+    if (move.pass) return '变化 ${index + 1} · ${move.side?.label}停一手';
+    final coordinate =
+        '${'ABCDEFGHJKLMNOPQRST'[move.to.col]}${session.size - move.to.row}';
+    return '变化 ${index + 1} · ${move.side?.label} $coordinate';
+  }
+
+  Future<void> _navigateRecordParent() async {
+    if (widget.type != GameType.go || !_goRecord.navigateParent()) return;
+    _computerGeneration++;
+    setState(() {
+      session = _goRecord.replayCurrentPath();
+      selected = null;
+      targets = const [];
+      computerThinking = false;
+      _adjudicationInProgress = false;
+    });
+    try {
+      await _kataGo.stop();
+    } catch (_) {
+      // The board projection already moved to the selected record node.
+    }
+    await _persistGo();
+    _scheduleComputerMove();
   }
 
   Future<void> _restoreGo() async {
@@ -1312,13 +1500,14 @@ class _GamePageState extends State<GamePage> {
         _notice('暂无已保存的围棋对局');
         return;
       }
+      final record = GoSgfController.fromSgf(text);
       _replaceGo(
-        GoSgf.importGame(text),
+        record.replayCurrentPath(),
+        record: record,
         id: id,
         computer: computer,
         settings: restoredSettings,
         restoredHumanSide: restoredHumanSide,
-        source: text,
       );
     } catch (e) {
       _notice('恢复失败，原棋局已保留：$e');
@@ -1355,7 +1544,10 @@ class _GamePageState extends State<GamePage> {
                 ],
         ),
       );
-      if (text != null && mounted) _replaceGo(GoSgf.importGame(text));
+      if (text != null && mounted) {
+        final record = GoSgfController.fromSgf(text);
+        _replaceGo(record.replayCurrentPath(), record: record);
+      }
     } catch (e) {
       _notice('读取棋谱失败：$e');
     } finally {
@@ -1409,7 +1601,8 @@ class _GamePageState extends State<GamePage> {
               const PopupMenuItem(value: 'sgf', child: Text('导出 SGF')),
             if (widget.type == GameType.go)
               const PopupMenuItem(value: 'import', child: Text('导入 SGF')),
-            if (widget.type == GameType.go && _sgfSource != null)
+            if (widget.type == GameType.go &&
+                _goRecord.current.children.isNotEmpty)
               const PopupMenuItem(value: 'variations', child: Text('切换复盘变化')),
             const PopupMenuItem(value: 'records', child: Text('对局记录')),
             const PopupMenuItem(value: 'reset', child: Text('重新开始')),
@@ -1568,13 +1761,7 @@ class _GamePageState extends State<GamePage> {
                     child: const Text('确认计分'),
                   ),
                 TextButton(
-                  onPressed: _adjudicationInProgress
-                      ? null
-                      : () {
-                          setState(() => session.resumeGo());
-                          _persistGo();
-                          _scheduleComputerMove();
-                        },
+                  onPressed: _adjudicationInProgress ? null : _continueGo,
                   child: const Text('继续对局'),
                 ),
               ],
@@ -1597,6 +1784,41 @@ class _GamePageState extends State<GamePage> {
                   ),
                 ],
               ),
+              if (widget.type == GameType.go &&
+                  (_goRecord.current.parent != null ||
+                      _goRecord.current.children.isNotEmpty)) ...[
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    IconButton(
+                      tooltip: '棋谱上一步',
+                      onPressed: _goRecord.current.parent == null
+                          ? null
+                          : _navigateRecordParent,
+                      icon: const Icon(Icons.chevron_left),
+                    ),
+                    Expanded(
+                      child: Text(
+                        _goRecord.current.isRoot
+                            ? '棋谱起点'
+                            : '${session.moves.length} 手 · 棋谱节点',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: '选择后续变化',
+                      onPressed: _goRecord.current.children.isEmpty
+                          ? null
+                          : _chooseSgfVariation,
+                      icon: const Icon(Icons.fork_right),
+                    ),
+                  ],
+                ),
+              ],
               const SizedBox(height: 8),
               SizedBox(
                 height: 108,
