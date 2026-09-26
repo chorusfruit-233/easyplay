@@ -7,6 +7,7 @@ EasyPlay 是一个面向 Android 和 Web 的 Flutter 棋类应用，目标支持
 完整的项目结构、规则边界、构建方式、Gradle 注意事项、测试约定和后续需求模板见：
 
 - [开发文档](docs/DEVELOPMENT.md)
+- [AI 引擎、模型与 OpenCL 使用说明](docs/AI_ENGINES.md)
 
 快速运行：
 
@@ -19,7 +20,7 @@ flutter run -d chrome
 
 ```bash
 flutter build web
-python3 -m http.server 8080 --directory build/web
+python3 tools/serve_web.py --port 8080
 ```
 
 运行测试：

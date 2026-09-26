@@ -22,7 +22,7 @@
 - 围棋更多菜单提供“恢复上次对局”和“对局记录”。导入/从列表载入默认本地双人；恢复上次对局同时恢复模式。
 - 测试文件：go_regression_test.dart、go_storage_test.dart、go_widget_regression_test.dart。
 
-仍未完成：Web 静态端 KataGo 的跨源隔离部署验证、逐手 SGF 浏览/分支树编辑/中途摆子复盘。Android 和 Web 均已接入本地 KataGo b6 推理；Web 静态主机需配置 COOP/COEP 响应头。
+仍未完成：逐手 SGF 浏览/分支树编辑/中途摆子复盘。Android 和 Web 均已接入本地 KataGo b6 推理；带 COOP/COEP 响应头的本地静态 Firefox/WASM 已验证，生产部署仍需检查响应头。AI 引擎的 CPU/OpenCL、人类棋风、自定义配置、override 规则及平台边界见 [AI 引擎说明](AI_ENGINES.md)。
 
 ## 1. 项目定位
 
@@ -290,7 +290,7 @@ flutter run -d chrome
 
 ```bash
 flutter build web
-python3 -m http.server 8080 --directory build/web
+python3 tools/serve_web.py --port 8080
 ```
 
 浏览器访问：
@@ -308,7 +308,7 @@ http://localhost:8080
 ```bash
 flutter pub get
 flutter build web --release
-python3 -m http.server 8080 --directory build/web
+python3 tools/serve_web.py --port 8080
 ```
 
 `build/web` 可以直接上传到 Nginx、Caddy、GitHub Pages、对象存储静态网站或 CDN。需要将所有未知路径回退到 `index.html`，并允许浏览器下载 `.sgf` 文件。棋局最近记录使用浏览器 `localStorage`（通过 `shared_preferences`），不依赖服务器；清理浏览器站点数据会清除本地记录。
@@ -554,7 +554,7 @@ AI：是否需要；难度、思考时间、是否允许提示
 
 ```bash
 flutter build web
-python3 -m http.server 8080 --directory build/web
+python3 tools/serve_web.py --port 8080
 ```
 
 再打开 `http://localhost:8080`，并强制刷新浏览器。
