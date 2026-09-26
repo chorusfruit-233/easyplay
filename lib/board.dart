@@ -260,7 +260,10 @@ class BoardPainter extends CustomPainter {
         }
       }
     }
-    if (selected != null) {
+    // Go confirmation uses the circular preview below. The generic square
+    // selection highlight is only meaningful for chess/checkers and would
+    // leave a translucent square behind the preview stone on a Go board.
+    if (selected != null && type != GameType.go) {
       canvas.drawRect(
         _cellRect(selected!, step),
         Paint()..color = const Color(0x6651a6ff),
@@ -363,21 +366,38 @@ class BoardPainter extends CustomPainter {
         insideBoard(preview!, n) &&
         board[preview!.row][preview!.col] == null) {
       final center = _center(preview!, step);
+      const outerRing = Color(0xff5b9bd5);
+      final radius = step * .39;
+
+      // Render a light stone with two circular outlines. Keeping this entirely
+      // circular avoids the old square alpha overlay and matches the preview
+      // used by the reference client: blue focus ring plus a side-contrast
+      // inner ring around the tentative stone.
       canvas.drawCircle(
         center,
-        step * .39,
+        radius * .88,
         Paint()
           ..color = previewSide == Side.black
-              ? const Color(0x88909090)
-              : const Color(0x99fff4d6),
+              ? const Color(0xb0505050)
+              : const Color(0xd8fff1cf),
       );
       canvas.drawCircle(
         center,
-        step * .39,
+        radius,
         Paint()
-          ..color = const Color(0x88705040)
+          ..color = outerRing
           ..style = PaintingStyle.stroke
-          ..strokeWidth = 1,
+          ..strokeWidth = max(2, step * .045),
+      );
+      canvas.drawCircle(
+        center,
+        radius * .88,
+        Paint()
+          ..color = previewSide == Side.black
+              ? const Color(0xfff5f1e6)
+              : const Color(0xff4b3826)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = max(1.5, step * .035),
       );
     }
     for (final cell in deadStones) {
