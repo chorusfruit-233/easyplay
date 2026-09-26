@@ -9,6 +9,8 @@ import 'package:http/http.dart' as http;
 import 'game_session.dart';
 import 'go_ai_settings.dart';
 import 'go_engine_profiles.dart';
+import 'go_engine_config.dart';
+export 'go_engine_config.dart';
 import 'go_models.dart';
 import 'katago_web_stub.dart'
     if (dart.library.js_interop) 'katago_web.dart'
@@ -27,8 +29,7 @@ class KataGoModelSpec {
   });
 }
 
-/// The small b6 model is kept as a downloadable asset rather than checked into
-/// the Flutter bundle. This keeps Android APK and Web builds practical.
+/// The pinned b6 network is bundled for offline Android and static Web play.
 class KataGoCatalog {
   static final b6 = KataGoModelSpec(
     id: 'b6',
@@ -128,31 +129,105 @@ class KataGoGtpClient {
   }
 }
 
+Future<void> validateKataGoSelection(
+  GoAiSettings settings,
+  GoEngineProfile engine,
+) async {
+  settings.validateHumanStyle();
+  final main = await GoModelLibrary.byId(settings.modelId);
+  final human = settings.usesHumanStyle && settings.humanModelId != null
+      ? await GoModelLibrary.byId(settings.humanModelId!)
+      : null;
+  GoModelCompatibility.validate(
+    model: main,
+    engine: engine,
+    humanModel: human,
+    useBuiltinHumanStyle:
+        settings.usesHumanStyle && settings.useBuiltinHumanStyle,
+  );
+  if (main.isHumanModel && !settings.usesHumanStyle) {
+    throw ArgumentError('人类棋风主模型需要选择人类棋风和有效段位');
+  }
+}
+
 /// Android GTP transport. The Kotlin host owns the upstream KataGo process;
 /// all blocking pipe reads happen away from Flutter's UI thread.
 class KataGoAndroidRuntime {
   static const MethodChannel _channel = MethodChannel('easyplay/katago');
   bool _started = false;
+  int _generation = 0;
   Future<void> _tail = Future<void>.value();
   bool get isStarted => _started;
 
   static bool get isSupported =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
+  Future<Map<String, Object?>> backendPreflight(GoEngineBackend backend) async {
+    if (!isSupported) {
+      return {
+        'backend': backend.name,
+        'available': false,
+        'runnable': false,
+        'reason': '当前平台不是 Android',
+      };
+    }
+    final result = await _channel.invokeMethod<Map>('backendPreflight', {
+      'backend': backend.name,
+    });
+    return result?.cast<String, Object?>() ?? <String, Object?>{};
+  }
+
   Future<void> start({
     required GoConfig config,
     GoAiSettings settings = const GoAiSettings(),
   }) async {
     if (!isSupported) throw UnsupportedError('当前平台尚未接入 KataGo 原生引擎');
+    final generation = _generation;
     await _enqueue(() async {
+      if (generation != _generation) throw StateError('引擎启动已取消');
       if (_started) return;
       final model = await GoModelLibrary.load(settings.modelId);
       final engine = await GoEngineLibrary.byId(settings.engineProfileId);
+      await validateKataGoSelection(settings, engine);
+
+      await GoModelLibrary.validateForEngine(
+        id: settings.modelId,
+        backend: engine.backend,
+      );
+      Uint8List? humanModel;
+      if (settings.style == GoAiStyle.human &&
+          !settings.useBuiltinHumanStyle &&
+          settings.humanModelId != null) {
+        await GoModelLibrary.validateForEngine(
+          id: settings.humanModelId!,
+          backend: engine.backend,
+          humanModel: true,
+        );
+        humanModel = await GoModelLibrary.load(settings.humanModelId!);
+      }
       try {
-        await _channel.invokeMethod<String>('start', {
+        final configText = await _configText(config, settings, engine);
+        final arguments = <String, Object?>{
           'model': model,
-          'config': await _configText(config, settings, engine),
-        });
+          'modelFileName': (await GoModelLibrary.byId(
+            settings.modelId,
+          )).fileName,
+          if (humanModel != null) 'humanModel': humanModel,
+          if (humanModel != null)
+            'humanModelFileName': (await GoModelLibrary.info(
+              settings.humanModelId!,
+            )).fileName,
+
+          'backend': engine.backend.name,
+          'boardSize': config.boardSize,
+          if (engine.openclGpuIdx != null) 'openclGpuIdx': engine.openclGpuIdx,
+          if (engine.openclLibraryName != null)
+            'openclLibraryName': engine.openclLibraryName,
+          'config': configText,
+        };
+        if (generation != _generation) throw StateError('引擎启动已取消');
+        await _channel.invokeMethod<String>('start', arguments);
+        if (generation != _generation) throw StateError('引擎启动已取消');
         _started = true;
         await _sendNow('boardsize ${config.boardSize}');
         await _sendNow('clear_board');
@@ -179,11 +254,11 @@ class KataGoAndroidRuntime {
     return response ?? '';
   }
 
-  Future<void> stop() => _enqueue(() async {
-    if (!_started) return;
+  Future<void> stop() async {
+    _generation++;
     _started = false;
-    await _channel.invokeMethod<String>('stop');
-  });
+    if (isSupported) await _channel.invokeMethod<String>('stop');
+  }
 
   Future<T> _enqueue<T>(Future<T> Function() action) {
     final result = _tail.then((_) => action());
@@ -198,75 +273,12 @@ class KataGoAndroidRuntime {
     GoAiSettings settings,
     GoEngineProfile engine,
   ) async {
-    final source = await rootBundle.loadString('assets/katago/gtp_example.cfg');
-    return buildKataGoConfig(
-      source,
+    return resolveKataGoConfig(
       config: config,
       settings: settings,
       engine: engine,
     );
   }
-}
-
-String buildKataGoConfig(
-  String source, {
-  required GoConfig config,
-  required GoAiSettings settings,
-  GoEngineProfile engine = GoEngineProfile.builtIn,
-}) {
-  var result = source;
-  final rules = switch (config.rules) {
-    GoRuleSet.chinese => 'chinese',
-    GoRuleSet.japanese => 'japanese',
-    GoRuleSet.korean => 'korean',
-  };
-  final styleValues = settings.style == GoAiStyle.modern
-      ? {
-          'chosenMoveTemperatureEarly': '0.3',
-          'chosenMoveTemperature': '0.1',
-          'chosenMoveTemperatureHalflife': '30',
-        }
-      : {
-          'chosenMoveTemperatureEarly': '0.7',
-          'chosenMoveTemperature': '0.5',
-          'chosenMoveTemperatureHalflife': '19',
-        };
-  final values = <String, String>{
-    'rules': rules,
-    'maxVisits': '${settings.rank.maxVisits}',
-    'numSearchThreads': '${engine.searchThreads}',
-    if (engine.maxTimeSeconds > 0) 'maxTime': '${engine.maxTimeSeconds}',
-    'logAllGTPCommunication': 'false',
-    'logSearchInfo': 'false',
-    'logToStderr': 'true',
-    'allowResignation': 'false',
-    ...styleValues,
-  };
-  for (final entry in values.entries) {
-    result = _setKataGoConfigValue(result, entry.key, entry.value);
-  }
-  for (final line in engine.configOverrides.split('\n')) {
-    final trimmed = line.trim();
-    if (trimmed.isEmpty || trimmed.startsWith('#')) continue;
-    final separator = trimmed.indexOf('=');
-    if (separator <= 0) continue;
-    result = _setKataGoConfigValue(
-      result,
-      trimmed.substring(0, separator).trim(),
-      trimmed.substring(separator + 1).trim(),
-    );
-  }
-  return result;
-}
-
-String _setKataGoConfigValue(String source, String key, String value) {
-  final expression = RegExp(
-    '^#?\\s*${RegExp.escape(key)}\\s*=.*\$',
-    multiLine: true,
-  );
-  return expression.hasMatch(source)
-      ? source.replaceFirst(expression, '$key = $value')
-      : '$source\n$key = $value\n';
 }
 
 /// Browser engine adapter. Each request runs in a same-origin Web Worker with
@@ -281,14 +293,45 @@ class KataGoWebRuntime {
     required List<String> moves,
     required Side side,
   }) async {
-    final modelBase64 = settings.modelId == GoModelLibrary.bundledId
-        ? null
-        : base64Encode(await GoModelLibrary.load(settings.modelId));
     final engine = await GoEngineLibrary.byId(settings.engineProfileId);
+    await validateKataGoSelection(settings, engine);
+    if (engine.backend == GoEngineBackend.tflite) {
+      throw UnsupportedError('静态 Web 不支持 TFLite，请选择 CPU/WASM 和标准模型');
+    }
+    final mainModelId = settings.modelId;
+    await GoModelLibrary.validateForEngine(
+      id: mainModelId,
+      backend: GoEngineBackend.cpu,
+    );
+    final modelBase64 = mainModelId == GoModelLibrary.bundledId
+        ? null
+        : base64Encode(await GoModelLibrary.load(mainModelId));
+    final humanModelBase64 =
+        settings.style == GoAiStyle.human &&
+            !settings.useBuiltinHumanStyle &&
+            settings.humanModelId != null
+        ? base64Encode(await _loadWebHumanModel(settings.humanModelId!))
+        : null;
+    final configText = await resolveKataGoConfig(
+      config: config,
+      settings: settings,
+      engine: engine,
+      forWeb: true,
+    );
     return web_katago.genmoveOnWeb(
       config: config,
       settings: settings,
       modelBase64: modelBase64,
+      modelFileName: (await GoModelLibrary.byId(mainModelId)).fileName,
+      humanModelFileName: humanModelBase64 == null
+          ? null
+          : (await GoModelLibrary.byId(settings.humanModelId!)).fileName,
+      humanModelBase64: humanModelBase64,
+      humanSLProfile: settings.usesHumanStyle
+          ? settings.resolvedHumanSLProfile
+          : null,
+      backend: engine.backend.name,
+      configText: configText,
       maxTimeSeconds: engine.maxTimeSeconds,
       searchThreads: engine.searchThreads,
       configOverrides: engine.configOverrides,
@@ -304,19 +347,58 @@ class KataGoWebRuntime {
     required List<String> setup,
     required List<String> moves,
   }) async {
-    final modelBase64 = settings.modelId == GoModelLibrary.bundledId
-        ? null
-        : base64Encode(await GoModelLibrary.load(settings.modelId));
     final engine = await GoEngineLibrary.byId(settings.engineProfileId);
+    await validateKataGoSelection(settings, engine);
+    if (engine.backend == GoEngineBackend.tflite)
+      throw UnsupportedError('静态 Web 不支持 TFLite');
+    final mainModelId = settings.modelId;
+    await GoModelLibrary.validateForEngine(
+      id: mainModelId,
+      backend: GoEngineBackend.cpu,
+    );
+    final modelBase64 = mainModelId == GoModelLibrary.bundledId
+        ? null
+        : base64Encode(await GoModelLibrary.load(mainModelId));
+    final humanModelBase64 =
+        settings.style == GoAiStyle.human &&
+            !settings.useBuiltinHumanStyle &&
+            settings.humanModelId != null
+        ? base64Encode(await _loadWebHumanModel(settings.humanModelId!))
+        : null;
+    final configText = await resolveKataGoConfig(
+      config: config,
+      settings: settings,
+      engine: engine,
+      forWeb: true,
+    );
     return web_katago.adjudicateOnWeb(
       config: config,
       settings: settings,
       modelBase64: modelBase64,
+      modelFileName: (await GoModelLibrary.byId(mainModelId)).fileName,
+      humanModelFileName: humanModelBase64 == null
+          ? null
+          : (await GoModelLibrary.byId(settings.humanModelId!)).fileName,
+      humanModelBase64: humanModelBase64,
+      humanSLProfile: settings.usesHumanStyle
+          ? settings.resolvedHumanSLProfile
+          : null,
+      backend: engine.backend.name,
+      configText: configText,
       maxTimeSeconds: engine.maxTimeSeconds,
       searchThreads: engine.searchThreads,
       configOverrides: engine.configOverrides,
       setup: setup,
       moves: moves,
     );
+  }
+
+  Future<Uint8List> _loadWebHumanModel(String id) async {
+    await GoModelLibrary.validateForEngine(
+      id: id,
+      backend: GoEngineBackend.cpu,
+      humanModel: true,
+    );
+    return GoModelLibrary.load(id);
   }
 }

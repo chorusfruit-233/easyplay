@@ -3,6 +3,8 @@ import 'package:easyplay/game_session.dart';
 import 'package:easyplay/katago.dart';
 import 'package:easyplay/go_ai_settings.dart';
 import 'package:easyplay/go_engine_profiles.dart';
+import 'package:easyplay/go_models.dart';
+import 'package:easyplay/go_sgf.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -14,6 +16,119 @@ void main() {
       KataGoDownloadClient.sha256Hex(bytes),
       'f5d32604e3675c480c7c8f6aa579a1ea857135628a0afccc8fa56330fbacd38d',
     );
+    expect(inspectGoModel(bytes), GoModelKind.standard);
+  });
+
+  test(
+    'human config applies global and rank rules with identical final precedence',
+    () {
+      final config = buildKataGoConfig(
+        'rules = japanese\nmaxVisits = 5\nmaxVisits = 6',
+        config: const GoConfig(boardSize: 13),
+        settings: const GoAiSettings(
+          style: GoAiStyle.human,
+          humanModelId: 'human',
+          humanStyleRank: -4,
+        ),
+        bundledOverride: 'maxVisits=120\nnumSearchThreads=4',
+        engine: const GoEngineProfile(
+          id: 'test',
+          name: 'test',
+          customConfig: 'maxVisits=80',
+          configOverrides: 'maxVisits=700\nrules=japanese\nkoRule=SIMPLE',
+          humanOverrideRules: [
+            GoEngineOverrideRule(
+              id: 'global',
+              displayName: 'all',
+              configText: 'maxTime=2',
+            ),
+            GoEngineOverrideRule(
+              id: 'range',
+              displayName: '5d–6d',
+              rankMin: -4,
+              rankMax: -5,
+              configText: 'maxVisits=300',
+            ),
+          ],
+        ),
+      );
+      final values = parseKataGoConfig(config);
+      expect(values['maxVisits'], '700');
+      expect(values['maxTime'], '2');
+      expect(values['numSearchThreads'], '4');
+      expect(values['humanSLProfile'], 'rank_5d');
+      expect(values['rules'], 'chinese');
+      expect(values['defaultBoardSize'], '13');
+      expect(values.containsKey('koRule'), false);
+      expect(
+        RegExp(r'^maxVisits =', multiLine: true).allMatches(config).length,
+        1,
+      );
+    },
+  );
+
+  test(
+    'switching to normal play removes human config; unlimited time clears limits',
+    () {
+      final values = parseKataGoConfig(
+        buildKataGoConfig(
+          'maxTime=2\nhumanSLProfile=rank_2d',
+          config: const GoConfig(),
+          settings: const GoAiSettings(),
+          engine: const GoEngineProfile(
+            id: 'test',
+            name: 'test',
+            maxTimeSeconds: 0,
+          ),
+        ),
+      );
+      expect(values['maxTime'], '1e20');
+      expect(values.containsKey('humanSLProfile'), false);
+    },
+  );
+
+  test('AI resignation records the correct winner and SGF result', () {
+    final game = GameSession(GameType.go);
+    game.placeGo(const Cell(3, 3));
+    expect(game.resignGo(), true);
+    expect(game.winner, Side.black);
+    expect(game.calculateGoScore().result, '黑中盘胜');
+    final restored = GoSgf.importGame(GoSgf.exportGame(game));
+    expect(restored.goResignedSide, Side.white);
+    expect(restored.resumeGo(), true);
+    expect(restored.gameOver, false);
+    expect(restored.moves.length, 1);
+  });
+
+  test('normal overrides follow normal rank after leaving human style', () {
+    final values = parseKataGoConfig(
+      buildKataGoConfig(
+        '',
+        config: const GoConfig(),
+        settings: const GoAiSettings(rank: GoAiRank.dan1, humanStyleRank: 20),
+        engine: const GoEngineProfile(
+          id: 'ranked',
+          name: 'Ranked',
+          overrideRules: [
+            GoEngineOverrideRule(
+              id: 'kyu',
+              displayName: 'Kyu',
+              rankMin: 20,
+              rankMax: 1,
+              configText: 'maxVisits=25',
+            ),
+            GoEngineOverrideRule(
+              id: 'dan',
+              displayName: 'Dan',
+              rankMin: 0,
+              rankMax: -8,
+              configText: 'maxVisits=1000',
+            ),
+          ],
+        ),
+      ),
+    );
+    expect(values['maxVisits'], '1000');
   });
 
   test('GTP wrapper sends initialization and extracts responses', () async {

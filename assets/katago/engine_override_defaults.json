@@ -1,0 +1,33 @@
+{
+  "version": 2,
+  "normalRules": [
+    {
+      "id": "global",
+      "displayName": "All difficulties"
+    }
+  ],
+  "humanRules": [
+    {
+      "id": "global",
+      "displayName": "All difficulties"
+    },
+    {
+      "id": "human_20k_4d",
+      "displayName": "20k to 4d",
+      "rankMin": 20,
+      "rankMax": -3
+    },
+    {
+      "id": "human_5d_6d",
+      "displayName": "5d to 6d",
+      "rankMin": -4,
+      "rankMax": -5
+    },
+    {
+      "id": "human_7d_9d",
+      "displayName": "7d to 9d",
+      "rankMin": -6,
+      "rankMax": -8
+    }
+  ]
+}

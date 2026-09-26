@@ -40,6 +40,7 @@ dependencies:
   file_picker: ^8.1.7
   shared_preferences: ^2.5.3
   dynamic_color: ^2.1.0
+  archive: ^4.3.0
 
 dev_dependencies:
   flutter_test:
@@ -69,7 +70,10 @@ flutter:
     - assets/katago/MODEL-LICENSE.txt
     - assets/katago/KATAGO-LICENSE.txt
     - assets/katago/EIGEN-LICENSE.txt
+    - assets/katago/android_gtp.cfg
     - assets/katago/gtp_example.cfg
+    - assets/katago/engine_override_defaults.json
+    - assets/katago/engine_overrides/
     - assets/katago/THIRD-PARTY-LICENSES/
     - assets/katago/COPYING.APACHE
     - assets/katago/COPYING.BSD
