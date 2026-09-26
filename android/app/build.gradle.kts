@@ -42,6 +42,8 @@ android {
         jniLibs {
             useLegacyPackaging = true
             keepDebugSymbols += "**/libkatago.so"
+            keepDebugSymbols += "**/libkatago-opencl.so"
+            keepDebugSymbols += "**/libkatago-opencl-probe.so"
         }
     }
 }
