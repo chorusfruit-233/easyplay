@@ -4,6 +4,7 @@ import 'game_session.dart';
 import 'go_file_service.dart';
 import 'go_sgf.dart';
 import 'go_record.dart';
+import 'go_variation_tree.dart';
 import 'go_storage.dart';
 import 'go_ai_settings.dart';
 import 'go_models.dart';
@@ -1468,8 +1469,17 @@ class _GamePageState extends State<GamePage> {
     return '变化 ${index + 1} · ${move.side?.label} $coordinate';
   }
 
-  Future<void> _navigateRecordParent() async {
-    if (widget.type != GameType.go || !_goRecord.navigateParent()) return;
+  /// Moves the record cursor to [node] and replays that path into the session.
+  /// Used by the variation tree, where tapping any node jumps straight to it.
+  Future<void> _navigateRecordTo(GoRecordNode node) async {
+    if (widget.type != GameType.go || !_goRecord.navigateTo(node)) return;
+    await _applyRecordCursor();
+  }
+
+  /// Shared tail for every record navigation: stop the engine so it cannot
+  /// answer for a position the board no longer shows, replay the new cursor
+  /// path, persist, then reschedule the computer move.
+  Future<void> _applyRecordCursor() async {
     _computerGeneration++;
     setState(() {
       session = _goRecord.replayCurrentPath();
@@ -1787,36 +1797,42 @@ class _GamePageState extends State<GamePage> {
               if (widget.type == GameType.go &&
                   (_goRecord.current.parent != null ||
                       _goRecord.current.children.isNotEmpty)) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
                 Row(
                   children: [
-                    IconButton(
-                      tooltip: '棋谱上一步',
-                      onPressed: _goRecord.current.parent == null
-                          ? null
-                          : _navigateRecordParent,
-                      icon: const Icon(Icons.chevron_left),
-                    ),
-                    Expanded(
-                      child: Text(
-                        _goRecord.current.isRoot
-                            ? '棋谱起点'
-                            : '${session.moves.length} 手 · 棋谱节点',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                          fontSize: 12,
-                        ),
+                    Text(
+                      '变化树',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
-                    IconButton(
-                      tooltip: '选择后续变化',
-                      onPressed: _goRecord.current.children.isEmpty
-                          ? null
-                          : _chooseSgfVariation,
-                      icon: const Icon(Icons.fork_right),
+                    const Spacer(),
+                    Text(
+                      _goRecord.current.isRoot
+                          ? '棋谱起点'
+                          : '第 ${GoVariationLayout.moveNumber(_goRecord.current)} 手',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
+                    if (_goRecord.current.children.isNotEmpty)
+                      IconButton(
+                        tooltip: '选择后续变化',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: _chooseSgfVariation,
+                        icon: const Icon(Icons.fork_right, size: 20),
+                      ),
                   ],
+                ),
+                const SizedBox(height: 4),
+                // Tapping any disc jumps straight to that record node.
+                GoVariationTree(
+                  root: _goRecord.root,
+                  current: _goRecord.current,
+                  onSelect: _navigateRecordTo,
                 ),
               ],
               const SizedBox(height: 8),
