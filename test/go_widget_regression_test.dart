@@ -154,6 +154,70 @@ void main() {
     await tester.pump(const Duration(seconds: 1));
   });
 
+  // On a phone-width board a 19-line grid is under the 24dp-per-cell threshold,
+  // so Automatic resolves to the confirmation flow rather than direct placement.
+  // The default test width is wide enough to resolve the other way, so without
+  // this case the flow every phone user actually gets would go untested.
+  testWidgets(
+    'automatic asks for confirmation on a phone-width 19-line board',
+    (tester) async {
+      expect(GoPlacementMode.automatic, isNotNull);
+      await GoPlacementPreferences.save(GoPlacementMode.automatic);
+      await open(tester, config: const GoConfig(boardSize: 19), width: 360);
+      await tester.pumpAndSettle();
+
+      final rect = tester.getRect(find.byType(Board));
+      final step = rect.width / 19;
+      expect(step, lessThan(24), reason: '前提：该宽度下应低于直接落子阈值');
+      final point = rect.topLeft + Offset(step * 5.5, step * 5.5);
+
+      // First tap only previews.
+      await tester.tapAt(point);
+      await tester.pump();
+      expect(session(tester).moves, isEmpty);
+
+      // Same intersection again commits it.
+      await tester.tapAt(point);
+      await tester.pump();
+      expect(session(tester).moves, hasLength(1));
+      expect(session(tester).pieceAt(const Cell(5, 5))?.side, Side.black);
+      await tester.pump(const Duration(seconds: 1));
+    },
+  );
+
+  testWidgets('automatic places directly on a wide board', (tester) async {
+    await GoPlacementPreferences.save(GoPlacementMode.automatic);
+    await open(tester, config: const GoConfig(boardSize: 19), width: 1100);
+    await tester.pumpAndSettle();
+
+    final rect = tester.getRect(find.byType(Board));
+    final step = rect.width / 19;
+    expect(step, greaterThanOrEqualTo(24), reason: '前提：该宽度下应达到直接落子阈值');
+
+    await tester.tapAt(rect.topLeft + Offset(step * 6.5, step * 6.5));
+    await tester.pump();
+    expect(session(tester).moves, hasLength(1));
+    expect(session(tester).pieceAt(const Cell(6, 6))?.side, Side.black);
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('automatic resolves to direct on 13-line even when narrow', (
+    tester,
+  ) async {
+    await GoPlacementPreferences.save(GoPlacementMode.automatic);
+    await open(tester, config: const GoConfig(boardSize: 13), width: 360);
+    await tester.pumpAndSettle();
+
+    final rect = tester.getRect(find.byType(Board));
+    final step = rect.width / 13;
+    expect(step, greaterThanOrEqualTo(24));
+
+    await tester.tapAt(rect.topLeft + Offset(step * 3.5, step * 3.5));
+    await tester.pump();
+    expect(session(tester).moves, hasLength(1));
+    await tester.pump(const Duration(seconds: 1));
+  });
+
   testWidgets('320px game controls fit without overflow', (tester) async {
     await open(tester, width: 320);
     await tester.ensureVisible(find.text('本地双人'));
