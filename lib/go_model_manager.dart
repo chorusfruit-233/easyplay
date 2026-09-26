@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import 'go_model_catalog.dart';
 import 'go_models.dart';
 import 'katago.dart';
 
@@ -98,191 +99,64 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
     }
   }
 
+  /// Download Models: a short list of known networks, mirroring the reference
+  /// product. Runtime entries ("latest" / "strongest") are resolved against
+  /// katagotraining.org and fall back to a pinned snapshot when offline.
   Future<void> _download() async {
-    final formKey = GlobalKey<FormState>();
-    final name = TextEditingController();
-    final url = TextEditingController();
-    final checksum = TextEditingController();
-    var kind = GoModelKind.standard;
-    KataGoDownloadClient? activeClient;
-    var downloading = false;
-    var progress = 0.0;
-    String? failure;
-    var installed = false;
-    await showDialog<void>(
+    final installed = (await _snapshot).models;
+    if (!mounted) return;
+    final picked = await showModalBottomSheet<GoModelCatalogEntry>(
       context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => PopScope(
-          canPop: !downloading,
-          child: AlertDialog(
-            title: const Text('下载 KataGo 模型'),
-            content: Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  spacing: 16,
-                  children: [
-                    DropdownButtonFormField<GoModelKind>(
-                      key: ValueKey(kind),
-                      initialValue: kind,
-                      decoration: const InputDecoration(labelText: '模型类型'),
-                      items: GoModelKind.values
-                          .map(
-                            (v) => DropdownMenuItem(
-                              value: v,
-                              child: Text(v.label),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: downloading
-                          ? null
-                          : (v) => setDialogState(() => kind = v ?? kind),
-                    ),
-                    TextButton(
-                      onPressed: downloading
-                          ? null
-                          : () => setDialogState(() {
-                              kind = GoModelKind.human;
-                              name.text = 'KataGo b18 人类棋风';
-                              url.text =
-                                  'https://github.com/lightvector/KataGo/releases/download/v1.15.0/b18c384nbt-humanv0.bin.gz';
-                            }),
-                      child: const Text('填写官方人类棋风模型地址'),
-                    ),
-                    TextFormField(
-                      controller: name,
-                      enabled: !downloading,
-                      decoration: const InputDecoration(labelText: '模型名称'),
-                      validator: (value) =>
-                          (value == null || value.trim().isEmpty)
-                          ? '请输入模型名称'
-                          : null,
-                    ),
-                    TextFormField(
-                      controller: url,
-                      enabled: !downloading,
-                      decoration: const InputDecoration(labelText: '模型下载 URL'),
-                      validator: (value) {
-                        final parsed = Uri.tryParse(value ?? '');
-                        return parsed == null ||
-                                !parsed.hasScheme ||
-                                !['http', 'https'].contains(parsed.scheme)
-                            ? '请输入有效的 HTTP(S) 地址'
-                            : null;
-                      },
-                    ),
-                    TextFormField(
-                      controller: checksum,
-                      enabled: !downloading,
-                      decoration: const InputDecoration(
-                        labelText: 'SHA-256（可选）',
-                      ),
-                    ),
-                    if (downloading) ...[
-                      const SizedBox(height: 16),
-                      LinearProgressIndicator(
-                        value: progress == 0 ? null : progress,
-                      ),
-                      const SizedBox(height: 8),
-                      Text('${(progress * 100).round()}%'),
-                    ],
-                    if (failure != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: Text(
-                          failure!,
-                          style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  activeClient?.client.close();
-                  Navigator.pop(dialogContext);
-                },
-                child: const Text('取消'),
-              ),
-              FilledButton(
-                onPressed: downloading
-                    ? null
-                    : () async {
-                        if (!formKey.currentState!.validate()) return;
-                        setDialogState(() {
-                          downloading = true;
-                          failure = null;
-                        });
-                        final uri = Uri.parse(url.text.trim());
-                        final spec = KataGoModelSpec(
-                          id: 'downloaded',
-                          displayName: name.text.trim(),
-                          url: uri,
-                          sha256: checksum.text.trim().isEmpty
-                              ? null
-                              : checksum.text.trim(),
-                        );
-                        final client = KataGoDownloadClient();
-                        activeClient = client;
-                        try {
-                          final bytes = await client.download(
-                            spec,
-                            onProgress: (received, total) {
-                              if (dialogContext.mounted &&
-                                  total != null &&
-                                  total > 0) {
-                                setDialogState(
-                                  () => progress = received / total,
-                                );
-                              }
-                            },
-                          );
-                          final info = await GoModelLibrary.install(
-                            name: name.text.trim(),
-                            fileName: uri.pathSegments.isEmpty
-                                ? 'katago-model.bin.gz'
-                                : uri.pathSegments.last,
-                            bytes: bytes,
-                            expectedSha256: spec.sha256,
-                            kind: kind,
-                          );
-                          if (info.kind == GoModelKind.standard) {
-                            await GoModelLibrary.setActive(info.id);
-                          }
-                          installed = true;
-                          if (dialogContext.mounted) {
-                            Navigator.pop(dialogContext);
-                          }
-                        } catch (error) {
-                          if (dialogContext.mounted) {
-                            setDialogState(() {
-                              downloading = false;
-                              failure = '下载或校验失败：$error';
-                            });
-                          }
-                        } finally {
-                          client.client.close();
-                        }
-                      },
-                child: const Text('下载并安装'),
-              ),
-            ],
-          ),
-        ),
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => _CatalogSheet(installed: installed),
+    );
+    if (picked == null || !mounted) return;
+    await _runDownload(picked);
+  }
+
+  Future<void> _runDownload(GoModelCatalogEntry entry) async {
+    final installed = (await _snapshot).models;
+    GoModelDownload? target;
+    var usedFallback = false;
+    try {
+      target = entry.isRemote
+          ? await GoModelCatalog.resolve(entry)
+          : GoModelDownload(
+              name: GoModelCatalog.downloadNameFor(entry),
+              url: entry.url!,
+              bytes: entry.bytes,
+              sha256: entry.sha256,
+            );
+    } catch (_) {
+      target = GoModelCatalog.fallbackFor(entry);
+      usedFallback = true;
+    }
+    if (target == null) {
+      _message('无法解析 ${entry.displayName} 的下载地址');
+      return;
+    }
+    if (installed.any((m) => m.name == target!.name)) {
+      _message('${entry.displayName} 已下载');
+      return;
+    }
+    if (!mounted) return;
+
+    // Progress state lives in the sheet so the row can show a bar.
+    final downloaded = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      builder: (sheetContext) => _DownloadProgress(
+        entry: entry,
+        target: target!,
+        usedFallback: usedFallback,
       ),
     );
-    name.dispose();
-    url.dispose();
-    checksum.dispose();
-    if (installed && mounted) {
+    if (downloaded == true && mounted) {
       setState(_reload);
-      _message('KataGo 模型已安装');
+      _message('${entry.displayName} 已安装');
     }
   }
 
@@ -413,4 +287,293 @@ class _ModelSnapshot {
   final List<GoModelInfo> models;
   final String activeId;
   const _ModelSnapshot({required this.models, required this.activeId});
+}
+
+/// The Download Models list: name, size, and current state per row.
+class _CatalogSheet extends StatelessWidget {
+  final List<GoModelInfo> installed;
+  const _CatalogSheet({required this.installed});
+
+  String _sizeLabel(int? bytes) {
+    if (bytes == null) return '大小未知';
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / 1048576).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / 1024).toStringAsFixed(0)} KB';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final entries = GoModelCatalog.entries();
+    return SafeArea(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('下载模型', style: Theme.of(context).textTheme.titleLarge),
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 12),
+              child: Text(
+                '内置 b6 适合基础对弈。更强的模型需要下载，'
+                '人类棋风模型需要 OpenCL 运行方式。',
+                style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+              ),
+            ),
+            for (final entry in entries)
+              _CatalogRow(
+                entry: entry,
+                installed: installed,
+                sizeLabel: _sizeLabel(
+                  entry.bytes ?? GoModelCatalog.fallbackFor(entry)?.bytes,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CatalogRow extends StatelessWidget {
+  final GoModelCatalogEntry entry;
+  final List<GoModelInfo> installed;
+  final String sizeLabel;
+  const _CatalogRow({
+    required this.entry,
+    required this.installed,
+    required this.sizeLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final resolved = GoModelCatalog.fallbackFor(entry);
+    final already = installed.any(
+      (m) => m.name == (resolved?.name ?? entry.id),
+    );
+    // Entries with neither a pinned URL nor an endpoint are retired upstream.
+    final retired = entry.url == null && entry.endpoint == null;
+    final enabled = !already && !retired;
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: InkWell(
+        onTap: enabled ? () => Navigator.pop(context, entry) : null,
+        borderRadius: BorderRadius.circular(18),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      entry.displayName,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: enabled ? null : colors.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${entry.description} · $sizeLabel',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: colors.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (already)
+                Text(
+                  '已下载',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: colors.primary,
+                  ),
+                )
+              else if (retired)
+                Text(
+                  '不可用',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colors.onSurfaceVariant,
+                  ),
+                )
+              else
+                const Icon(Icons.download_outlined, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Download + verify, with the states the reference product exposes:
+/// downloading, verifying, checksum mismatch, network error, cancelled.
+class _DownloadProgress extends StatefulWidget {
+  final GoModelCatalogEntry entry;
+  final GoModelDownload target;
+  final bool usedFallback;
+  const _DownloadProgress({
+    required this.entry,
+    required this.target,
+    required this.usedFallback,
+  });
+
+  @override
+  State<_DownloadProgress> createState() => _DownloadProgressState();
+}
+
+class _DownloadProgressState extends State<_DownloadProgress> {
+  final _client = KataGoDownloadClient();
+  double _progress = 0;
+  bool _verifying = false;
+  String? _failure;
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  @override
+  void dispose() {
+    _client.client.close();
+    super.dispose();
+  }
+
+  Future<void> _start() async {
+    final target = widget.target;
+    try {
+      final spec = KataGoModelSpec(
+        id: widget.entry.id,
+        displayName: widget.entry.displayName,
+        url: target.url,
+        sha256: target.sha256,
+      );
+      final bytes = await _client.download(
+        spec,
+        onProgress: (received, total) {
+          if (!mounted || total == null || total <= 0) return;
+          setState(() => _progress = received / total);
+        },
+      );
+      if (!mounted) return;
+      setState(() => _verifying = true);
+      final info = await GoModelLibrary.install(
+        name: target.name,
+        fileName: target.url.pathSegments.isEmpty
+            ? 'katago-model.bin.gz'
+            : target.url.pathSegments.last,
+        bytes: bytes,
+        expectedSha256: target.sha256,
+        kind: GoModelCatalog.kindOf(widget.entry),
+      );
+      if (info.kind == GoModelKind.standard) {
+        await GoModelLibrary.setActive(info.id);
+      }
+      if (mounted) Navigator.pop(context, true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _verifying = false;
+        _failure = _describe(error);
+      });
+    }
+  }
+
+  /// Names the failure the way the reference does, so a checksum problem is
+  /// distinguishable from a transport problem.
+  String _describe(Object error) {
+    final text = error.toString();
+    if (text.contains('校验') || text.contains('checksum')) {
+      return '校验和不匹配：下载内容与预期不符，已丢弃';
+    }
+    if (text.contains('HTTP')) return '网络错误，请稍后重试：$text';
+    return '下载失败：$text';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.entry.displayName,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              widget.target.name,
+              style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
+            ),
+            if (widget.usedFallback)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  '无法查询最新网络，改用内置快照（旧版）',
+                  style: TextStyle(fontSize: 12, color: colors.error),
+                ),
+              ),
+            const SizedBox(height: 16),
+            if (_failure == null) ...[
+              LinearProgressIndicator(
+                value: _verifying || _progress == 0 ? null : _progress,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _verifying ? '校验中…' : '下载中 ${(_progress * 100).round()}%',
+                style: const TextStyle(fontSize: 13),
+              ),
+            ] else ...[
+              Text(_failure!, style: TextStyle(color: colors.error)),
+            ],
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () {
+                      _client.client.close();
+                      Navigator.pop(context, false);
+                    },
+                    child: Text(_failure == null ? '取消' : '关闭'),
+                  ),
+                ),
+                if (_failure != null) ...[
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () {
+                        setState(() {
+                          _failure = null;
+                          _progress = 0;
+                        });
+                        _start();
+                      },
+                      child: const Text('重试'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
