@@ -1,6 +1,6 @@
 EasyPlay KataGo WebGPU 实现计划
 
-状态：实施中。W1 已完成本地无 COOP/COEP 响应头的隔离与 Eigen `genmove` / `adjudicate` 验证；W2 已构建独立 WebGPU Search ABI；W3 的 b6 两个局面 WebGPU/Eigen NN 对照通过；W4 的独立浏览器页已完成 GPU 分析与黑白双方 Search，Android 16 Chrome 在正式 Pages URL 的同一烟测页也通过。Node 验证单线程 b6 Eigen 回退。EasyPlay 桥接、终局裁定、自动回退与性能验收仍待完成。
+状态：实施中。W1 已完成本地无 COOP/COEP 响应头的隔离与 Eigen `genmove` / `adjudicate` 验证；W2 已构建独立 WebGPU Search ABI；W3 的 b6 两个局面 WebGPU/Eigen NN 对照通过。W4 已在独立浏览器页完成 GPU 分析与黑白双方 Search，Android 16 Chrome 在正式 Pages URL 的同一烟测页也通过；但 GTP `genmove` / `adjudicate` 接口尚未实现，W4 的退出标准未达成。Node 验证单线程 b6 Eigen 回退。EasyPlay 桥接、终局裁定、自动回退与性能验收仍待完成。
 
 当前固定源码：`saigo-online/katago-webgpu@d5ad1c0423dba989c60a2f06b1848e7eec2b5941`，Emscripten `6.0.3`，emdawnwebgpu `v20260423.175430`，Eigen `3.4.0@3147391d946bb4b6c68edd901f2add6ac1f31f8c`。fork 的浏览器构建导出 `kataeval-mt` C ABI；它包含 Search，但没有现有 GTP `genmove` / `final_score` 接口。接入 Flutter 前必须实现等价的桥接与裁定，并完成结果对照，不能直接替换 `web/katago/`。fork 对应的 upstream KataGo 提交尚未核实。线程版强制 CPU 时，独立浏览器页的评估调用返回 `unwind`；自动回退因此仍需解决。
 
