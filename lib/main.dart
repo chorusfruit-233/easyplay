@@ -3,7 +3,7 @@ import 'package:dynamic_color/dynamic_color.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'game_session.dart';
 import 'game_page.dart';
-import 'games/go_game.dart';
+import 'go_section_page.dart';
 import 'app_theme.dart';
 import 'settings_page.dart';
 
@@ -141,14 +141,18 @@ class Shell extends StatefulWidget {
 class _ShellState extends State<Shell> {
   GameType selected = GameType.go;
 
+  // Every entry into Go goes through the section shell, so the board and the
+  // library always share the same bottom bar.
   void _openGame(GameType game) {
     if (game != GameType.go) return;
     setState(() => selected = game);
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const GoGamePage()),
-    );
+    _openGoSection();
   }
+
+  void _openGoSection() => Navigator.push(
+    context,
+    MaterialPageRoute(builder: (_) => const GoSectionPage()),
+  );
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -276,7 +280,7 @@ class HomePage extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                const ContinueCard(),
+                ContinueCard(onStart: () => onPlay(GameType.go)),
               ],
             ),
           ),
@@ -419,7 +423,8 @@ class GameCard extends StatelessWidget {
 }
 
 class ContinueCard extends StatelessWidget {
-  const ContinueCard({super.key});
+  const ContinueCard({super.key, required this.onStart});
+  final VoidCallback onStart;
   @override
   Widget build(BuildContext context) => Card(
     elevation: 0,
@@ -444,13 +449,7 @@ class ContinueCard extends StatelessWidget {
         style: TextStyle(fontWeight: FontWeight.bold),
       ),
       subtitle: const Text('开始一盘新的围棋对局'),
-      trailing: FilledButton(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const GoGamePage()),
-        ),
-        child: const Text('开始'),
-      ),
+      trailing: FilledButton(onPressed: onStart, child: const Text('开始')),
     ),
   );
 }
