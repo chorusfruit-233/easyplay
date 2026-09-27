@@ -188,10 +188,32 @@ internal class AndroidKataGoGtp(
                 key.startsWith("opencl") || key.startsWith("nn") || key == "numSearchThreads"
             }.sorted().joinToString("\n")
 
+    /**
+     * Identifies the OpenCL program a tuning cache belongs to.
+     *
+     * Taken from the executable rather than from a hand-kept version string. That
+     * string still read `katago-v1.16.5-loader1` after the packaged engine had
+     * moved to v1.18.2, so every device that had already tuned kept reusing a
+     * cache produced by a different binary — [isTuned] said "done", the UI
+     * offered no retune, and KataGo would silently re-tune at startup instead.
+     * A hash of the file cannot drift, and it covers the OpenCL loader shim and
+     * any build-flag change as well as the engine version.
+     *
+     * Readable because `useLegacyPackaging = true` extracts the jniLibs into
+     * `nativeLibraryDir` as ordinary files rather than leaving them inside the
+     * APK. Computed once: the file cannot change while the process lives.
+     */
+    @Volatile private var openclBuildId: String? = null
+
+    private fun openclBuildId(): String {
+        openclBuildId?.let { return it }
+        return sha(executable("opencl").readBytes()).also { openclBuildId = it }
+    }
+
     private fun tuningKey(args: Map<*, *>): String {
         val model = args["model"] as? ByteArray ?: throw IllegalArgumentException("缺少主模型")
         val human = args["humanModel"] as? ByteArray
-        val identity = listOf("katago-v1.16.5-loader1", sha(model), human?.let(::sha) ?: "",
+        val identity = listOf(openclBuildId(), sha(model), human?.let(::sha) ?: "",
             boardSize(args).toString(), gpuIndex(args).toString(), args["openclLibraryName"] ?: "auto",
             tuningConfig(args), Build.FINGERPRINT).joinToString("\n")
         return sha(identity.toByteArray(Charsets.UTF_8))

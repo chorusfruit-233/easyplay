@@ -1,6 +1,6 @@
 # Android KataGo host
 
-`tools/build_katago_android.sh [cpu|opencl|all]` builds pinned KataGo v1.16.5.
+`tools/build_katago_android.sh [cpu|opencl|all]` builds pinned KataGo v1.18.2.
 The default is `all`. OpenCL-Headers v2025.07.22 is pinned at
 `8a97ebc88daa3495d6f57ec10bb515224400186f` (Khronos Group, Apache-2.0;
 the license is already bundled as `assets/katago/COPYING.APACHE`). The generated
@@ -14,6 +14,8 @@ The `easyplay/katago` MethodChannel uses these methods:
 | `backendPreflight` | `backend`: cpu/opencl/tflite; optional `openclLibraryName`, `openclGpuIdx`, and full model/config arguments below | Map: backend, available, runnable, library, reason, devices (index/name/vendor/version); with model: tuningId, tuned |
 | `start` | `model`: Uint8List, `config`: String; optional `modelFileName`, `backend` (cpu), `boardSize` (19), `openclGpuIdx` (-1 auto), `openclLibraryName`, `humanModel`: Uint8List, `humanModelFileName`, `humanSLProfile` | `ready` |
 | `command` | `line`: single GTP command | String GTP response without leading `=` |
+| `analyze` | `line`: a `kata-analyze` command; `minMillis`, `maxMillis`, optional `targetVisits` | Map: `reports` (the `info` lines collected), `reason` |
+| `analyzeCancel` | none | `cancelled`; ends a running analysis early, so it runs off the command queue |
 | `stop` | none | `stopped`; invalidates queued work and immediately detaches the old process |
 | `openclTuningStart` | Same model/config/board/GPU/library fields as `start`; optional `force`: bool | Tuning snapshot |
 | `openclTuningRead` | `id`: tuning job ID (omit for latest) | Tuning snapshot |
@@ -26,9 +28,16 @@ Tuning snapshots contain `id` (task UUID), `tuningId` (cache SHA-256), `status`
 and `logs` (latest 160 lines). Polling does not block on tuning or GTP search.
 Preflight is isolated in its own process with an eight second timeout.
 
+`kata-analyze` is the one command with no terminating response: KataGo prints `=`
+and then one report line per interval until the controller sends further input.
+`analyze` therefore parks a reader on the pipe, waits out its budget, and only
+then writes a blank line to end the stream, draining the trailing blank line so
+the next command's reply cannot be misread.
+
 The same neural-network/OpenCL configuration, model bytes, optional human model bytes, board size,
 GPU and driver library must be used for tuning and startup. Search strength, komi and human rank do not invalidate the tuning cache. The cache also
-includes the Android build fingerprint and engine version. A successful tuning
+includes the Android build fingerprint and a SHA-256 of the OpenCL executable
+itself, so replacing the engine invalidates caches produced by the old one. A successful tuning
 marker contains checksums for the generated cache files; changed or missing
 cache files require tuning again. Both main and human networks are tuned.
 
