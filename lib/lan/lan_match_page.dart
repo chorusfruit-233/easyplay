@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../board.dart';
 import '../game_session.dart';
+import '../go_placement.dart';
 import '../go_storage.dart';
 import 'lan_protocol.dart';
 import 'lan_transport.dart';
@@ -28,6 +29,7 @@ class _LanMatchPageState extends State<LanMatchPage> {
   final Set<Cell> _dead = {};
   bool _pending = false;
   bool _recovering = false;
+  GoPlacementMode _placementMode = GoPlacementMode.automatic;
   int? _shownUndo;
   int? _shownScore;
   String? _status;
@@ -47,6 +49,9 @@ class _LanMatchPageState extends State<LanMatchPage> {
     super.initState();
     _subscription = _connection.messages.listen(_onMessage);
     _disconnects = _connection.disconnections.listen((_) => _onDisconnected());
+    GoPlacementPreferences.load().then((mode) {
+      if (mounted) setState(() => _placementMode = mode);
+    });
   }
 
   @override
@@ -219,6 +224,15 @@ class _LanMatchPageState extends State<LanMatchPage> {
     });
   }
 
+  void _previewCell(Cell cell) {
+    if (!_myTurn || !_session.isLegalGoMove(cell)) return;
+    setState(() {});
+  }
+
+  void _cancelPreview() {
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     final game = _session;
@@ -254,11 +268,15 @@ class _LanMatchPageState extends State<LanMatchPage> {
               ),
             const SizedBox(height: 16),
             Board(
+              key: ValueKey(_connection.replica!.seq),
               type: GameType.go,
               session: game,
               selected: null,
               targets: const [],
               onCell: _onCell,
+              placementMode: _placementMode,
+              onPreviewCell: _previewCell,
+              onCancelPreview: _cancelPreview,
             ),
             const SizedBox(height: 16),
             if (!game.gameOver)
