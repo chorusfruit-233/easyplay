@@ -228,6 +228,35 @@ void main() {
     expect((await GoStorage.recentRecords()).length, 1);
   });
 
+  testWidgets('unfinished online record is read only and never starts KataGo', (
+    tester,
+  ) async {
+    var engineCalls = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(kataGo, (call) async {
+          engineCalls++;
+          return '';
+        });
+    await GoStorage.saveLast(
+      '(;GM[1]FF[4]SZ[9];B[aa])',
+      gameId: 'online-test',
+      kind: GoGameKind.online,
+    );
+    await openSection(tester);
+    await tester.tap(find.textContaining('第 ').first);
+    await tester.pumpAndSettle();
+    final board = tester.widget<Board>(find.byType(Board));
+    expect(board.session.moves, hasLength(1));
+    board.onCell(const Cell(1, 1));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<Board>(find.byType(Board)).session.moves,
+      hasLength(1),
+    );
+    expect(find.byTooltip('AI 与复盘'), findsNothing);
+    expect(engineCalls, 0);
+  });
+
   Future<void> openPanel(WidgetTester tester) async {
     await tester.tap(find.byTooltip('AI 与复盘'));
     await tester.pumpAndSettle();

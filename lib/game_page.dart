@@ -103,6 +103,9 @@ class _GamePageState extends State<GamePage> {
   late GoSgfController _goRecord;
   late GoAiSettings aiSettings;
   bool vsComputer = true;
+  GoGameKind? _recordKind;
+  bool get _onlineReplay =>
+      _recordKind == GoGameKind.online && !session.goScoreConfirmed;
   Side humanSide = Side.black;
   bool computerThinking = false;
   int _computerGeneration = 0;
@@ -166,11 +169,13 @@ class _GamePageState extends State<GamePage> {
   /// `allowComputerMoves: false` means no engine is consulted, so neither the
   /// turn gate nor the scheduler may treat one colour as the engine's.
   bool get _computerPlays =>
+      !_onlineReplay &&
       widget.allowComputerMoves &&
       vsComputer &&
       aiSettings.opponentMode == GoOpponentMode.kataGo;
 
   bool get _canPlay =>
+      !_onlineReplay &&
       !_modalOpen &&
       !session.gameOver &&
       !computerThinking &&
@@ -254,6 +259,7 @@ class _GamePageState extends State<GamePage> {
         record: record,
         id: saved.id.isEmpty ? null : saved.id,
         computer: saved.vsComputer,
+        kind: saved.kind,
         settings: saved.aiSettings,
         restoredHumanSide: saved.humanSide,
       );
@@ -297,6 +303,7 @@ class _GamePageState extends State<GamePage> {
   }
 
   void _onCell(Cell cell) {
+    if (_onlineReplay) return;
     if (_modalOpen || _adjudicationInProgress) return;
     if (widget.type == GameType.go && _activeMarkup != null) {
       final markup = _activeMarkup!;
@@ -597,6 +604,7 @@ class _GamePageState extends State<GamePage> {
   }
 
   Future<void> _startKataGoAndReplay() async {
+    if (_onlineReplay) return;
     await _kataGo.start(config: session.goConfig, settings: aiSettings);
     for (final command in _gtpSetupCommands()) {
       await _kataGo.send(command);
@@ -642,6 +650,7 @@ class _GamePageState extends State<GamePage> {
         _persistedRecordSgf(),
         gameId: _gameId,
         vsComputer: vsComputer,
+        kind: _recordKind == GoGameKind.online ? GoGameKind.online : null,
         aiSettings: aiSettings,
         humanSide: humanSide,
       );
@@ -685,6 +694,7 @@ class _GamePageState extends State<GamePage> {
 
   void _scheduleComputerMove() {
     if (!mounted ||
+        _onlineReplay ||
         _modalOpen ||
         !_computerPlays ||
         session.gameOver ||
@@ -839,6 +849,7 @@ class _GamePageState extends State<GamePage> {
   Future<void> _restart() async {
     final generation = ++_computerGeneration;
     setState(() {
+      _recordKind = null;
       _gameId = DateTime.now().microsecondsSinceEpoch.toString();
       if (widget.type == GameType.go) {
         _goRecord = _newRecordForSession(
@@ -961,6 +972,7 @@ class _GamePageState extends State<GamePage> {
   }
 
   Future<void> _autoAdjudicate(int generation) async {
+    if (_onlineReplay) return;
     if (_adjudicationInProgress || !session.gameOver || !mounted) return;
     final recordNodeBeforeAdjudication = _goRecord.current;
     setState(() => _adjudicationInProgress = true);
@@ -1045,7 +1057,7 @@ class _GamePageState extends State<GamePage> {
     bool requiredAtStart = false,
     bool preferEngine = false,
   }) async {
-    if (widget.type != GameType.go) return;
+    if (widget.type != GameType.go || _onlineReplay) return;
     if (requiredAtStart) {
       _computerGeneration++;
       setState(() {
@@ -1584,6 +1596,7 @@ class _GamePageState extends State<GamePage> {
         return;
       }
       setState(() {
+        _recordKind = null;
         _gameId = DateTime.now().microsecondsSinceEpoch.toString();
         session = GameSession(GameType.go, goConfig: result.goConfig);
         _goRecord = _newRecordForSession(session);
@@ -1616,12 +1629,14 @@ class _GamePageState extends State<GamePage> {
     GoSgfController? record,
     String? id,
     bool computer = false,
+    GoGameKind? kind,
     GoAiSettings? settings,
     Side? restoredHumanSide,
   }) {
     _computerGeneration++;
-    _kataGo.stop();
+    if (_kataGo.isStarted) _kataGo.stop();
     setState(() {
+      _recordKind = kind;
       _goRecord = record ?? _newRecordForSession(imported);
       if (record == null) {
         for (final move in imported.moves) {
@@ -1643,6 +1658,7 @@ class _GamePageState extends State<GamePage> {
       _engineUnavailableNotified = false;
       vsComputer = computer && aiSettings.opponentMode == GoOpponentMode.kataGo;
       _panelMode = vsComputer ? _GoPanelMode.play : _GoPanelMode.choose;
+      _robotPanelOpen = false;
       humanSide = restoredHumanSide ?? aiSettings.resolvePlayerSide();
       selected = null;
       targets = const [];
@@ -1786,6 +1802,7 @@ class _GamePageState extends State<GamePage> {
       final text = await GoStorage.loadLast();
       final id = await GoStorage.lastId();
       final computer = await GoStorage.lastComputerMode();
+      final kind = await GoStorage.lastKind();
       final restoredSettings = await GoStorage.lastAiSettings();
       final restoredHumanSide = await GoStorage.lastHumanSide();
       if (!mounted) return;
@@ -1799,6 +1816,7 @@ class _GamePageState extends State<GamePage> {
         record: record,
         id: id,
         computer: computer,
+        kind: kind,
         settings: restoredSettings,
         restoredHumanSide: restoredHumanSide,
       );
@@ -1858,12 +1876,18 @@ class _GamePageState extends State<GamePage> {
       actions: [
         IconButton(
           tooltip: '悔棋',
-          onPressed: session.moves.isEmpty ? null : _undo,
+          onPressed: _onlineReplay || session.moves.isEmpty ? null : _undo,
           icon: const Icon(Icons.undo),
         ),
         PopupMenuButton<String>(
           tooltip: '更多',
           onSelected: (value) {
+            if (_onlineReplay &&
+                value != 'sgf' &&
+                value != 'show_sgf' &&
+                value != 'records') {
+              return;
+            }
             if (value == 'reset') _restart();
             if (value == 'records') {
               if (widget.type == GameType.go) {
@@ -1880,13 +1904,13 @@ class _GamePageState extends State<GamePage> {
             if (value == 'show_sgf') _showSgfText();
           },
           itemBuilder: (_) => [
-            if (widget.type == GameType.go)
+            if (widget.type == GameType.go && !_onlineReplay)
               const PopupMenuItem(value: 'restore', child: Text('恢复上次对局')),
             if (widget.type == GameType.go)
               const PopupMenuItem(value: 'sgf', child: Text('导出 SGF')),
-            if (widget.type == GameType.go)
+            if (widget.type == GameType.go && !_onlineReplay)
               const PopupMenuItem(value: 'import', child: Text('导入 SGF')),
-            if (widget.type == GameType.go)
+            if (widget.type == GameType.go && !_onlineReplay)
               const PopupMenuItem(value: 'record_tools', child: Text('棋谱工具')),
             if (widget.type == GameType.go)
               const PopupMenuItem(
@@ -1894,10 +1918,12 @@ class _GamePageState extends State<GamePage> {
                 child: Text('显示 / 复制 SGF'),
               ),
             if (widget.type == GameType.go &&
+                !_onlineReplay &&
                 _goRecord.current.children.isNotEmpty)
               const PopupMenuItem(value: 'variations', child: Text('切换复盘变化')),
             const PopupMenuItem(value: 'records', child: Text('对局记录')),
-            const PopupMenuItem(value: 'reset', child: Text('重新开始')),
+            if (!_onlineReplay)
+              const PopupMenuItem(value: 'reset', child: Text('重新开始')),
           ],
         ),
       ],
@@ -1927,7 +1953,7 @@ class _GamePageState extends State<GamePage> {
         final belowBoard = Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (widget.type == GameType.go) ...[
+            if (widget.type == GameType.go && !_onlineReplay) ...[
               _recordToolbar(context),
               if (_cardsMerged)
                 _mergedCard(context)
@@ -1936,7 +1962,8 @@ class _GamePageState extends State<GamePage> {
                 const SizedBox(height: 8),
                 _treeCard(context),
               ],
-            ],
+            ] else if (_onlineReplay)
+              const Text('联机对局尚未结束。此处仅供查看棋谱；请返回房间继续对局。'),
           ],
         );
         final upper = wide
@@ -2013,17 +2040,18 @@ class _GamePageState extends State<GamePage> {
               onPressed: session.gameOver ? _continueGo : null,
               icon: const Icon(Icons.play_circle_outline),
             ),
-            IconButton(
-              tooltip: _robotPanelOpen ? '收起' : 'AI 与复盘',
-              onPressed: () =>
-                  setState(() => _robotPanelOpen = !_robotPanelOpen),
-              icon: Icon(
-                _robotPanelOpen ? Icons.keyboard_arrow_up : Icons.smart_toy,
+            if (!_onlineReplay)
+              IconButton(
+                tooltip: _robotPanelOpen ? '收起' : 'AI 与复盘',
+                onPressed: () =>
+                    setState(() => _robotPanelOpen = !_robotPanelOpen),
+                icon: Icon(
+                  _robotPanelOpen ? Icons.keyboard_arrow_up : Icons.smart_toy,
+                ),
               ),
-            ),
           ],
         ),
-        if (_robotPanelOpen) ...[
+        if (_robotPanelOpen && !_onlineReplay) ...[
           const SizedBox(height: 6),
           switch (_panelMode) {
             _GoPanelMode.choose => Row(
@@ -2193,7 +2221,7 @@ class _GamePageState extends State<GamePage> {
   /// The engine keeps the position from [_startKataGoAndReplay] onwards, so an
   /// analysis started while it is idle has to bring it up to date first.
   Future<void> _runAnalysis() async {
-    if (_analysisRunning || widget.type != GameType.go) return;
+    if (_analysisRunning || widget.type != GameType.go || _onlineReplay) return;
     final generation = _computerGeneration;
     final node = _goRecord.current;
     setState(() {
@@ -2701,167 +2729,177 @@ class _GamePageState extends State<GamePage> {
   int _analysisMoveNumber(GoAnalysis analysis, int index) =>
       session.moves.length + index + 1;
 
-  Widget _sidePanel(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Card(
-        elevation: 0,
+  Widget _sidePanel(BuildContext context) {
+    if (_onlineReplay) {
+      return Card(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                session.turnLabel,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              if (session.isInCheckTurn && !session.gameOver)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    '将军',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                      fontWeight: FontWeight.bold,
+          child: Text('联机对局进行中 · ${session.moves.length} 手\n棋谱只读，终局后可使用分析。'),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Card(
+          elevation: 0,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  session.turnLabel,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                if (session.isInCheckTurn && !session.gameOver)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      '将军',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
-                ),
-              if (computerThinking)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text(
-                    '电脑思考中…',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                if (computerThinking)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      '电脑思考中…',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
-                ),
-              const SizedBox(height: 12),
-              Text(
-                widget.type == GameType.go
-                    ? '提子：黑 ${session.blackCaptures} · 白 ${session.whiteCaptures}'
-                    : '吃子：黑 ${session.blackCaptures} · 白 ${session.whiteCaptures}',
-                style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              if (widget.type == GameType.go && session.gameOver) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 Text(
-                  '${session.goScoreConfirmed ? '结果' : '估算'}：${session.calculateGoScore().result}',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  session.goScoreConfirmed
-                      ? (session.goResignedSide != null
-                            ? 'KataGo 已认输'
-                            : '计分已确认')
-                      : _adjudicationInProgress
-                      ? 'KataGo 正在裁定死活与终局结果…'
-                      : '点击整块棋标记死子（红叉）；确认后结束计分。',
+                  widget.type == GameType.go
+                      ? '提子：黑 ${session.blackCaptures} · 白 ${session.whiteCaptures}'
+                      : '吃子：黑 ${session.blackCaptures} · 白 ${session.whiteCaptures}',
                   style: TextStyle(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontSize: 12,
                   ),
                 ),
-                if (!session.goScoreConfirmed)
-                  TextButton(
-                    onPressed: _adjudicationInProgress
-                        ? null
-                        : () {
-                            setState(() => session.confirmGoScore());
-                            _persistGo();
-                          },
-                    child: const Text('确认计分'),
-                  ),
-                TextButton(
-                  onPressed: _adjudicationInProgress ? null : _continueGo,
-                  child: const Text('继续对局'),
-                ),
-              ],
-              const Divider(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      widget.type == GameType.go
-                          ? '围棋 ${session.size} × ${session.size}'
-                          : '棋盘 8 × 8',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
+                if (widget.type == GameType.go && session.gameOver) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '${session.goScoreConfirmed ? '结果' : '估算'}：${session.calculateGoScore().result}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   Text(
-                    '${session.moves.length} 手',
+                    session.goScoreConfirmed
+                        ? (session.goResignedSide != null
+                              ? 'KataGo 已认输'
+                              : '计分已确认')
+                        : _adjudicationInProgress
+                        ? 'KataGo 正在裁定死活与终局结果…'
+                        : '点击整块棋标记死子（红叉）；确认后结束计分。',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 12,
                     ),
                   ),
+                  if (!session.goScoreConfirmed)
+                    TextButton(
+                      onPressed: _adjudicationInProgress
+                          ? null
+                          : () {
+                              setState(() => session.confirmGoScore());
+                              _persistGo();
+                            },
+                      child: const Text('确认计分'),
+                    ),
+                  TextButton(
+                    onPressed: _adjudicationInProgress ? null : _continueGo,
+                    child: const Text('继续对局'),
+                  ),
                 ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '招法',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 4),
-              SizedBox(
-                height: 108,
-                child: session.moves.isEmpty
-                    ? Align(
-                        alignment: Alignment.topLeft,
-                        child: Text(
-                          '选择一个空位或棋子开始。',
-                          style: TextStyle(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                      )
-                    : ListView.builder(
-                        itemCount: session.moves.length,
-                        itemBuilder: (context, index) {
-                          final move = session.moves[index];
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 2),
-                            child: Text(
-                              '${index + 1}. ${_moveText(move)}${move.captured ? '  吃子' : ''}${move.pass ? '（停一手）' : ''}',
-                              style: const TextStyle(fontSize: 13),
-                            ),
-                          );
-                        },
+                const Divider(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.type == GameType.go
+                            ? '围棋 ${session.size} × ${session.size}'
+                            : '棋盘 8 × 8',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-              ),
-            ],
+                    ),
+                    Text(
+                      '${session.moves.length} 手',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '招法',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                SizedBox(
+                  height: 108,
+                  child: session.moves.isEmpty
+                      ? Align(
+                          alignment: Alignment.topLeft,
+                          child: Text(
+                            '选择一个空位或棋子开始。',
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        )
+                      : ListView.builder(
+                          itemCount: session.moves.length,
+                          itemBuilder: (context, index) {
+                            final move = session.moves[index];
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Text(
+                                '${index + 1}. ${_moveText(move)}${move.captured ? '  吃子' : ''}${move.pass ? '（停一手）' : ''}',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-      if (widget.type == GameType.go)
-        OutlinedButton.icon(
-          onPressed: _canPlay ? _pass : null,
-          icon: const Icon(Icons.skip_next),
-          label: const Text('停一手'),
+        if (widget.type == GameType.go)
+          OutlinedButton.icon(
+            onPressed: _canPlay ? _pass : null,
+            icon: const Icon(Icons.skip_next),
+            label: const Text('停一手'),
+          ),
+        const SizedBox(height: 8),
+        FilledButton.icon(
+          onPressed: _restart,
+          icon: const Icon(Icons.restart_alt),
+          label: const Text('重新开始'),
         ),
-      const SizedBox(height: 8),
-      FilledButton.icon(
-        onPressed: _restart,
-        icon: const Icon(Icons.restart_alt),
-        label: const Text('重新开始'),
-      ),
-      const SizedBox(height: 8),
-      OutlinedButton.icon(
-        onPressed: session.moves.isEmpty ? null : _undo,
-        icon: const Icon(Icons.undo),
-        label: const Text('悔棋'),
-      ),
-    ],
-  );
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: session.moves.isEmpty ? null : _undo,
+          icon: const Icon(Icons.undo),
+          label: const Text('悔棋'),
+        ),
+      ],
+    );
+  }
 
   String _moveText(GameMove move) {
     if (move.pass) return '';

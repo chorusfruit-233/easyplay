@@ -5,6 +5,7 @@ import 'games/go_game.dart';
 import 'go_library_page.dart';
 import 'go_record_summary.dart';
 import 'go_storage.dart';
+import 'lan/lan_page.dart';
 
 export 'go_library_page.dart';
 export 'go_record_summary.dart';
@@ -133,6 +134,15 @@ class _GoHomePageState extends State<GoHomePage> {
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => _open(const LanLobbyPage()),
+            icon: const Icon(Icons.wifi),
+            label: const Text('联机对弈'),
+          ),
         ),
         const SizedBox(height: 28),
         _sectionTitle(context, '继续'),

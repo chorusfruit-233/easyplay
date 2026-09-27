@@ -1,5 +1,4 @@
 import 'game_session.dart';
-import 'go_ai_settings.dart';
 import 'go_sgf.dart';
 import 'go_storage.dart';
 
@@ -70,8 +69,10 @@ class GoRecordSummary {
   /// The engine is named only when the game says it was the opponent, so a
   /// record played by hand is not mislabelled as human versus computer.
   static (String, String) _playerNames(GoSavedRecord saved) {
-    if (!saved.vsComputer ||
-        saved.aiSettings?.opponentMode != GoOpponentMode.kataGo) {
+    if (saved.kind == GoGameKind.online) {
+      return saved.humanSide == Side.black ? ('我', '对手') : ('对手', '我');
+    }
+    if (saved.kind == GoGameKind.record) {
       return ('黑方', '白方');
     }
     return saved.humanSide == Side.black ? ('我', '电脑') : ('电脑', '我');

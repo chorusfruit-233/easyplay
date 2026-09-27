@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:easyplay/go_storage.dart';
+import 'package:easyplay/game_session.dart';
 import 'package:easyplay/go_encoding.dart';
 import 'package:easyplay/go_file_service.dart';
 import 'package:file_picker/file_picker.dart';
@@ -62,6 +63,28 @@ void main() {
       await GoStorage.clear();
       expect(await GoStorage.loadLast(), null);
       expect(await GoStorage.records(), isEmpty);
+    },
+  );
+
+  test(
+    'record kind persists online and legacy records still downgrade',
+    () async {
+      final online = await GoStorage.addRecord(
+        '(;SZ[9])',
+        kind: GoGameKind.online,
+        humanSide: Side.white,
+      );
+      expect(online.kind, GoGameKind.online);
+      final stored = (await GoStorage.recentRecords()).single;
+      expect(stored.kind, GoGameKind.online);
+      expect(stored.vsComputer, isFalse);
+
+      SharedPreferences.setMockInitialValues({
+        'easyplay.go_records': [
+          jsonEncode({'id': 'old', 'sgf': '(;SZ[9])', 'vsComputer': true}),
+        ],
+      });
+      expect((await GoStorage.recentRecords()).single.kind, GoGameKind.ai);
     },
   );
 

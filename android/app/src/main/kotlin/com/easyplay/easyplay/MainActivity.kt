@@ -4,6 +4,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import android.view.WindowManager
 
 class MainActivity : FlutterActivity() {
     private lateinit var kataGo: AndroidKataGoGtp
@@ -14,6 +15,19 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "easyplay/katago")
             .setMethodCallHandler { call, result ->
                 kataGo.execute(call.method, call.arguments, result)
+            }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "easyplay/lan")
+            .setMethodCallHandler { call, result ->
+                if (call.method != "setKeepScreenOn") {
+                    result.notImplemented()
+                    return@setMethodCallHandler
+                }
+                if (call.argument<Boolean>("enabled") == true) {
+                    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+                result.success(null)
             }
     }
 
