@@ -44,6 +44,8 @@ jobs:
       - name: Check threaded KataGo assets
         run: |
           test -s build/web/coi-serviceworker.js
+          test -s build/web/flutter_bootstrap.js
+          ! grep -Fq 'serviceWorkerVersion:' build/web/flutter_bootstrap.js
           test -s build/web/katago/katago.js
           test -s build/web/katago/katago.wasm
           test -s build/web/katago-webgpu/kataeval.js
