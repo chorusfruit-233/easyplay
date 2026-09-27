@@ -10,9 +10,9 @@ BACKEND="${1:-all}"
 case "$BACKEND" in cpu|opencl|all) ;; *) echo "Usage: $0 [cpu|opencl|all]" >&2; exit 2;; esac
 OPENCL_HEADERS="$CACHE/OpenCL-Headers"
 OPENCL_HEADERS_COMMIT="8a97ebc88daa3495d6f57ec10bb515224400186f"
-KATAGO_COMMIT="ba938676d7f42d70950b3a535af2466fb642008c"
+KATAGO_COMMIT="fd0723fdbc0e9d82cf269c9630af8c27c57c07c4"
 EIGEN_COMMIT="3147391d946bb4b6c68edd901f2add6ac1f31f8c"
-KATAGO_TAG="v1.16.5"
+KATAGO_TAG="v1.18.2"
 EIGEN_TAG="3.4.0"
 NDK="${ANDROID_NDK_HOME:-${ANDROID_NDK_ROOT:-${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}/ndk/28.2.13676358}}"
 TOOLCHAIN="$NDK/build/cmake/android.toolchain.cmake"
@@ -25,6 +25,10 @@ fi
 mkdir -p "$CACHE"
 if [[ ! -d "$KATAGO/.git" ]]; then
   git clone --depth 1 --branch "$KATAGO_TAG" https://github.com/lightvector/KataGo.git "$KATAGO"
+elif [[ "$(git -C "$KATAGO" rev-parse HEAD)" != "$KATAGO_COMMIT" ]]; then
+  # An older check-out is present; fetch just the pinned tag and move to it.
+  git -C "$KATAGO" fetch --depth 1 origin "refs/tags/$KATAGO_TAG:refs/tags/$KATAGO_TAG"
+  git -C "$KATAGO" checkout --detach "$KATAGO_COMMIT"
 fi
 if [[ "$BACKEND" != "opencl" && ! -d "$EIGEN/.git" ]]; then
   git clone --depth 1 --branch "$EIGEN_TAG" https://gitlab.com/libeigen/eigen.git "$EIGEN"
