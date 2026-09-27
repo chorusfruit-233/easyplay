@@ -201,23 +201,9 @@ void main() {
   });
 
   test(
-    'checkers starts with twelve pieces per side and restricts movement to dark squares',
+    'legacy GameSession rejects Checkers after the rules were extracted',
     () {
-      final game = GameSession(GameType.checkers);
-      final blackCount = game.board
-          .expand((row) => row)
-          .where((piece) => piece?.side == Side.black)
-          .length;
-      final whiteCount = game.board
-          .expand((row) => row)
-          .where((piece) => piece?.side == Side.white)
-          .length;
-      expect(blackCount, 12);
-      expect(whiteCount, 12);
-      expect(game.legalMovesFrom(const Cell(2, 1)), [
-        const Cell(3, 0),
-        const Cell(3, 2),
-      ]);
+      expect(() => GameSession(GameType.checkers), throwsUnsupportedError);
     },
   );
 }

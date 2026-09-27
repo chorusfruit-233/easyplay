@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import '../draughts/draughts_session.dart' show draughtsRulesVersion;
 import '../game_session.dart';
 
 const lanProtocolVersion = 2;
@@ -20,6 +21,9 @@ enum LanMessageType {
   undoRequest,
   undoAccept,
   undoReject,
+  drawRequest,
+  drawAccept,
+  drawReject,
   scoreProposal,
   scoreAccept,
   scoreCounter,
@@ -143,7 +147,17 @@ class LanMessage {
         if (data['roomVersion'] != lanProtocolVersion) {
           throw const FormatException('联机协议版本不兼容');
         }
-        parseConfig(data);
+        final game = data['game'] ?? 'go';
+        if (game == 'go') {
+          parseConfig(data);
+        } else if (game == 'draughts') {
+          if (data['variant'] is! String || data['rulesVersion'] is! int) {
+            throw const FormatException('跳棋规则握手无效');
+          }
+          integer('rulesVersion');
+        } else {
+          throw const FormatException('不支持的联机游戏');
+        }
         string('token', 256);
         if (data['resumeSide'] != null) parseSide(data['resumeSide']);
       case LanMessageType.helloAck:
@@ -157,7 +171,16 @@ class LanMessage {
         integer('lastSeq');
       case LanMessageType.stateSync:
         integer('roomVersion');
-        parseConfig(data);
+        final draughts = data['game'] == 'draughts';
+        if (draughts) {
+          if (data['variant'] is! String ||
+              data['rulesVersion'] is! int ||
+              data['rulesVersion'] != draughtsRulesVersion) {
+            throw const FormatException('跳棋同步规则版本不兼容');
+          }
+        } else {
+          parseConfig(data);
+        }
         final events = data['events'];
         if (events is! List ||
             events.length > lanMaxEvents ||
@@ -177,7 +200,17 @@ class LanMessage {
         }
       case LanMessageType.move:
         parseSide(data['side']);
-        parseCell(data['cell']);
+        if (data['path'] is List) {
+          final path = data['path']! as List;
+          if (path.length < 2 || path.length > 100) {
+            throw const FormatException('无效的完整着法路径');
+          }
+          for (final cell in path) {
+            parseCell(cell);
+          }
+        } else {
+          parseCell(data['cell']);
+        }
       case LanMessageType.pass:
       case LanMessageType.resign:
       case LanMessageType.undoRequest:
@@ -188,6 +221,11 @@ class LanMessage {
         parseSide(data['side']);
         integer('requestSeq');
         if (type == LanMessageType.undoReject) string('reason', 256);
+      case LanMessageType.drawRequest:
+      case LanMessageType.drawAccept:
+      case LanMessageType.drawReject:
+        parseSide(data['side']);
+        if (type != LanMessageType.drawRequest) integer('requestSeq');
       case LanMessageType.scoreProposal:
       case LanMessageType.scoreCounter:
         parseSide(data['side']);
@@ -214,6 +252,9 @@ class LanMessage {
     LanMessageType.undoRequest,
     LanMessageType.undoAccept,
     LanMessageType.undoReject,
+    LanMessageType.drawRequest,
+    LanMessageType.drawAccept,
+    LanMessageType.drawReject,
     LanMessageType.scoreProposal,
     LanMessageType.scoreAccept,
     LanMessageType.scoreCounter,

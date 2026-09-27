@@ -4,7 +4,7 @@ enum GameType { go, chess, checkers }
 
 enum Side { black, white }
 
-enum PieceKind { stone, pawn, rook, knight, bishop, queen, king, checker }
+enum PieceKind { stone, pawn, rook, knight, bishop, queen, king }
 
 enum GoRuleSet { chinese, japanese, korean }
 
@@ -155,8 +155,8 @@ class _Snapshot {
   );
 }
 
-/// Rules and mutable state for the playable prototype. Chess intentionally omits castling/en-passant;
-/// checkers supports single jumps and promotion; Go supports captures, suicide prevention and simple ko.
+/// Rules and mutable state for Go plus the basic Chess prototype. Draughts uses
+/// its independent rules engine under `lib/draughts/`.
 class GameSession {
   final GameType type;
   GoConfig _goConfig;
@@ -184,6 +184,9 @@ class GameSession {
 
   GameSession(this.type, {GoConfig? goConfig})
     : _goConfig = goConfig ?? const GoConfig() {
+    if (type == GameType.checkers) {
+      throw UnsupportedError('Use DraughtsSession for Checkers / Draughts');
+    }
     reset();
   }
   int get size => type == GameType.go ? goConfig.boardSize : 8;
@@ -312,7 +315,6 @@ class GameSession {
     _positions.clear();
     _consecutivePasses = 0;
     if (type == GameType.chess) _setupChess();
-    if (type == GameType.checkers) _setupCheckers();
     if (type == GameType.go && goConfig.handicap > 0) {
       for (final point in _handicapPoints(goConfig.boardSize)) {
         board[point.row][point.col] = const GamePiece(
@@ -358,23 +360,6 @@ class GameSession {
       board[1][c] = const GamePiece(Side.black, PieceKind.pawn);
       board[6][c] = const GamePiece(Side.white, PieceKind.pawn);
       board[7][c] = GamePiece(Side.white, back[c]);
-    }
-  }
-
-  void _setupCheckers() {
-    for (var r = 0; r < 3; r++) {
-      for (var c = 0; c < 8; c++) {
-        if ((r + c).isOdd) {
-          board[r][c] = const GamePiece(Side.black, PieceKind.checker);
-        }
-      }
-    }
-    for (var r = 5; r < 8; r++) {
-      for (var c = 0; c < 8; c++) {
-        if ((r + c).isOdd) {
-          board[r][c] = const GamePiece(Side.white, PieceKind.checker);
-        }
-      }
     }
   }
 
@@ -426,10 +411,6 @@ class GameSession {
     if (piece == null || piece.side != turn || type == GameType.go) {
       return const [];
     }
-    if (type == GameType.checkers) {
-      final all = _allCheckerMoves(turn);
-      return all.where((m) => m.from == from).map((m) => m.to).toList();
-    }
     return _chessPseudoMoves(from, piece).where((to) {
       if (board[to.row][to.col]?.kind == PieceKind.king) return false;
       final test = _copyBoard(board);
@@ -451,17 +432,12 @@ class GameSession {
     _save();
     final capturedPiece = board[to.row][to.col];
     _moveOn(board, from, to, promote: true);
-    final captured =
-        capturedPiece != null ||
-        (type == GameType.checkers && (from.row - to.row).abs() == 2);
+    final captured = capturedPiece != null;
     if (captured) {
       if (turn == Side.black) {
         blackCaptures++;
       } else {
         whiteCaptures++;
-      }
-      if (type == GameType.checkers) {
-        board[(from.row + to.row) ~/ 2][(from.col + to.col) ~/ 2] = null;
       }
     }
     moves.add(GameMove(from: from, to: to, captured: captured));
@@ -472,9 +448,6 @@ class GameSession {
         gameOver = true;
         winner = _isInCheck(turn) ? movedSide : null;
       }
-    } else if (type == GameType.checkers && !_hasAnyLegalMove(turn)) {
-      gameOver = true;
-      winner = movedSide;
     }
     _positions.add(_signature(board));
     return true;
@@ -571,35 +544,6 @@ class GameSession {
       resignation: goResignedSide != null,
       marginOverride: _adjudicatedMargin,
     );
-  }
-
-  Iterable<GameMove> _allCheckerMoves(Side side) {
-    final moves = <GameMove>[];
-    for (var r = 0; r < 8; r++) {
-      for (var c = 0; c < 8; c++) {
-        final p = board[r][c];
-        if (p == null || p.side != side) continue;
-        final forward = side == Side.white ? -1 : 1;
-        final dirs = p.kind == PieceKind.king ? const [-1, 1] : [forward];
-        for (final dr in dirs) {
-          for (final dc in const [-1, 1]) {
-            final one = Cell(r + dr, c + dc);
-            if (inside(one) && board[one.row][one.col] == null) {
-              moves.add(GameMove(from: Cell(r, c), to: one));
-            }
-            final two = Cell(r + dr * 2, c + dc * 2);
-            if (inside(two) &&
-                board[two.row][two.col] == null &&
-                inside(one) &&
-                board[one.row][one.col]?.side == side.opponent) {
-              moves.add(GameMove(from: Cell(r, c), to: two, captured: true));
-            }
-          }
-        }
-      }
-    }
-    final captures = moves.where((m) => m.captured).toList();
-    return captures.isNotEmpty ? captures : moves;
   }
 
   List<Cell> _chessPseudoMoves(Cell from, GamePiece p) {
@@ -741,11 +685,6 @@ class GameSession {
     b[from.row][from.col] = null;
     if (promote && p.kind == PieceKind.pawn && (to.row == 0 || to.row == 7)) {
       p = GamePiece(p.side, PieceKind.queen);
-    }
-    if (promote &&
-        p.kind == PieceKind.checker &&
-        (to.row == 0 || to.row == 7)) {
-      p = GamePiece(p.side, PieceKind.king);
     }
     b[to.row][to.col] = p;
   }

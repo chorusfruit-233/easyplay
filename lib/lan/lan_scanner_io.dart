@@ -5,10 +5,18 @@ import 'dart:io';
 import 'lan_ports.dart';
 
 class LanEndpoint {
-  const LanEndpoint({required this.host, required this.port, this.players = 0});
+  const LanEndpoint({
+    required this.host,
+    required this.port,
+    this.players = 0,
+    this.game = 'go',
+    this.variant,
+  });
   final String host;
   final int port;
   final int players;
+  final String game;
+  final String? variant;
   String get address => '$host:$port';
 }
 
@@ -146,6 +154,8 @@ Future<LanEndpoint?> _probe(String host, int port, Duration timeout) async {
       host: host,
       port: port,
       players: json['players'] is int ? json['players'] as int : 0,
+      game: json['game'] is String ? json['game'] as String : 'go',
+      variant: json['variant'] is String ? json['variant'] as String : null,
     );
   } catch (_) {
     return null;

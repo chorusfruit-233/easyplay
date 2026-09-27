@@ -2,7 +2,7 @@
 
 本文档是 EasyPlay 的开发基线。它同时说明当前版本能做什么、代码应该放在哪里、怎样运行和验收，以及后续需求应该怎样描述。实现与文档不一致时，先更新代码和测试，再更新本文档；不要把尚未实现的计划写成已完成能力。
 
-**文档适用版本**：Flutter 3.44.0 / Dart 3.12.0；当前产品范围是本地围棋与本地棋谱，Android/Web 为主要平台。文档中的“支持”表示已有代码和测试覆盖，“计划”表示尚未实现。
+**文档适用版本**：Flutter 3.44.0 / Dart 3.12.0；Android/Web 为主要平台。文档中的“支持”表示已有代码和测试覆盖，“计划”表示尚未实现。
 
 ## 围棋稳定性修复记录
 
@@ -34,20 +34,22 @@ EasyPlay 是一个 Flutter 跨平台棋类应用，主要平台是 Android 和 W
 
 当前项目参考目录中的 `upstream/围棋大师_1.4.0.apks` 进行围棋交互和 KataGo 集成；该 APK 只作为行为参考，项目没有可复用的原始 Dart 源码。
 
-当前版本聚焦本地围棋。已支持 9/13/19 路、停一手、让子/自定义贴目、日韩/中国规则、KataGo b6、本地保存与 SGF 导入导出。国际象棋和跳棋仍在首页展示为未完成状态，不能进入。每日题目、统计、排行榜、积分、账号、联机与云同步不属于当前产品，也没有对应入口或数据服务。
+当前支持围棋和 Draughts / Checkers。跳棋包含英式/美式、国际、巴西、俄罗斯、Pool、意大利、西班牙和土耳其规则，可本地双人或在同一局域网对弈。国际象棋仍标记为未完成。每日题目、统计、排行榜、积分、账号和云同步不属于当前产品；局域网对弈由本地房主提供服务，不依赖中继。
 
 ### 1.1 当前能力清单
 
 | 模块 | 当前状态 | 说明 |
 | --- | --- | --- |
-| 首页 | 已实现 | 围棋入口；国际象棋和跳棋标记未完成且不可进入 |
+| 首页 | 已实现 | 围棋与跳棋可进入；国际象棋标记未完成 |
 | 围棋对局 | 已实现 | 人机模式和本地双人模式；新局要求确认棋盘与规则，默认 19 路、中国规则、7.5 贴目 |
+| 跳棋对局 | 已实现 | 8 种 Draughts 规则、本地双人、LAN、完整连续吃子、悔棋/认输/和棋、自动保存和 PDN |
 | 棋盘交互 | 已实现 | 选择棋子、显示合法目标、落子/移动、非法操作拦截 |
 | 悔棋/重开 | 已实现 | 规则层使用快照；人机模式一次悔棋撤回人和电脑各一步 |
 | SGF 棋谱 | 已实现 | 本地保存、恢复、记录列表、导入、导出、变化选择 |
 | 终局裁定 | 已实现 | KataGo 自动返回死子及最终胜负；不支持引擎的平台提供手动确认 |
 | 题库/统计/排行榜/积分 | 已移除 | 首页和对局流程中无相关功能入口 |
-| 账号/联机/云同步 | 已移除 | 无账号、远端对局或云端数据服务；KataGo 模型获取属于独立的引擎资源下载 |
+| 账号/云同步 | 未实现 | 不提供账号和远端数据服务；KataGo 模型获取属于独立的引擎资源下载 |
+| 围棋/跳棋 LAN | 已实现 | 房主权威、口令、序号、事件同步和断线重连；仅限局域网 |
 
 ## 2. 技术栈与版本
 
@@ -75,11 +77,14 @@ Android Studio 应打开项目根目录 `/home/fruit/项目/easyplay`，不要�
 │   ├── game_page.dart        # 围棋对局页面与交互调度
 │   ├── board.dart            # 棋盘绘制
 │   ├── game_session.dart     # 棋局状态与围棋规则
-│   ├── games/                # 棋类页面入口（当前仅围棋可进入）
+│   ├── draughts/             # 跳棋规则、局面、棋谱、存储和页面
+│   ├── lan/                  # 围棋与跳棋共用的 LAN 传输和房间协议
+│   ├── games/                # 棋类页面入口
 │   ├── go_sgf.dart           # 围棋 SGF FF[4] 导入/导出、评论和变化树
 │   └── katago.dart           # KataGo 模型目录、下载客户端和 GTP 客户端
 ├── test/
-│   ├── game_session_test.dart # 围棋、国际象棋、跳棋规则测试
+│   ├── draughts/              # 跳棋规则、连续吃和 LAN 测试
+│   ├── game_session_test.dart # 围棋、国际象棋和兼容入口测试
 │   └── widget_test.dart       # 首页和开局页面冒烟测试
 ├── android/                  # Android 容器、Gradle 和应用配置
 ├── web/                      # Web 壳、图标和 manifest
@@ -90,15 +95,15 @@ Android Studio 应打开项目根目录 `/home/fruit/项目/easyplay`，不要�
 └── analysis_options.yaml     # Dart lint 配置
 ```
 
-当前首页位于 `lib/main.dart`，围棋页面位于 `lib/game_page.dart`，棋盘绘制位于 `lib/board.dart`，状态与规则位于 `lib/game_session.dart`。新增围棋能力时优先沿现有职责扩展，避免将规则塞进 Widget。
+当前首页位于 `lib/main.dart`，围棋页面位于 `lib/game_page.dart`，棋盘绘制位于 `lib/board.dart`，围棋状态与规则位于 `lib/game_session.dart`。跳棋规则应放在 `lib/draughts/`，不得再加入 `GameSession`。
 
-实际存在的棋类入口文件为 `lib/games/go_game.dart`、`lib/games/chess_game.dart`、`lib/games/checkers_game.dart`。国际象棋和跳棋入口保留类型标识，但首页不可进入。
+跳棋入口使用 `lib/draughts/widgets/draughts_new_game_page.dart`；围棋和国际象棋入口仍由 `lib/games/` 管理。
 
 ## 4. 当前应用流程
 
 ### 首页
 
-首页显示 EasyPlay 品牌和三种棋类卡片。围棋可以开始新局；国际象棋和跳棋显示未完成状态并禁止进入。
+首页显示 EasyPlay 品牌和三种棋类卡片。围棋和跳棋可以进入；国际象棋显示未完成状态并禁止进入。
 
 开始围棋后必须先设置棋盘与规则。默认 19 路、中国规则、7.5 贴目；日本和韩国规则默认 6.5 贴目。对局更多菜单提供规则设置、SGF 导入导出、恢复和本地记录。
 
@@ -141,14 +146,14 @@ Android Studio 应打开项目根目录 `/home/fruit/项目/easyplay`，不要�
 ```dart
 enum GameType { go, chess, checkers }
 enum Side { black, white }
-enum PieceKind { stone, pawn, rook, knight, bishop, queen, king, checker }
+enum PieceKind { stone, pawn, rook, knight, bishop, queen, king }
 ```
 
 `Cell(row, col)` 使用 0 开始的行列坐标：
 
 - 围棋：`row`、`col` 表示棋盘交叉点，范围 `0..8`
-- 国际象棋/跳棋：`row`、`col` 表示棋盘格，范围 `0..7`
-- 国际象棋和跳棋的 `row = 0` 是黑方初始侧，白方从底部开始
+- 国际象棋：`row`、`col` 表示棋盘格，范围 `0..7`
+- 国际象棋的 `row = 0` 是黑方初始侧，白方从底部开始
 - 显示文本会把列转换为 A-H；围棋行号显示为 9-1
 
 `GamePiece` 由 `Side` 和 `PieceKind` 组成。
@@ -162,7 +167,7 @@ enum PieceKind { stone, pawn, rook, knight, bishop, queen, king, checker }
 
 ### `GameSession`
 
-`GameSession` 是唯一负责规则和对局状态的对象。UI 不应直接修改棋盘内容，应该调用这些方法：
+`GameSession` 管理围棋与尚未完成的国际象棋规则。跳棋使用独立的 `DraughtsSession`，UI 不应直接修改正式局面：
 
 | 方法 | 用途 |
 | --- | --- |
@@ -171,7 +176,7 @@ enum PieceKind { stone, pawn, rook, knight, bishop, queen, king, checker }
 | `placeGo(cell)` | 围棋落子 |
 | `passGo()` | 围棋停一手 |
 | `legalMovesFrom(cell)` | 获取当前方某棋子的合法目标 |
-| `movePiece(from, to)` | 国际象棋/跳棋移动 |
+| `movePiece(from, to)` | 国际象棋移动 |
 | `undo()` | 恢复上一步 |
 
 状态字段的含义：
@@ -238,20 +243,14 @@ enum PieceKind { stone, pawn, rook, knight, bishop, queen, king, checker }
 
 ### 跳棋
 
-当前使用 8×8、每方 12 子的西洋跳棋布局，支持：
+规则代码在 `lib/draughts/`，支持英式/美式、国际、巴西、俄罗斯、Pool、意大利、西班牙和土耳其八种规则。`DraughtsRules` 描述棋盘、步进、王、升王、吃子优先级、捕获移除时机和和棋计数；`DraughtsMove` 始终表示完整路径，连续吃作为一次原子走子。`DraughtsSession` 提供合法走法、悔棋、认输、和棋和 JSON 恢复。界面支持本地双人、局域网房间、自动保存、PDN 导入/导出和断线重连。
 
-- 斜向移动
-- 单次跳吃
-- 有吃子时优先强制吃子
-- 普通棋子升王
-- 吃子计数
-
-当前一次移动只执行一次跳吃，尚未支持连续多跳、完整结束判定变体和棋谱导出。后续添加规则时，需要先确定采用 American Checkers、International Draughts 还是其他变体，不能直接混用规则。
+跳棋 LAN 复用 `lib/lan/` 的 HTTP/WebSocket、PIN、心跳和重连；握手匹配棋种、规则变体及 `draughtsRulesVersion`。房主权威只接受完整路径并广播已提交事件，客户端收到事件后更新副本。规则有变化且可能改变合法着法时必须递增规则版本。
 
 ### 6.1 规则扩展原则
 
 1. 先在文档中确定棋种、棋盘尺寸、先手、胜负、和棋和规则变体。
-2. 先在 `GameSession` 增加纯 Dart 规则和单元测试，再接入页面。
+2. 围棋和国际象棋规则放在 `GameSession`；跳棋规则放在 `DraughtsSession`，先写纯 Dart 规则和测试，再接入页面。
 3. 所有对外操作都返回明确结果：成功返回 `true`，非法操作返回 `false`；需要展示原因时再增加错误码或结果对象，不要依赖 UI 猜测。
 4. 规则变更必须覆盖边界局面：无路可走、吃子、升变、终局、悔棋和重开。
 5. 不要让棋盘绘制代码决定合法性；`BoardPainter` 只负责显示状态。
@@ -397,7 +396,7 @@ flutter test
 
 - 围棋占位检查、悔棋、自杀禁手、提子
 - 国际象棋初始布局、兵移动、王安全
-- 跳棋初始布局和基础移动
+- 跳棋八种初始局面、完整连续吃、飞王落点、升王时机、吃子优先级、撤销、序列化、PDN 和 LAN 重连
 - 首页三种棋类入口
 - 从首页进入新围棋对局
 
@@ -419,13 +418,14 @@ flutter build web
 
 | 修改内容 | 最低验证 |
 | --- | --- |
-| 围棋/象棋/跳棋规则 | `test/game_session_test.dart` 增加或修改单元测试，运行 `flutter test` |
+| 围棋/象棋规则 | `test/game_session_test.dart` 增加或修改单元测试，运行 `flutter test` |
+| 跳棋规则与 LAN | `test/draughts/` 增加引擎或权威副本测试，运行 `flutter test` |
 | 首页、导航、对局按钮 | `test/widget_test.dart` 增加 widget 测试，运行 `flutter test` |
 | 棋盘布局或响应式 UI | `flutter test`，再运行 `flutter build web` |
 | Android Gradle、Manifest、签名 | `flutter build apk --debug`；发布前再做 release 构建 |
 | 资源、字体、Web 壳 | `flutter build web`，用静态 HTTP 服务打开检查 |
 
-当前测试基线：规则测试覆盖围棋占位/禁自杀/提子/悔棋，象棋初始布局/兵双步/王安全，跳棋初始布局/基础移动；widget 测试覆盖首页三种棋类入口和进入围棋对局。
+当前测试基线：规则测试覆盖围棋占位/禁自杀/提子/悔棋，象棋初始布局/兵双步/王安全；跳棋专项测试位于 `test/draughts/`。Widget 测试覆盖首页入口、跳棋规则选择和围棋开局。
 
 ## 9. 已知限制与建议优先级
 
@@ -433,7 +433,7 @@ flutter build web
 
 1. 围棋补充 SGF 逐手导航、完整分支树编辑及中途摆子复盘。
 2. 优化围棋 Android/Web 上的 KataGo 启动、取消和终局裁定体验。
-3. 只有在用户重新确定产品范围后，再恢复国际象棋或跳棋实现。
+3. 实现国际象棋完整规则与棋谱。
 
 ### 中优先级
 
@@ -444,7 +444,7 @@ flutter build web
 
 ### 低优先级
 
-当前范围不包含账号、联机、云同步、每日题目、统计、排行榜或积分系统。
+当前范围不包含账号、云同步、互联网中继、每日题目、统计、排行榜或积分系统。围棋和跳棋 LAN 仅用于同一局域网内直接连接。
 
 ### 9.1 推荐实现顺序
 

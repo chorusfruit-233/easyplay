@@ -4,12 +4,24 @@ import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 
 import '../game_session.dart';
+import '../draughts/draughts_variant.dart';
+import '../draughts/draughts_session.dart' show draughtsRulesVersion;
+import 'draughts_lan_game.dart';
 import 'lan_game.dart';
 import 'lan_protocol.dart';
 
 class LanHostServer {
-  LanHostServer({required this.authority, required this.token});
-  final LanAuthority authority;
+  // Preserve the existing named Go constructor parameter for callers.
+  LanHostServer({
+    LanAuthority? authority,
+    this.draughtsAuthority,
+    required this.token,
+  })
+    // ignore: prefer_initializing_formals
+    : _authority = authority;
+  final LanAuthority? _authority;
+  LanAuthority get authority => _authority!;
+  final DraughtsAuthority? draughtsAuthority;
   final String token;
   int? get port => null;
   int get playerCount => 0;
@@ -22,8 +34,12 @@ class LanHostServer {
 }
 
 class LanClientConnection {
-  LanClientConnection(this.config);
+  LanClientConnection(this.config) : draughtsVariant = null;
+  LanClientConnection.draughts(DraughtsVariant variant)
+    : config = const GoConfig(),
+      draughtsVariant = variant;
   final GoConfig config;
+  final DraughtsVariant? draughtsVariant;
   final _messages = StreamController<LanMessage>.broadcast();
   final _disconnections = StreamController<void>.broadcast();
   web.WebSocket? _socket;
@@ -32,8 +48,10 @@ class LanClientConnection {
   Timer? _heartbeat;
   DateTime _lastPong = DateTime.now();
   LanReplica? replica;
+  DraughtsLanReplica? draughtsReplica;
   Side? side;
   bool started = false;
+  int get seq => draughtsReplica?.seq ?? replica?.seq ?? 0;
   Stream<LanMessage> get messages => _messages.stream;
   Stream<void> get disconnections => _disconnections.stream;
 
@@ -50,7 +68,11 @@ class LanClientConnection {
         : uri.replace(path: '/easyplay/ws');
     final socket = web.WebSocket(socketUri.toString());
     _socket = socket;
-    replica ??= LanReplica(config);
+    if (draughtsVariant != null) {
+      draughtsReplica ??= DraughtsLanReplica(draughtsVariant!);
+    } else {
+      replica ??= LanReplica(config);
+    }
     final opened = Completer<void>();
     final handshake = Completer<void>();
     socket.onopen = ((web.Event _) {
@@ -76,7 +98,7 @@ class LanClientConnection {
         _lastPong = DateTime.now();
         if (message.type == LanMessageType.ping) {
           socket.send(
-            LanMessage(LanMessageType.pong, replica?.seq ?? 0, {
+            LanMessage(LanMessageType.pong, seq, {
               'nonce': message.body['nonce'],
             }).encode().toJS,
           );
@@ -93,7 +115,11 @@ class LanClientConnection {
           handshake.completeError(StateError(message.body['reason'] as String));
         } else if (message.type == LanMessageType.stateSync ||
             LanMessage.eventTypes.contains(message.type)) {
-          replica?.receive(message);
+          if (draughtsVariant != null) {
+            draughtsReplica?.receive(message);
+          } else {
+            replica?.receive(message);
+          }
         }
         _messages.add(message);
       } catch (error) {
@@ -105,7 +131,10 @@ class LanClientConnection {
       socket.send(
         LanMessage(LanMessageType.hello, 0, {
           'roomVersion': lanProtocolVersion,
-          ...LanMessage.configToWire(config),
+          if (draughtsVariant == null) ...LanMessage.configToWire(config),
+          'game': draughtsVariant == null ? 'go' : 'draughts',
+          if (draughtsVariant != null) 'variant': draughtsVariant!.name,
+          if (draughtsVariant != null) 'rulesVersion': draughtsRulesVersion,
           'token': token,
           if (side != null) 'resumeSide': LanMessage.sideCode(side!),
         }).encode().toJS,
@@ -119,7 +148,7 @@ class LanClientConnection {
           socket.close();
         } else if (socket.readyState == web.WebSocket.OPEN) {
           socket.send(
-            LanMessage(LanMessageType.ping, replica?.seq ?? 0, {
+            LanMessage(LanMessageType.ping, seq, {
               'nonce': DateTime.now().microsecondsSinceEpoch.toString(),
             }).encode().toJS,
           );

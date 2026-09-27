@@ -307,8 +307,8 @@ class BoardPainter extends CustomPainter {
       }
     }
     // Go confirmation uses the circular preview below. The generic square
-    // selection highlight is only meaningful for chess/checkers and would
-    // leave a translucent square behind the preview stone on a Go board.
+    // selection highlight is only used by the Chess board and would leave a
+    // translucent square behind the preview stone on a Go board.
     if (selected != null && type != GameType.go) {
       canvas.drawRect(
         _cellRect(selected!, step),
@@ -357,33 +357,6 @@ class BoardPainter extends CustomPainter {
               ..style = PaintingStyle.stroke
               ..strokeWidth = 1,
           );
-        } else if (type == GameType.checkers) {
-          final center = _center(cell, step);
-          canvas.drawCircle(
-            center,
-            step * .35,
-            Paint()
-              ..color = piece.side == Side.black
-                  ? const Color(0xff27201d)
-                  : const Color(0xfff4eee4),
-          );
-          canvas.drawCircle(
-            center,
-            step * .35,
-            Paint()
-              ..color = const Color(0x88000000)
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = step * .045,
-          );
-          if (piece.kind == PieceKind.king) {
-            _drawText(
-              canvas,
-              '♛',
-              center,
-              step * .42,
-              piece.side == Side.black ? Colors.white : const Color(0xff51351c),
-            );
-          }
         } else {
           final glyph = switch (piece.kind) {
             PieceKind.king => '♚',

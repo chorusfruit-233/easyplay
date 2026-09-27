@@ -6,13 +6,29 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../game_session.dart';
+import '../draughts/draughts_variant.dart';
+import '../draughts/draughts_session.dart' show draughtsRulesVersion;
+import 'draughts_lan_game.dart';
 import 'lan_game.dart';
 import 'lan_ports.dart';
 import 'lan_protocol.dart';
 
 class LanHostServer {
-  LanHostServer({required this.authority, required this.token});
-  final LanAuthority authority;
+  // Preserve the existing named Go constructor parameter for callers.
+  LanHostServer({
+    LanAuthority? authority,
+    this.draughtsAuthority,
+    required this.token,
+  })
+    // ignore: prefer_initializing_formals
+    : _authority = authority {
+    if ((_authority == null) == (draughtsAuthority == null)) {
+      throw ArgumentError('provide exactly one game authority');
+    }
+  }
+  final LanAuthority? _authority;
+  final DraughtsAuthority? draughtsAuthority;
+  LanAuthority get authority => _authority!;
   final String token;
   HttpServer? _server;
   bool _started = false;
@@ -24,13 +40,20 @@ class LanHostServer {
   int? get port => _server?.port;
   int get playerCount => _clients.where((peer) => peer.side != null).length;
   bool get started => _started;
+  bool get isDraughts => draughtsAuthority != null;
+  int get seq => draughtsAuthority?.seq ?? authority.seq;
+  int get boardSize =>
+      draughtsAuthority?.session.rules.boardSize ??
+      authority.session.goConfig.boardSize;
+  bool get gameOver =>
+      draughtsAuthority?.session.gameOver ?? authority.session.gameOver;
   Stream<int> get playerCounts => _playerCounts.stream;
 
   void startMatch() {
     if (_started) return;
     if (playerCount != 2) throw StateError('对手尚未加入');
     _started = true;
-    _broadcast(LanMessage(LanMessageType.matchStart, authority.seq));
+    _broadcast(LanMessage(LanMessageType.matchStart, seq));
   }
 
   Future<void> start({
@@ -70,9 +93,12 @@ class LanHostServer {
       final body = jsonEncode({
         'app': 'easyplay',
         'version': lanProtocolVersion,
-        'board': authority.session.goConfig.boardSize,
+        'board': boardSize,
+        'game': isDraughts ? 'draughts' : 'go',
+        if (draughtsAuthority != null)
+          'variant': draughtsAuthority!.variant.name,
         'players': playerCount,
-        'phase': authority.session.gameOver
+        'phase': gameOver
             ? 'finished'
             : _started
             ? 'playing'
@@ -160,17 +186,44 @@ class LanHostServer {
     if (event.type == LanMessageType.undoRequest) {
       _undoTimer?.cancel();
       _undoTimer = Timer(const Duration(seconds: 30), () {
-        final expired = authority.expireUndo(event.seq);
+        final expired = draughtsAuthority != null
+            ? draughtsAuthority!.expireUndo(event.seq)
+            : authority.expireUndo(event.seq);
+        if (expired != null) _broadcast(expired);
+      });
+    } else if (event.type == LanMessageType.drawRequest) {
+      _undoTimer?.cancel();
+      _undoTimer = Timer(const Duration(seconds: 30), () {
+        final expired = draughtsAuthority?.expireDraw(event.seq);
         if (expired != null) _broadcast(expired);
       });
     } else if (event.type == LanMessageType.undoAccept ||
-        event.type == LanMessageType.undoReject) {
+        event.type == LanMessageType.undoReject ||
+        event.type == LanMessageType.drawAccept ||
+        event.type == LanMessageType.drawReject) {
       _undoTimer?.cancel();
     }
     final encoded = event.encode();
     for (final peer in List.of(_clients)) {
       if (peer.side != null) peer.socket.add(encoded);
     }
+  }
+
+  LanMessage sync(LanMessage request) =>
+      draughtsAuthority?.sync(request) ?? authority.sync(request);
+
+  LanMessage submit(Side side, LanMessage request) =>
+      draughtsAuthority?.submit(side, request) ??
+      authority.submit(side, request);
+
+  bool acceptsHello(Map<String, Object?> body) {
+    if (isDraughts) {
+      return body['game'] == 'draughts' &&
+          body['variant'] == draughtsAuthority!.variant.name &&
+          body['rulesVersion'] == draughtsRulesVersion;
+    }
+    return (body['game'] == null || body['game'] == 'go') &&
+        _sameConfig(LanMessage.parseConfig(body), authority.session.goConfig);
   }
 
   Future<void> close() async {
@@ -230,7 +283,7 @@ class _LanPeer {
       if (side == null) {
         if (server._tooManyFailures(remoteAddress)) {
           socket.add(
-            LanMessage(LanMessageType.rejected, server.authority.seq, {
+            LanMessage(LanMessageType.rejected, server.seq, {
               'reason': '口令尝试过多，请稍后重试',
             }).encode(),
           );
@@ -242,15 +295,12 @@ class _LanPeer {
         } else if (message.body['token'] != server.token) {
           reason = '口令错误';
           server._recordAuthFailure(remoteAddress);
-        } else if (!_sameConfig(
-          LanMessage.parseConfig(message.body),
-          server.authority.session.goConfig,
-        )) {
+        } else if (!server.acceptsHello(message.body)) {
           reason = '棋盘规则不一致';
         }
         if (reason != null) {
           socket.add(
-            LanMessage(LanMessageType.rejected, server.authority.seq, {
+            LanMessage(LanMessageType.rejected, server.seq, {
               'reason': reason,
             }).encode(),
           );
@@ -258,7 +308,7 @@ class _LanPeer {
         }
         if (server._clients.where((peer) => peer.side != null).length >= 2) {
           socket.add(
-            LanMessage(LanMessageType.rejected, server.authority.seq, {
+            LanMessage(LanMessageType.rejected, server.seq, {
               'reason': '房间已满',
             }).encode(),
           );
@@ -272,7 +322,7 @@ class _LanPeer {
             : LanMessage.parseSide(requested);
         if (server._clients.any((peer) => peer != this && peer.side == side)) {
           socket.add(
-            LanMessage(LanMessageType.rejected, server.authority.seq, {
+            LanMessage(LanMessageType.rejected, server.seq, {
               'reason': '原座位仍被占用',
             }).encode(),
           );
@@ -287,22 +337,22 @@ class _LanPeer {
             socket.close();
           } else {
             socket.add(
-              LanMessage(LanMessageType.ping, server.authority.seq, {
+              LanMessage(LanMessageType.ping, server.seq, {
                 'nonce': DateTime.now().microsecondsSinceEpoch.toString(),
               }).encode(),
             );
           }
         });
         socket.add(
-          LanMessage(LanMessageType.helloAck, server.authority.seq, {
+          LanMessage(LanMessageType.helloAck, server.seq, {
             'assignedSide': LanMessage.sideCode(side!),
             'started': server.started,
           }).encode(),
         );
         socket.add(
-          server.authority
+          server
               .sync(
-                LanMessage(LanMessageType.stateRequest, server.authority.seq, {
+                LanMessage(LanMessageType.stateRequest, server.seq, {
                   'lastSeq': 0,
                 }),
               )
@@ -311,7 +361,7 @@ class _LanPeer {
         return;
       }
       if (message.type == LanMessageType.stateRequest) {
-        socket.add(server.authority.sync(message).encode());
+        socket.add(server.sync(message).encode());
         return;
       }
       if (message.type == LanMessageType.pong) {
@@ -320,7 +370,7 @@ class _LanPeer {
       }
       if (message.type == LanMessageType.ping) {
         socket.add(
-          LanMessage(LanMessageType.pong, server.authority.seq, {
+          LanMessage(LanMessageType.pong, server.seq, {
             'nonce': message.body['nonce'],
           }).encode(),
         );
@@ -328,13 +378,13 @@ class _LanPeer {
       }
       if (!server.started) {
         socket.add(
-          LanMessage(LanMessageType.rejected, server.authority.seq, {
+          LanMessage(LanMessageType.rejected, server.seq, {
             'reason': '等待房主开始对局',
           }).encode(),
         );
         return;
       }
-      final result = server.authority.submit(side!, message);
+      final result = server.submit(side!, message);
       if (result.type == LanMessageType.rejected) {
         socket.add(result.encode());
       } else {
@@ -342,13 +392,13 @@ class _LanPeer {
       }
     } on FormatException catch (error) {
       socket.add(
-        LanMessage(LanMessageType.rejected, server.authority.seq, {
+        LanMessage(LanMessageType.rejected, server.seq, {
           'reason': error.message,
         }).encode(),
       );
     } catch (_) {
       socket.add(
-        LanMessage(LanMessageType.rejected, server.authority.seq, {
+        LanMessage(LanMessageType.rejected, server.seq, {
           'reason': '无效的联机请求',
         }).encode(),
       );
@@ -370,8 +420,12 @@ bool _sameConfig(GoConfig left, GoConfig right) =>
     left.handicap == right.handicap;
 
 class LanClientConnection {
-  LanClientConnection(this.config);
+  LanClientConnection(this.config) : draughtsVariant = null;
+  LanClientConnection.draughts(DraughtsVariant variant)
+    : config = const GoConfig(),
+      draughtsVariant = variant;
   final GoConfig config;
+  final DraughtsVariant? draughtsVariant;
   final _messages = StreamController<LanMessage>.broadcast();
   final _disconnections = StreamController<void>.broadcast();
   WebSocket? _socket;
@@ -380,8 +434,10 @@ class LanClientConnection {
   Timer? _heartbeat;
   DateTime _lastPong = DateTime.now();
   LanReplica? replica;
+  DraughtsLanReplica? draughtsReplica;
   Side? side;
   bool started = false;
+  int get seq => draughtsReplica?.seq ?? replica?.seq ?? 0;
   Stream<LanMessage> get messages => _messages.stream;
   Stream<void> get disconnections => _disconnections.stream;
 
@@ -398,7 +454,11 @@ class LanClientConnection {
         : uri.replace(path: '/easyplay/ws');
     final socket = await WebSocket.connect(socketUri.toString());
     _socket = socket;
-    replica ??= LanReplica(config);
+    if (draughtsVariant != null) {
+      draughtsReplica ??= DraughtsLanReplica(draughtsVariant!);
+    } else {
+      replica ??= LanReplica(config);
+    }
     final handshake = Completer<void>();
     socket.listen(
       (raw) {
@@ -407,7 +467,7 @@ class LanClientConnection {
           _lastPong = DateTime.now();
           if (message.type == LanMessageType.ping) {
             socket.add(
-              LanMessage(LanMessageType.pong, replica?.seq ?? 0, {
+              LanMessage(LanMessageType.pong, seq, {
                 'nonce': message.body['nonce'],
               }).encode(),
             );
@@ -429,7 +489,11 @@ class LanClientConnection {
               message.type == LanMessageType.pass ||
               message.type == LanMessageType.resign ||
               LanMessage.eventTypes.contains(message.type)) {
-            replica?.receive(message);
+            if (draughtsVariant != null) {
+              draughtsReplica?.receive(message);
+            } else {
+              replica?.receive(message);
+            }
           }
           _messages.add(message);
         } catch (error) {
@@ -458,7 +522,10 @@ class LanClientConnection {
     socket.add(
       LanMessage(LanMessageType.hello, 0, {
         'roomVersion': lanProtocolVersion,
-        ...LanMessage.configToWire(config),
+        if (draughtsVariant == null) ...LanMessage.configToWire(config),
+        'game': draughtsVariant == null ? 'go' : 'draughts',
+        if (draughtsVariant != null) 'variant': draughtsVariant!.name,
+        if (draughtsVariant != null) 'rulesVersion': draughtsRulesVersion,
         'token': token,
         if (side != null) 'resumeSide': LanMessage.sideCode(side!),
       }).encode(),
@@ -473,7 +540,7 @@ class LanClientConnection {
           socket.close();
         } else {
           socket.add(
-            LanMessage(LanMessageType.ping, replica?.seq ?? 0, {
+            LanMessage(LanMessageType.ping, seq, {
               'nonce': DateTime.now().microsecondsSinceEpoch.toString(),
             }).encode(),
           );
