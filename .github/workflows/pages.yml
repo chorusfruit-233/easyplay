@@ -41,6 +41,17 @@ jobs:
             --no-wasm-dry-run \
             --base-href /easyplay/
 
+      - name: Check threaded KataGo assets
+        run: |
+          test -s build/web/coi-serviceworker.js
+          test -s build/web/katago/katago.js
+          test -s build/web/katago/katago.wasm
+          test -s build/web/katago-webgpu/kataeval.js
+          test -s build/web/katago-webgpu/kataeval.wasm
+          test -s build/web/katago-webgpu/kataeval-mt.js
+          test -s build/web/katago-webgpu/kataeval-mt.wasm
+          test -s build/web/assets/assets/katago/g170-b6c96-s175395328-d26788732.bin.gz
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

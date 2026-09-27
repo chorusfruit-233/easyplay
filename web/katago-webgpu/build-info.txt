@@ -1,0 +1,5 @@
+WebGPU fork: https://github.com/saigo-online/katago-webgpu.git@d5ad1c0423dba989c60a2f06b1848e7eec2b5941
+Eigen: 3147391d946bb4b6c68edd901f2add6ac1f31f8c
+Emscripten: 6.0.3
+Emdawnwebgpu: v20260423.175430
+Interfaces: kataeval-mt (threaded Search ABI); kataeval (single-thread NN); neither is GTP

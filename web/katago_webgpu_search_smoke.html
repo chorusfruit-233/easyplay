@@ -1,0 +1,66 @@
+<!doctype html><html><head><script src="coi-serviceworker.js"></script></head>
+<body><pre id="result">waiting</pre><script>
+(async () => {
+  const output = document.getElementById('result');
+  let worker;
+  let stage = 'startup';
+  try {
+    if (!crossOriginIsolated) throw new Error('Cross-origin isolation unavailable');
+    worker = new Worker('katago-webgpu/kata-worker.js');
+    let nextId = 1;
+    const pending = new Map();
+    worker.onmessage = ({data}) => {
+      if (data.diag) { output.textContent = data.diag; return; }
+      if (data.progress) return;
+      const callbacks = pending.get(data.id);
+      if (!callbacks) return;
+      pending.delete(data.id);
+      data.ok ? callbacks.resolve(data) : callbacks.reject(new Error(data.error));
+    };
+    worker.onerror = ({message}) => {
+      for (const {reject} of pending.values()) reject(new Error(message));
+      pending.clear();
+    };
+    const call = (data, transfer = []) => new Promise((resolve,reject) => {
+      const id = nextId++;
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error('Worker timed out'));
+      }, 60000);
+      pending.set(id, {
+        resolve: value => {clearTimeout(timer);resolve(value);},
+        reject: error => {clearTimeout(timer);reject(error);},
+      });
+      worker.postMessage({id,...data},transfer);
+    });
+    output.textContent = 'loading threaded KataGo';
+    const [wasmBinary,jsText] = await Promise.all([
+      fetch('katago-webgpu/kataeval-mt.wasm').then(r=>r.arrayBuffer()),
+      fetch('katago-webgpu/kataeval-mt.js').then(r=>r.text()),
+    ]);
+    stage = 'init';
+    const init = await call({type:'init',
+      netFile:new URL('assets/assets/katago/g170-b6c96-s175395328-d26788732.bin.gz',location.href).href,
+      boardSize:9,wasmBinary,jsText,forceCpu:false,fp16:false,optimism:0},[wasmBinary]);
+    stage = 'analysis';
+    const analysis = await call({type:'eval',moves:[],toPlay:1,komi:7.5,owner:false});
+    output.textContent = 'searching with ' + init.backend;
+    stage = 'black search';
+    const result = await call({type:'search',moves:[],toPlay:1,komi:7.5,
+      visits:16,ms:30000,threads:1,noPonder:true});
+    output.textContent = 'searching white with ' + init.backend;
+    stage = 'white search';
+    const reply = await call({type:'search',moves:[{loc:result.best,col:1}],
+      toPlay:2,komi:7.5,visits:16,ms:30000,threads:1,noPonder:true});
+    const valid = r => Number.isInteger(r.best) && r.best >= -1 && r.best < 81 &&
+      r.nv > 0 && Number.isFinite(r.wr) && Number.isFinite(r.score);
+    const pass = init.backend === 'WebGPU' &&
+      [...analysis.policy,...analysis.value].every(Number.isFinite) &&
+      valid(result) && valid(reply);
+    output.textContent = JSON.stringify({pass,backend:init.backend,
+      black:{best:result.best,visits:result.nv,winrate:result.wr,score:result.score},
+      white:{best:reply.best,visits:reply.nv,winrate:reply.wr,score:reply.score}});
+  } catch (error) { output.textContent = 'ERROR (' + stage + '): ' + String(error); }
+  finally { worker?.terminate(); }
+})();
+</script></body></html>
