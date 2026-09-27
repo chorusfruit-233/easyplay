@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../game_session.dart';
 import 'lan_game.dart';
+import 'lan_ports.dart';
 import 'lan_protocol.dart';
 
 class LanHostServer {
@@ -32,7 +33,10 @@ class LanHostServer {
     _broadcast(LanMessage(LanMessageType.matchStart, authority.seq));
   }
 
-  Future<void> start({String host = '0.0.0.0', int port = 8080}) async {
+  Future<void> start({
+    String host = '0.0.0.0',
+    int port = lanDefaultPort,
+  }) async {
     if (_server != null) return;
     try {
       _server = await HttpServer.bind(host, port, shared: false);
@@ -40,7 +44,7 @@ class LanHostServer {
       if (port == 0 || !_portInUse(error)) rethrow;
       for (
         var fallback = port + 1;
-        fallback <= 65535 && fallback <= port + 10;
+        fallback <= 65535 && fallback <= port + lanFallbackPortCount;
         fallback++
       ) {
         try {
@@ -50,7 +54,9 @@ class LanHostServer {
           if (!_portInUse(retryError)) rethrow;
         }
       }
-      _server ??= await HttpServer.bind(host, 0, shared: false);
+      if (_server == null) {
+        throw StateError('建房端口及其后续 10 个端口均被占用，无法创建可扫描的房间');
+      }
     }
     _server!.listen(_handle);
   }

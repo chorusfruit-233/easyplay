@@ -1,3 +1,5 @@
+import 'lan_ports.dart';
+
 class LanEndpoint {
   const LanEndpoint({required this.host, required this.port, this.players = 0});
   final String host;
@@ -57,13 +59,14 @@ class LanSubnet {
 
 Future<List<LanEndpoint>> scanLan({
   Duration timeout = const Duration(milliseconds: 250),
-  int port = 8080,
-  int concurrency = 64,
+  int port = lanDefaultPort,
+  int concurrency = 128,
 }) async => const [];
 
 Future<List<LanEndpoint>> scanLanTargets(
   Iterable<String> addresses, {
   Duration timeout = const Duration(milliseconds: 250),
-  int port = 8080,
+  int port = lanDefaultPort,
+  Iterable<int>? ports,
   int concurrency = 64,
 }) async => const [];

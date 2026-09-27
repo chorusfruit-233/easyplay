@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'lan_ports.dart';
+
 class LanEndpoint {
   const LanEndpoint({required this.host, required this.port, this.players = 0});
   final String host;
@@ -60,8 +62,8 @@ class LanSubnet {
 
 Future<List<LanEndpoint>> scanLan({
   Duration timeout = const Duration(milliseconds: 250),
-  int port = 8080,
-  int concurrency = 64,
+  int port = lanDefaultPort,
+  int concurrency = 128,
 }) async {
   final interfaces = <({String name, String address})>[];
   for (final interface in await NetworkInterface.list(
@@ -77,7 +79,7 @@ Future<List<LanEndpoint>> scanLan({
   return scanLanTargets(
     LanSubnet.candidates(interfaces),
     timeout: timeout,
-    port: port,
+    ports: lanDiscoveryPorts(port),
     concurrency: concurrency,
   );
 }
@@ -86,18 +88,27 @@ Future<List<LanEndpoint>> scanLan({
 Future<List<LanEndpoint>> scanLanTargets(
   Iterable<String> addresses, {
   Duration timeout = const Duration(milliseconds: 250),
-  int port = 8080,
+  int port = lanDefaultPort,
+  Iterable<int>? ports,
   int concurrency = 64,
 }) async {
   if (concurrency < 1) throw ArgumentError.value(concurrency, 'concurrency');
+  final scanPorts = (ports ?? [port]).toSet().toList();
+  if (scanPorts.any((candidate) => candidate < 1 || candidate > 65535)) {
+    throw ArgumentError.value(scanPorts, 'ports');
+  }
   final results = <LanEndpoint>[];
-  final queue = addresses.toSet().toList();
+  final queue = [
+    for (final address in addresses.toSet())
+      for (final candidate in scanPorts) (host: address, port: candidate),
+  ];
   var cursor = 0;
   Future<void> worker() async {
     while (true) {
       final index = cursor++;
       if (index >= queue.length) return;
-      final endpoint = await _probe(queue[index], port, timeout);
+      final target = queue[index];
+      final endpoint = await _probe(target.host, target.port, timeout);
       if (endpoint != null) results.add(endpoint);
     }
   }

@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:easyplay/game_session.dart';
 import 'package:easyplay/lan/lan_game.dart';
+import 'package:easyplay/lan/lan_ports.dart';
 import 'package:easyplay/lan/lan_protocol.dart';
 import 'package:easyplay/lan/lan_scanner.dart';
 import 'package:easyplay/lan/lan_transport.dart';
@@ -87,6 +88,10 @@ void main() {
         await room.start(host: '127.0.0.1', port: occupied.port);
         expect(room.port, isNot(occupied.port));
         expect(room.port, greaterThan(0));
+        final found = await scanLanTargets([
+          '127.0.0.1',
+        ], ports: lanDiscoveryPorts(occupied.port));
+        expect(found.map((endpoint) => endpoint.port), contains(room.port));
       } finally {
         await room.close();
         await occupied.close(force: true);
