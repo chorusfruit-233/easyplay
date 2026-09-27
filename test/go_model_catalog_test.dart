@@ -45,6 +45,14 @@ void main() {
         expect(entry.description, contains('下架'));
       } else {
         expect(entry.bytes, isNotNull, reason: '${entry.id} 缺少体积');
+        // Matching "already downloaded" runs on the content hash, so a
+        // downloadable entry without one can never be recognised as installed
+        // and keeps offering the button forever.
+        expect(
+          entry.sha256,
+          isNotNull,
+          reason: '${entry.id} 缺少 sha256，无法判定已下载',
+        );
       }
     }
   });
@@ -115,11 +123,11 @@ void main() {
     'availability marks installed, downloadable and lookup-only rows',
     () async {
       final entries = GoModelCatalog.entries();
-      const b10 = GoModelInfo(
+      final b10 = GoModelInfo(
         id: 'x',
         name: 'kata1-tf2-b10c384-s2941M-d5872M',
         fileName: 'kata1-tf2-b10c384-s2941M-d5872M.bin.gz',
-        sha256: 'a',
+        sha256: entries.firstWhere((e) => e.id == 'b10c384').sha256!,
         bytes: 1,
         bundled: false,
         kind: GoModelKind.standard,
@@ -137,9 +145,35 @@ void main() {
         GoModelAvailability.downloadable,
       );
       expect(
-        await GoModelCatalog.availability(pinned, const [b10]),
+        await GoModelCatalog.availability(pinned, [b10]),
         GoModelAvailability.installed,
       );
+
+      // Matching must use the content hash, not the display name. In the real
+      // case the name recorded at download time comes from the API and differs
+      // from the pinned snapshot name, while the hash is identical; name-based
+      // matching then reports "not downloaded" and offers the button again.
+      final latestEntry = entries.firstWhere((e) => e.id == 'latest');
+      final downloaded = GoModelInfo(
+        id: 'latest-sha',
+        name: 'kata1-tf3-b11c768-s12002M-d6304M',
+        fileName: 'kata1-tf3-b11c768-s12002M-d6304M.bin.gz',
+        sha256: GoModelCatalog.fallbackFor(latestEntry)!.sha256!,
+        bytes: 1,
+        bundled: false,
+        kind: GoModelKind.standard,
+      );
+      expect(
+        downloaded.name,
+        isNot(GoModelCatalog.fallbackFor(latestEntry)!.name),
+        reason: '前提：记录名与快照名不同，这正是按名字匹配会失效的场景',
+      );
+      expect(
+        GoModelCatalog.isInstalled([downloaded], downloaded.sha256),
+        isTrue,
+      );
+      expect(GoModelCatalog.isInstalled([b10], pinned.sha256), isTrue);
+      expect(GoModelCatalog.isInstalled([b10], null), isFalse);
 
       final retired = entries.firstWhere((e) => e.id == 'old-10-block');
       expect(

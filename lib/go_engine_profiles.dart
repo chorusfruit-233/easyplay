@@ -199,7 +199,7 @@ class GoEngineProfile {
     this.humanOverrideRules = const <GoEngineOverrideRule>[],
   });
 
-  static const builtIn = GoEngineProfile(id: 'default', name: 'KataGo');
+  static const builtIn = GoEngineProfile(id: 'default', name: '内置引擎');
 
   Map<String, Object> toJson() {
     final result = <String, Object>{

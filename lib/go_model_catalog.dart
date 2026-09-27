@@ -103,7 +103,7 @@ class GoModelCatalog {
       'kata1-b18c384nbt-s9996604416-d4316597426.bin.gz',
     ),
     bytes: 97898094,
-    sha256: null,
+    sha256: '9d7a6afed8ff5b74894727e156f04f0cd36060a24824892008fbb6e0cba51f1d',
   );
 
   /// The human-style network. Loaded through `-human-model`, so it is a
@@ -115,7 +115,7 @@ class GoModelCatalog {
       'b18c384nbt-humanv0.bin.gz',
     ),
     bytes: 99066230,
-    sha256: null,
+    sha256: '637746e44f0efe00ad1245a50aa9bbf0716efe364c43965ead97bd6835d84ab5',
   );
 
   /// Retired networks on the media mirror answer 403, so they are listed as
@@ -161,6 +161,7 @@ class GoModelCatalog {
       source: GoModelSource.pinned,
       url: _strongestFallback.url,
       bytes: _strongestFallback.bytes,
+      sha256: _strongestFallback.sha256,
     ),
     GoModelCatalogEntry(
       id: 'human-b18',
@@ -170,6 +171,7 @@ class GoModelCatalog {
       source: GoModelSource.pinned,
       url: humanModel.url,
       bytes: humanModel.bytes,
+      sha256: humanModel.sha256,
     ),
     GoModelCatalogEntry(
       id: 'old-10-block',
@@ -254,13 +256,17 @@ class GoModelCatalog {
       return GoModelAvailability.needsLookup;
     }
     if (entry.url == null) return GoModelAvailability.unavailable;
-    // The install step records the network name from the API payload, which for
-    // a pinned entry is its file name. Matching on the entry id would never hit.
-    final target = downloadNameFor(entry);
-    return installed.any((m) => m.name == target)
+    return installed.any((m) => m.sha256 == entry.sha256)
         ? GoModelAvailability.installed
         : GoModelAvailability.downloadable;
   }
+
+  /// Whether [sha256] is already in the model library. The device names model
+  /// files by their content hash, so the hash is the stable identity of a
+  /// download — unlike the display name, which comes from the API at the time of
+  /// the download and drifts from any pinned snapshot.
+  static bool isInstalled(List<GoModelInfo> installed, String? sha256) =>
+      sha256 != null && installed.any((m) => m.sha256 == sha256);
 
   /// Kind to record for an entry, used to reject a mismatched download before
   /// it reaches the engine.

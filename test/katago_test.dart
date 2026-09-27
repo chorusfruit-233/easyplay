@@ -105,7 +105,7 @@ void main() {
       buildKataGoConfig(
         '',
         config: const GoConfig(),
-        settings: const GoAiSettings(rank: GoAiRank.dan1, humanStyleRank: 20),
+        settings: const GoAiSettings(rank: GoAiRank.d1, humanStyleRank: 20),
         engine: const GoEngineProfile(
           id: 'ranked',
           name: 'Ranked',
@@ -155,13 +155,11 @@ numSearchThreads = 6
     final modern = buildKataGoConfig(
       source,
       config: const GoConfig(rules: GoRuleSet.japanese),
-      settings: const GoAiSettings(
-        rank: GoAiRank.dan1,
-        style: GoAiStyle.modern,
-      ),
+      settings: const GoAiSettings(rank: GoAiRank.d1, style: GoAiStyle.modern),
     );
     expect(modern, contains('rules = japanese'));
-    expect(modern, contains('maxVisits = 2500'));
+    // Rank no longer scales the built-in baseline; override rules do.
+    expect(modern, contains('maxVisits = 120'));
     expect(modern, contains('numSearchThreads = 2'));
     expect(modern, contains('maxTime = 3'));
     expect(modern, contains('chosenMoveTemperatureEarly = 0.3'));

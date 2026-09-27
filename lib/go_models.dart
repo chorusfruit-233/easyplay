@@ -48,9 +48,11 @@ GoModelKind inspectGoModel(Uint8List bytes) {
     throw const FormatException('缺少 KataGo 网络名称');
   }
   final version = int.tryParse(header[1]);
+  // Bounds mirror KataGo's own NNModelVersion: oldest 3, latest 17 as of
+  // v1.18.2. Version 17 is the transformer format added in v1.17.
   if (version == null ||
       version < 3 ||
-      version > 16 ||
+      version > 17 ||
       (int.tryParse(header[2]) ?? 0) <= 0 ||
       (int.tryParse(header[3]) ?? 0) <= 0) {
     throw const FormatException('无效或当前引擎不支持的 KataGo 模型版本');
@@ -152,7 +154,6 @@ class GoModelCompatibility {
     required GoModelInfo model,
     required GoEngineProfile engine,
     GoModelInfo? humanModel,
-    bool useBuiltinHumanStyle = false,
   }) {
     if (!model.supportsBackend(engine.backend)) {
       throw ArgumentError(
@@ -160,14 +161,10 @@ class GoModelCompatibility {
         '当前引擎为 ${engine.backend.label}',
       );
     }
-    if (model.isHumanModel && humanModel != null) {
-      throw ArgumentError('人类棋风主模型不能再叠加独立 human model');
-    }
-    if (useBuiltinHumanStyle && !model.isHumanModel) {
-      throw ArgumentError('所选主模型不是人类棋风网络');
-    }
-    if (useBuiltinHumanStyle && humanModel != null) {
-      throw ArgumentError('主模型自带人类棋风时不能再配置独立 human model');
+    // Human-style play is always a separate network bound to the engine; a
+    // human-style file is never a valid main model.
+    if (model.isHumanModel) {
+      throw ArgumentError('人类棋风网络只能作为人类棋风模型，不能作为主模型');
     }
     if (humanModel == null) return;
     if (!humanModel.isHumanModel) {

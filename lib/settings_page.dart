@@ -352,7 +352,7 @@ class SettingsPage extends StatelessWidget {
         Card(
           child: ListTile(
             leading: const Icon(Icons.memory_outlined),
-            title: const Text('KataGo 引擎与模型'),
+            title: const Text('AI 引擎与模型'),
             subtitle: const Text('选择模型，导入或下载 KataGo 网络'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.push(

@@ -1,4 +1,3 @@
-
 import 'package:flutter/services.dart';
 
 const _channel = MethodChannel('easyplay/katago');

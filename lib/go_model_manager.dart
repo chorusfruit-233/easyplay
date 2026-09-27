@@ -26,25 +26,14 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
     _snapshot = _loadSnapshot();
   }
 
-  Future<_ModelSnapshot> _loadSnapshot() async => _ModelSnapshot(
-    models: await GoModelLibrary.available(),
-    activeId: await GoModelLibrary.activeId(),
-  );
+  Future<_ModelSnapshot> _loadSnapshot() async =>
+      _ModelSnapshot(models: await GoModelLibrary.available());
 
   void _message(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  Future<void> _activate(String id) async {
-    try {
-      await GoModelLibrary.setActive(id);
-      if (mounted) setState(_reload);
-    } catch (error) {
-      _message('无法选择模型：$error');
-    }
   }
 
   Future<void> _importFile() async {
@@ -88,9 +77,6 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
         bytes: bytes,
         kind: kind,
       );
-      if (info.kind == GoModelKind.standard) {
-        await GoModelLibrary.setActive(info.id);
-      }
       if (!mounted) return;
       setState(_reload);
       _message('模型已导入：${info.name}（${info.kind.label}）');
@@ -197,7 +183,7 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('KataGo 引擎与模型'),
+      title: const Text('KataGo 模型'),
       actions: kIsWeb
           ? const []
           : [
@@ -209,7 +195,7 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
                 },
                 itemBuilder: (context) => const [
                   PopupMenuItem(value: 'import', child: Text('导入模型文件')),
-                  PopupMenuItem(value: 'download', child: Text('从 URL 下载')),
+                  PopupMenuItem(value: 'download', child: Text('下载模型')),
                 ],
               ),
             ],
@@ -223,60 +209,60 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
-        final data = snapshot.data!;
-        return RadioGroup<String>(
-          groupValue: data.activeId,
-          onChanged: (id) {
-            if (id != null) _activate(id);
-          },
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text(
-                kIsWeb
-                    ? 'Web 静态部署只使用随应用发布的 KataGo b6 模型。'
-                    : '选择默认模型。导入或下载的模型只保存在本机设备中，不需要服务端。',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+        final models = snapshot.data!.models;
+        return ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text(
+              kIsWeb
+                  ? 'Web 静态部署只使用随应用发布的 KataGo b6 模型。'
+                  : '这里只管理模型文件本身。用哪个模型由 AI 引擎决定——'
+                        '到 AI 引擎里为每个引擎指定主模型与人类棋风模型。',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            for (final model in models)
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.memory),
+                  title: Text(model.name),
+                  subtitle: Text(
+                    '${model.kind.label} · ${model.fileName} · ${_size(model.bytes)}\n'
+                    'SHA-256 ${model.sha256}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  isThreeLine: true,
+                  trailing: model.bundled
+                      ? const Chip(label: Text('内置'))
+                      : IconButton(
+                          tooltip: '删除模型',
+                          onPressed: () => _remove(model),
+                          icon: const Icon(Icons.delete_outline),
+                        ),
                 ),
               ),
-              const SizedBox(height: 12),
-              for (final model in data.models)
-                Card(
-                  child: ListTile(
-                    leading: Radio<String>(value: model.id),
-                    title: Text(model.name),
-                    subtitle: Text(
-                      '${model.kind.label} · ${model.fileName} · ${_size(model.bytes)}\nSHA-256 ${model.sha256}',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    isThreeLine: true,
-                    trailing: model.bundled
-                        ? const Chip(label: Text('内置'))
-                        : IconButton(
-                            tooltip: '删除模型',
-                            onPressed: () => _remove(model),
-                            icon: const Icon(Icons.delete_outline),
-                          ),
-                    onTap: () => _activate(model.id),
-                  ),
-                ),
-              if (!kIsWeb) ...[
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: _importFile,
-                  icon: const Icon(Icons.file_open_outlined),
-                  label: const Text('导入标准、人类棋风或 TFLite 模型'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _download,
-                  icon: const Icon(Icons.download_outlined),
-                  label: const Text('从 URL 下载模型'),
-                ),
-              ],
+            if (!kIsWeb) ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: _importFile,
+                icon: const Icon(Icons.file_open_outlined),
+                label: const Text('导入标准、人类棋风或 TFLite 模型'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _download,
+                icon: const Icon(Icons.download_outlined),
+                label: const Text('下载模型'),
+              ),
             ],
-          ),
+            if (kIsWeb)
+              const Padding(
+                padding: EdgeInsets.only(top: 12),
+                child: Text('Web 端仅支持内置模型。'),
+              ),
+          ],
         );
       },
     ),
@@ -285,14 +271,112 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
 
 class _ModelSnapshot {
   final List<GoModelInfo> models;
-  final String activeId;
-  const _ModelSnapshot({required this.models, required this.activeId});
+  const _ModelSnapshot({required this.models});
 }
 
 /// The Download Models list: name, size, and current state per row.
-class _CatalogSheet extends StatelessWidget {
+/// Resolves remote entries up front so each row knows its content hash and can
+/// tell whether that exact network is already on the device. Matching on the
+/// display name is not enough: the name comes from the API at download time and
+/// differs from the pinned snapshot used for an offline fallback.
+class _CatalogSheet extends StatefulWidget {
   final List<GoModelInfo> installed;
   const _CatalogSheet({required this.installed});
+
+  @override
+  State<_CatalogSheet> createState() => _CatalogSheetState();
+}
+
+/// One displayed row: the catalogue entries it covers, plus the network they
+/// currently resolve to. Several entries can share a network — the "latest" and
+/// "strongest" endpoints often return the same file, and listing it twice with
+/// two "downloaded" labels tells the user nothing.
+class _CatalogRowData {
+  final List<GoModelCatalogEntry> entries;
+  final String? sha256;
+  final int? bytes;
+  const _CatalogRowData({
+    required this.entries,
+    required this.sha256,
+    required this.bytes,
+  });
+
+  GoModelCatalogEntry get primary => entries.first;
+  bool get isMerged => entries.length > 1;
+
+  /// "最新 · 最强" when the runtime entries collapsed into one row.
+  String get title {
+    if (!isMerged) return primary.displayName;
+    final names = {for (final e in entries) e.displayName};
+    return ['最新', '最强'].where(names.contains).join(' · ');
+  }
+
+  String get subtitle {
+    if (isMerged) return '当前最新与最强为同一网络';
+    return primary.description;
+  }
+}
+
+class _CatalogSheetState extends State<_CatalogSheet> {
+  List<_CatalogRowData> _rows = const [];
+  var _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  Future<void> _resolve() async {
+    final entries = GoModelCatalog.entries();
+
+    // Resolve first: a remote entry's identity, size and checksum are only
+    // known once the API answers.
+    final hashes = <String, String?>{};
+    final bytes = <String, int?>{};
+    for (final entry in entries) {
+      if (!entry.isRemote) {
+        hashes[entry.id] = entry.sha256;
+        bytes[entry.id] = entry.bytes;
+        continue;
+      }
+      try {
+        final resolved = await GoModelCatalog.resolve(entry);
+        hashes[entry.id] = resolved.sha256;
+        bytes[entry.id] = resolved.bytes;
+      } catch (_) {
+        final fallback = GoModelCatalog.fallbackFor(entry);
+        hashes[entry.id] = fallback?.sha256;
+        bytes[entry.id] = fallback?.bytes;
+      }
+    }
+
+    // Group by content hash so one network is one row. Entries whose hash is
+    // unknown stay separate rather than being merged on a guess.
+    final order = <String>[];
+    final grouped = <String, List<GoModelCatalogEntry>>{};
+    for (final entry in entries) {
+      final hash = hashes[entry.id];
+      final key = hash == null ? 'entry:${entry.id}' : 'sha:$hash';
+      if (!grouped.containsKey(key)) order.add(key);
+      grouped.putIfAbsent(key, () => []).add(entry);
+    }
+
+    final rows = [
+      for (final key in order)
+        _CatalogRowData(
+          entries: grouped[key]!,
+          sha256: hashes[grouped[key]!.first.id],
+          bytes: bytes[grouped[key]!.first.id],
+        ),
+    ];
+    if (mounted) {
+      setState(() {
+        _rows = rows;
+        _loading = false;
+      });
+    }
+  }
 
   String _sizeLabel(int? bytes) {
     if (bytes == null) return '大小未知';
@@ -305,7 +389,6 @@ class _CatalogSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final entries = GoModelCatalog.entries();
     return SafeArea(
       child: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
@@ -321,14 +404,18 @@ class _CatalogSheet extends StatelessWidget {
                 style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
               ),
             ),
-            for (final entry in entries)
-              _CatalogRow(
-                entry: entry,
-                installed: installed,
-                sizeLabel: _sizeLabel(
-                  entry.bytes ?? GoModelCatalog.fallbackFor(entry)?.bytes,
+            if (_loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else
+              for (final row in _rows)
+                _CatalogRow(
+                  data: row,
+                  installed: widget.installed,
+                  sizeLabel: _sizeLabel(row.bytes),
                 ),
-              ),
           ],
         ),
       ),
@@ -337,11 +424,11 @@ class _CatalogSheet extends StatelessWidget {
 }
 
 class _CatalogRow extends StatelessWidget {
-  final GoModelCatalogEntry entry;
+  final _CatalogRowData data;
   final List<GoModelInfo> installed;
   final String sizeLabel;
   const _CatalogRow({
-    required this.entry,
+    required this.data,
     required this.installed,
     required this.sizeLabel,
   });
@@ -349,12 +436,12 @@ class _CatalogRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
-    final resolved = GoModelCatalog.fallbackFor(entry);
-    final already = installed.any(
-      (m) => m.name == (resolved?.name ?? entry.id),
-    );
+    final entry = data.primary;
+    final already = GoModelCatalog.isInstalled(installed, data.sha256);
     // Entries with neither a pinned URL nor an endpoint are retired upstream.
-    final retired = entry.url == null && entry.endpoint == null;
+    final retired = data.entries.every(
+      (e) => e.url == null && e.endpoint == null,
+    );
     final enabled = !already && !retired;
 
     return Card(
@@ -371,7 +458,7 @@ class _CatalogRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      entry.displayName,
+                      data.title,
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
@@ -380,7 +467,7 @@ class _CatalogRow extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${entry.description} · $sizeLabel',
+                      '${data.subtitle} · $sizeLabel',
                       style: TextStyle(
                         fontSize: 12,
                         color: colors.onSurfaceVariant,
@@ -469,7 +556,7 @@ class _DownloadProgressState extends State<_DownloadProgress> {
       );
       if (!mounted) return;
       setState(() => _verifying = true);
-      final info = await GoModelLibrary.install(
+      await GoModelLibrary.install(
         name: target.name,
         fileName: target.url.pathSegments.isEmpty
             ? 'katago-model.bin.gz'
@@ -478,9 +565,6 @@ class _DownloadProgressState extends State<_DownloadProgress> {
         expectedSha256: target.sha256,
         kind: GoModelCatalog.kindOf(widget.entry),
       );
-      if (info.kind == GoModelKind.standard) {
-        await GoModelLibrary.setActive(info.id);
-      }
       if (mounted) Navigator.pop(context, true);
     } catch (error) {
       if (!mounted) return;

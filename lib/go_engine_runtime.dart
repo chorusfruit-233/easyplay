@@ -97,22 +97,13 @@ class _GoEngineRuntimePageState extends State<GoEngineRuntimePage> {
                   ))
               .copyWith(modelId: _model);
       final main = await GoModelLibrary.byId(_model);
-      if (main.isHumanModel) {
-        settings = GoAiSettings.fromJson({
-          ...settings.toJson(),
-          'style': GoAiStyle.human.name,
-          'humanModelId': null,
-          'useBuiltinHumanStyle': true,
-        });
-      }
-      final human = settings.usesHumanStyle && !settings.useBuiltinHumanStyle
-          ? settings.humanModelId
-          : null;
+      final human = settings.usesHumanStyle ? settings.humanModelId : null;
+      // A human-style file is never a valid main model; GoModelCompatibility
+      // rejects that combination rather than silently reinterpreting it.
       GoModelCompatibility.validate(
         model: main,
         engine: widget.profile,
         humanModel: human == null ? null : await GoModelLibrary.byId(human),
-        useBuiltinHumanStyle: settings.useBuiltinHumanStyle,
       );
       final config = (widget.config ?? const GoConfig()).copyWith(
         boardSize: _board,

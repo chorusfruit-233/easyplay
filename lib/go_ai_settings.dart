@@ -6,18 +6,60 @@ enum GoOpponentMode { kataGo, local }
 
 enum GoPlayerColor { black, white, random }
 
+/// Playable ranks on KataGo's human-SL scale, weakest first. 20k..1k are kyu,
+/// 1d..9d are dan; the numeric form uses 20..1 for kyu and 0..-8 for dan,
+/// matching the reference app's scale.
 enum GoAiRank {
-  beginner('20k', 48),
-  club('10k', 120),
-  intermediate('5k', 500),
-  advanced('1k', 1200),
-  dan1('1d', 2500),
-  dan5('5d', 5000),
-  strongest('最强', 10000);
+  k20('20k', 20),
+  k19('19k', 19),
+  k18('18k', 18),
+  k17('17k', 17),
+  k16('16k', 16),
+  k15('15k', 15),
+  k14('14k', 14),
+  k13('13k', 13),
+  k12('12k', 12),
+  k11('11k', 11),
+  k10('10k', 10),
+  k9('9k', 9),
+  k8('8k', 8),
+  k7('7k', 7),
+  k6('6k', 6),
+  k5('5k', 5),
+  k4('4k', 4),
+  k3('3k', 3),
+  k2('2k', 2),
+  k1('1k', 1),
+  d1('1d', 0),
+  d2('2d', -1),
+  d3('3d', -2),
+  d4('4d', -3),
+  d5('5d', -4),
+  d6('6d', -5),
+  d7('7d', -6),
+  d8('8d', -7),
+  d9('9d', -8),
+  strongest('Max', -9);
 
   final String label;
-  final int maxVisits;
-  const GoAiRank(this.label, this.maxVisits);
+  final int humanRank;
+  const GoAiRank(this.label, this.humanRank);
+
+  /// Baseline search budget for one move when not playing human style.
+  ///
+  /// Deliberately flat: on a phone this is roughly 20-50 visits per second on
+  /// two threads, so a per-rank curve into the thousands would mean minutes per
+  /// move. Rank-dependent tuning belongs to the engine's override rules, whose
+  /// `maxVisits` merges later and therefore wins over this baseline.
+  int get maxVisits => this == GoAiRank.strongest ? 10000 : 120;
+
+  /// Ranks a model of the given reach can offer. The bundled b6 is a small v8
+  /// network that cannot back the upper dan labels, so it stops at 5d.
+  static List<GoAiRank> availableFor({required int highestHumanRank}) => [
+    for (final value in GoAiRank.values)
+      if (value == GoAiRank.strongest || value.humanRank >= highestHumanRank)
+        value,
+  ];
 }
 
 enum GoAiStyle { modern, traditional, human }
@@ -27,19 +69,6 @@ extension GoAiStyleX on GoAiStyle {
     GoAiStyle.modern => '现代',
     GoAiStyle.traditional => '传统',
     GoAiStyle.human => '人类棋风',
-  };
-}
-
-extension GoAiRankX on GoAiRank {
-  /// Reference app's rank scale: 20k=20, 1k=1, 1d=0, 9d=-8.
-  int get humanRank => switch (this) {
-    GoAiRank.beginner => 20,
-    GoAiRank.club => 10,
-    GoAiRank.intermediate => 5,
-    GoAiRank.advanced => 1,
-    GoAiRank.dan1 => 0,
-    GoAiRank.dan5 => -4,
-    GoAiRank.strongest => -8,
   };
 }
 
@@ -57,19 +86,17 @@ class GoAiSettings {
 
   /// Optional named humanSL profile supplied by KataGo or an override file.
   final String? humanSLProfile;
-  final bool useBuiltinHumanStyle;
 
   const GoAiSettings({
     this.opponentMode = GoOpponentMode.kataGo,
     this.playerColor = GoPlayerColor.black,
-    this.rank = GoAiRank.intermediate,
+    this.rank = GoAiRank.k5,
     this.style = GoAiStyle.modern,
     this.modelId = 'b6',
     this.engineProfileId = 'default',
     this.humanModelId,
     this.humanStyleRank,
     this.humanSLProfile,
-    this.useBuiltinHumanStyle = false,
   });
 
   Side resolvePlayerSide({Random? random}) => switch (playerColor) {
@@ -89,7 +116,6 @@ class GoAiSettings {
     String? humanModelId,
     int? humanStyleRank,
     String? humanSLProfile,
-    bool? useBuiltinHumanStyle,
   }) => GoAiSettings(
     opponentMode: opponentMode ?? this.opponentMode,
     playerColor: playerColor ?? this.playerColor,
@@ -100,7 +126,6 @@ class GoAiSettings {
     humanModelId: humanModelId ?? this.humanModelId,
     humanStyleRank: humanStyleRank ?? this.humanStyleRank,
     humanSLProfile: humanSLProfile ?? this.humanSLProfile,
-    useBuiltinHumanStyle: useBuiltinHumanStyle ?? this.useBuiltinHumanStyle,
   );
 
   Map<String, Object> toJson() => {
@@ -113,7 +138,6 @@ class GoAiSettings {
     'humanModelId': ?humanModelId,
     'humanStyleRank': ?humanStyleRank,
     'humanSLProfile': ?humanSLProfile,
-    'useBuiltinHumanStyle': useBuiltinHumanStyle,
   };
 
   factory GoAiSettings.fromJson(Map<String, Object?> json) => GoAiSettings(
@@ -124,10 +148,7 @@ class GoAiSettings {
       (value) => value.name == json['playerColor'],
       orElse: () => GoPlayerColor.black,
     ),
-    rank: GoAiRank.values.firstWhere(
-      (value) => value.name == json['rank'],
-      orElse: () => GoAiRank.intermediate,
-    ),
+    rank: _rankFromName(json['rank'] as String?),
     style: GoAiStyle.values.firstWhere(
       (value) => value.name == json['style'],
       orElse: () => GoAiStyle.modern,
@@ -137,7 +158,6 @@ class GoAiSettings {
     humanModelId: json['humanModelId'] as String?,
     humanStyleRank: json['humanStyleRank'] as int?,
     humanSLProfile: json['humanSLProfile'] as String?,
-    useBuiltinHumanStyle: json['useBuiltinHumanStyle'] as bool? ?? false,
   );
 
   int get resolvedHumanStyleRank => humanStyleRank ?? rank.humanRank;
@@ -151,6 +171,29 @@ class GoAiSettings {
       ? humanSLProfile!.trim()
       : 'rank_${humanRankLabel(resolvedHumanStyleRank)}';
 
+  /// Restores a rank from storage.
+  ///
+  /// The enum went from seven coarse presets to the full 20k..9d scale, so the
+  /// old member names no longer exist. Without this mapping a stored 'beginner'
+  /// or 'strongest' would silently collapse to the middle preset.
+  static GoAiRank _rankFromName(String? name) {
+    const legacy = <String, GoAiRank>{
+      'beginner': GoAiRank.k20,
+      'club': GoAiRank.k10,
+      'intermediate': GoAiRank.k5,
+      'advanced': GoAiRank.k1,
+      'dan1': GoAiRank.d1,
+      'dan5': GoAiRank.d5,
+      'strongest': GoAiRank.strongest,
+    };
+    final restored = legacy[name];
+    if (restored != null) return restored;
+    return GoAiRank.values.firstWhere(
+      (value) => value.name == name,
+      orElse: () => GoAiRank.k5,
+    );
+  }
+
   void validateHumanStyle() {
     if (!usesHumanStyle) return;
     if (resolvedHumanStyleRank < -8 || resolvedHumanStyleRank > 20) {
@@ -161,11 +204,8 @@ class GoAiSettings {
     ).hasMatch(resolvedHumanSLProfile)) {
       throw ArgumentError('humanSLProfile 应为 rank_5k、preaz_5d 等有效段位配置');
     }
-    if (!useBuiltinHumanStyle && humanModelId == null) {
-      throw ArgumentError('人类棋风需要选择独立 human model 或人类棋风主模型');
-    }
-    if (useBuiltinHumanStyle && humanModelId != null) {
-      throw ArgumentError('使用人类棋风主模型时不能再叠加独立 human model');
+    if (humanModelId == null) {
+      throw ArgumentError('人类棋风需要在引擎中配置独立的人类棋风模型');
     }
   }
 }
