@@ -11,11 +11,15 @@ import java.io.File
 import java.io.IOException
 import java.security.MessageDigest
 import java.util.ArrayDeque
+import java.util.Collections
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 
 /** Every native engine and driver runs in a child process, never in Flutter's VM. */
 internal class AndroidKataGoGtp(
@@ -36,6 +40,7 @@ internal class AndroidKataGoGtp(
     @Volatile private var closed = false
     @Volatile private var activeTuning: TuningJob? = null
     @Volatile private var startingBackend: String? = null
+    @Volatile private var analyzeStopAt = Long.MAX_VALUE
     private val root = File(filesDir, "katago").apply { mkdirs() }
 
     private data class Session(val process: Process, val input: BufferedWriter, val output: BufferedReader, val backend: String)
@@ -57,7 +62,7 @@ internal class AndroidKataGoGtp(
         // A stop invalidates work already queued before it, including a pending startup.
         val ticket = if (method == "stop") epoch.incrementAndGet() else epoch.get()
         val stopTarget = if (method == "stop") detachSession() else null
-        val executor = if (method in setOf("start", "command", "storeModel", "loadModel", "deleteModel")) commands else controls
+        val executor = if (method in setOf("start", "command", "analyze", "storeModel", "loadModel", "deleteModel")) commands else controls
         executor.execute {
             try {
                 // An already-detached stop target still needs reaping after Activity disposal.
@@ -65,6 +70,9 @@ internal class AndroidKataGoGtp(
                 val value: Any? = when (method) {
                     "start" -> { requireCurrent(ticket); start(args, ticket); "ready" }
                     "command" -> { requireCurrent(ticket); command(args["line"] as String) }
+                    "analyze" -> { requireCurrent(ticket); analyze(args) }
+                    // Runs off the command queue so it can interrupt a running analysis.
+                    "analyzeCancel" -> { analyzeStopAt = System.currentTimeMillis(); "cancelled" }
                     "stop" -> { stopTarget?.process?.let(::terminate); "stopped" }
                     "backendPreflight" -> preflight(args)
                     "openclTuningStart" -> startTuning(args)
@@ -284,6 +292,90 @@ internal class AndroidKataGoGtp(
         val text = response.toString()
         if (text.startsWith("?")) throw IOException(text.removePrefix("?").trim())
         return text.removePrefix("=").trim()
+    }
+
+    /**
+     * Runs `kata-analyze` for a bounded slice of time and returns the reports it
+     * produced. Unlike every other GTP command, an analysis response has no
+     * natural end: KataGo prints `=` and then one report line per interval until
+     * the controller sends any further input. We therefore park a reader on the
+     * pipe, wait out the budget, and only then terminate the stream with a blank
+     * line — the engine answers that with the blank line that closes the GTP
+     * response, which keeps the next command's reply from being misread.
+     */
+    private fun analyze(args: Map<*, *>): Map<String, Any?> {
+        val line = args["line"] as? String ?: throw IllegalArgumentException("缺少分析命令")
+        require(!line.contains('\n') && !line.contains('\r')) { "GTP 命令必须为单行" }
+        val value = session ?: throw IllegalStateException("KataGo 尚未启动")
+        val targetVisits = (args["targetVisits"] as? Number)?.toLong() ?: 0L
+        val minMillis = ((args["minMillis"] as? Number)?.toLong() ?: 300L).coerceIn(0L, 60_000L)
+        val maxMillis = ((args["maxMillis"] as? Number)?.toLong() ?: 5_000L).coerceIn(minMillis, 120_000L)
+
+        val reports = Collections.synchronizedList(mutableListOf<String>())
+        val finished = CountDownLatch(1)
+        val failure = AtomicReference<Exception?>(null)
+        val headerSeen = AtomicBoolean(false)
+        val reader = Thread {
+            try {
+                while (true) {
+                    val next = value.output.readLine()
+                        ?: throw IOException("KataGo 引擎已退出，请查看引擎日志")
+                    if (!headerSeen.get()) {
+                        if (next.startsWith("?")) throw IOException(next.removePrefix("?").trim())
+                        if (next.startsWith("=")) { headerSeen.set(true); continue }
+                        if (next.isEmpty()) { headerSeen.set(true); continue }
+                    }
+                    if (next.isEmpty()) break
+                    reports.add(next)
+                }
+            } catch (error: Exception) {
+                failure.set(error)
+            } finally {
+                finished.countDown()
+            }
+        }.apply { isDaemon = true; name = "katago-analyze"; start() }
+
+        value.input.apply { write(line); newLine(); flush() }
+
+        val startedAt = System.currentTimeMillis()
+        analyzeStopAt = Long.MAX_VALUE
+        var reason = "budget"
+        while (true) {
+            val now = System.currentTimeMillis()
+            if (finished.count == 0L) { reason = "engine"; break }
+            if (now - startedAt >= minMillis && targetVisits > 0 &&
+                reportedVisits(reports.lastOrNull()) >= targetVisits) { reason = "visits"; break }
+            if (now >= analyzeStopAt) { reason = "cancelled"; break }
+            if (now - startedAt >= maxMillis) break
+            Thread.sleep(20)
+        }
+
+        // Any controller input stops the search and completes the response. A
+        // `stop` that killed the process first leaves nothing to write to.
+        try {
+            value.input.apply { newLine(); flush() }
+        } catch (_: IOException) {
+            // The reader already reported the dead pipe.
+        }
+        if (!finished.await(maxMillis + 15_000, TimeUnit.MILLISECONDS)) {
+            // The pipe is unusable once a reader is stuck on it, so drop the session.
+            stopSession()
+            throw IOException("KataGo 分析未在预期时间内结束")
+        }
+        reader.interrupt()
+        failure.get()?.let { throw it }
+        return mapOf("reports" to reports.toList(), "reason" to reason)
+    }
+
+    /** Highest visit count mentioned by a report; `rootInfo` alone carries the root total. */
+    private fun reportedVisits(report: String?): Long {
+        if (report == null) return 0L
+        var best = 0L
+        for (match in Regex("\\bvisits (\\d+)").findAll(report)) {
+            val value = match.groupValues[1].toLongOrNull() ?: 0L
+            if (value > best) best = value
+        }
+        return best
     }
 
     private fun startTuning(args: Map<*, *>): Map<String, Any?> = synchronized(tuningLock) {

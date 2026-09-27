@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 
 import 'game_session.dart';
 import 'go_ai_settings.dart';
+import 'go_analysis.dart';
 import 'go_engine_profiles.dart';
 import 'go_engine_config.dart';
 export 'go_engine_config.dart';
@@ -129,6 +130,25 @@ class KataGoGtpClient {
   }
 }
 
+/// Builds the `kata-analyze` line for one position.
+///
+/// The analysis budget is *not* part of this command: `kata-analyze` ignores
+/// `maxVisits` and searches until the controller interrupts it, so the time
+/// budget lives in the host bridge ([KataGoAndroidRuntime.analyze]). [interval]
+/// only controls how often a report is printed, in centiseconds.
+String kataAnalyzeCommand({
+  required Side side,
+  int maxMoves = 12,
+  int interval = 30,
+  bool ownership = true,
+}) {
+  final buffer = StringBuffer('kata-analyze ')
+    ..write(side == Side.black ? 'B' : 'W')
+    ..write(' interval $interval maxmoves $maxMoves rootInfo true');
+  if (ownership) buffer.write(' ownership true');
+  return buffer.toString();
+}
+
 Future<void> validateKataGoSelection(
   GoAiSettings settings,
   GoEngineProfile engine,
@@ -138,15 +158,9 @@ Future<void> validateKataGoSelection(
   final human = settings.usesHumanStyle && settings.humanModelId != null
       ? await GoModelLibrary.byId(settings.humanModelId!)
       : null;
-  GoModelCompatibility.validate(
-    model: main,
-    engine: engine,
-    humanModel: human,
-    useBuiltinHumanStyle:
-        settings.usesHumanStyle && settings.useBuiltinHumanStyle,
-  );
-  if (main.isHumanModel && !settings.usesHumanStyle) {
-    throw ArgumentError('人类棋风主模型需要选择人类棋风和有效段位');
+  GoModelCompatibility.validate(model: main, engine: engine, humanModel: human);
+  if (main.isHumanModel) {
+    throw ArgumentError('人类棋风网络只能作为人类棋风模型，不能作为主模型');
   }
 }
 
@@ -195,9 +209,7 @@ class KataGoAndroidRuntime {
         backend: engine.backend,
       );
       Uint8List? humanModel;
-      if (settings.style == GoAiStyle.human &&
-          !settings.useBuiltinHumanStyle &&
-          settings.humanModelId != null) {
+      if (settings.style == GoAiStyle.human && settings.humanModelId != null) {
         await GoModelLibrary.validateForEngine(
           id: settings.humanModelId!,
           backend: engine.backend,
@@ -245,6 +257,55 @@ class KataGoAndroidRuntime {
   }
 
   Future<String> send(String command) => _enqueue(() => _sendNow(command));
+
+  /// Runs one bounded analysis of the current position and returns the parsed
+  /// snapshot.
+  ///
+  /// `kata-analyze` streams reports forever, so the host stops the search once
+  /// [budget] runs out (or [targetVisits] is reached) and hands back whatever it
+  /// collected; only the last report matters because each one describes the
+  /// whole tree.
+  Future<GoAnalysis> analyze({
+    required int boardSize,
+    required Side side,
+    int targetVisits = 0,
+    Duration budget = const Duration(seconds: 5),
+    int maxMoves = 12,
+    bool ownership = true,
+  }) async {
+    if (!isSupported) throw UnsupportedError('当前平台尚未接入 KataGo 原生引擎');
+    final result = await _enqueue(
+      () => _channel.invokeMethod<Map>('analyze', {
+        'line': kataAnalyzeCommand(
+          side: side,
+          maxMoves: maxMoves,
+          ownership: ownership,
+        ),
+        'targetVisits': targetVisits,
+        'minMillis': 300,
+        'maxMillis': budget.inMilliseconds,
+      }),
+    );
+    final reports =
+        (result?['reports'] as List?)?.whereType<String>().toList() ??
+        const <String>[];
+    if (reports.isEmpty) throw StateError('引擎没有返回分析结果');
+    return parseKataGoAnalysis(
+      reports.last,
+      boardSize: boardSize,
+      perspective: side,
+    );
+  }
+
+  /// Asks an in-flight [analyze] to stop early.
+  ///
+  /// Deliberately bypasses the command queue: queueing it would park it behind
+  /// the very analysis it is meant to interrupt. The analysis then returns the
+  /// reports gathered so far instead of failing.
+  Future<void> cancelAnalysis() async {
+    if (!isSupported) return;
+    await _channel.invokeMethod<String>('analyzeCancel');
+  }
 
   Future<String> _sendNow(String command) async {
     if (!_started) throw StateError('KataGo 尚未启动');
@@ -307,9 +368,7 @@ class KataGoWebRuntime {
         ? null
         : base64Encode(await GoModelLibrary.load(mainModelId));
     final humanModelBase64 =
-        settings.style == GoAiStyle.human &&
-            !settings.useBuiltinHumanStyle &&
-            settings.humanModelId != null
+        settings.style == GoAiStyle.human && settings.humanModelId != null
         ? base64Encode(await _loadWebHumanModel(settings.humanModelId!))
         : null;
     final configText = await resolveKataGoConfig(
@@ -361,9 +420,7 @@ class KataGoWebRuntime {
         ? null
         : base64Encode(await GoModelLibrary.load(mainModelId));
     final humanModelBase64 =
-        settings.style == GoAiStyle.human &&
-            !settings.useBuiltinHumanStyle &&
-            settings.humanModelId != null
+        settings.style == GoAiStyle.human && settings.humanModelId != null
         ? base64Encode(await _loadWebHumanModel(settings.humanModelId!))
         : null;
     final configText = await resolveKataGoConfig(

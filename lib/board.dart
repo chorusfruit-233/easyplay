@@ -9,6 +9,13 @@ class Board extends StatefulWidget {
   final GameSession session;
   final Cell? selected;
   final List<Cell> targets;
+
+  /// Candidate moves from the engine's analysis, drawn as ranked badges. The
+  /// list is already ordered best-first; index 0 is shown as "1".
+  final List<Cell> analysisHints;
+
+  /// Ownership map (0..1 per point, row-major) from the engine's analysis.
+  final List<double>? analysisOwnership;
   final ValueChanged<Cell> onCell;
   final GoPlacementMode placementMode;
   final ValueChanged<Cell>? onPreviewCell;
@@ -22,6 +29,8 @@ class Board extends StatefulWidget {
     required this.targets,
     required this.onCell,
     this.placementMode = GoPlacementMode.direct,
+    this.analysisHints = const [],
+    this.analysisOwnership,
     this.onPreviewCell,
     this.onCancelPreview,
     this.annotations = const {},
@@ -173,6 +182,8 @@ class _BoardState extends State<Board> {
                     .toList(),
                 selected: widget.selected,
                 targets: List.of(widget.targets),
+                analysisHints: List.of(widget.analysisHints),
+                analysisOwnership: widget.analysisOwnership,
                 preview: _preview,
                 previewSide: widget.session.turn,
                 deadStones: Set.of(widget.session.deadGoStones),
@@ -197,6 +208,8 @@ class BoardPainter extends CustomPainter {
   final List<List<GamePiece?>> board;
   final Cell? selected;
   final List<Cell> targets;
+  final List<Cell> analysisHints;
+  final List<double>? analysisOwnership;
   final Cell? lastMove;
   final Cell? preview;
   final Side previewSide;
@@ -208,6 +221,8 @@ class BoardPainter extends CustomPainter {
     required this.selected,
     required this.targets,
     required this.lastMove,
+    this.analysisHints = const [],
+    this.analysisOwnership,
     this.preview,
     this.previewSide = Side.black,
     this.deadStones = const {},
@@ -261,6 +276,32 @@ class BoardPainter extends CustomPainter {
           canvas.drawRect(
             Rect.fromLTWH(c * step, r * step, step, step),
             Paint()..color = color,
+          );
+        }
+      }
+    }
+    // Territory estimate: one flat square per intersection, tinted towards the
+    // side that owns it. Drawn before the stones so it reads as a background
+    // wash rather than something covering the position.
+    final ownership = analysisOwnership;
+    if (type == GameType.go && ownership != null && ownership.length == n * n) {
+      for (var r = 0; r < n; r++) {
+        for (var c = 0; c < n; c++) {
+          final value = ownership[r * n + c];
+          final strength = value.abs();
+          if (strength < .05) continue;
+          final piece = board[r][c];
+          if (piece != null && (piece.side == Side.black) == (value > 0)) {
+            continue;
+          }
+          final rect = Rect.fromLTWH(c * step, r * step, step, step);
+          final alpha = (26 + 120 * strength).round().clamp(0, 255);
+          canvas.drawRect(
+            rect,
+            Paint()
+              ..color = (value > 0 ? Colors.black : Colors.white).withAlpha(
+                alpha,
+              ),
           );
         }
       }
@@ -477,6 +518,40 @@ class BoardPainter extends CustomPainter {
         );
       }
     }
+    // Analysis hints paint last so the rank badges stay readable on top of
+    // stones, which is where a review's suggestions usually sit.
+    for (var i = 0; i < analysisHints.length && i < 9; i++) {
+      final cell = analysisHints[i];
+      if (!insideBoard(cell, n)) continue;
+      final center = _center(cell, step);
+      final radius = step * .34;
+      final occupied = board[cell.row][cell.col] != null;
+      if (!occupied) {
+        canvas.drawCircle(
+          center,
+          radius,
+          Paint()..color = const Color(0xdd5b9bd5),
+        );
+      }
+      canvas.drawCircle(
+        center,
+        radius,
+        Paint()
+          ..color = const Color(0xff2f6fa8)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = max(1.5, step * .05),
+      );
+      _drawText(
+        canvas,
+        '${i + 1}',
+        center,
+        step * .44,
+        occupied ? const Color(0xff2f6fa8) : Colors.white,
+        outline: occupied,
+        fontFamily: null,
+        fontWeight: FontWeight.bold,
+      );
+    }
   }
 
   Offset _center(Cell cell, double step) => type == GameType.go
@@ -501,13 +576,16 @@ class BoardPainter extends CustomPainter {
     double fontSize,
     Color color, {
     bool outline = false,
+    String? fontFamily = 'Noto Sans Symbols 2',
+    FontWeight? fontWeight,
   }) {
     final painter = TextPainter(
       text: TextSpan(
         text: text,
         style: TextStyle(
           fontSize: fontSize,
-          fontFamily: 'Noto Sans Symbols 2',
+          fontFamily: fontFamily,
+          fontWeight: fontWeight,
           color: color,
           shadows: outline
               ? const [Shadow(color: Colors.black, blurRadius: 1.5)]
