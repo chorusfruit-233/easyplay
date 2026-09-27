@@ -2,6 +2,9 @@
 
 **范围**:只做思路研究,未写任何代码。目标是把架构选择、硬约束与风险先定清楚。
 
+> 界面部分另见 **`docs/LAN_MULTIPLAYER_UI.md`**。那份文档的结论之一值得在这里先记一句:
+> **参考产品没有联机功能**(逐条查证,不是印象),所以联机 UI 没有可对齐的对象。
+
 ---
 
 ## 一、前提判断
@@ -75,7 +78,115 @@ Web 端拿不到本机 IP,所以客户端地址只能来自:
 `http://192.168.x.x` 提供(同源方案,见 5.2),则是 http 页面,**摄像头不可用**,
 只能手输。这是两个方案之间的取舍,不能既要同源又要扫码。
 
-### 2.4 已有可复用资产
+### 2.4 Android 17 起局域网访问需要运行时权限(2026-09 补)
+
+**这是本文档原先漏掉的一条硬约束,而且它同时影响主机和客户端。**
+
+[Flutter 官方文档](https://flutter-docs-prod.web.app/platform-integration/android/local-network-permission)
+(对应 [Android 官方说明](https://developer.android.com/privacy-and-security/local-network-permission#android-17-enforcement)):
+
+> Starting in Android 17 (API level 37), Android blocks local network access by
+> default. Apps targeting Android 17 or higher that **discover, scan, or connect
+> to** devices on the local area network must declare and request the
+> `ACCESS_LOCAL_NETWORK` runtime permission.
+
+关键点:
+
+- 目标 API ≥ 37 的应用,**默认被禁止访问局域网**,必须声明
+  `ACCESS_LOCAL_NETWORK` 并在运行时申请
+- **可以通过 `permission_handler`(`Permission.accessLocalNetwork`)申请**,
+  该常量已存在于 `permission_handler 13.0.2`
+- **Dart socket 弹不出权限框**。官方原话:Dart socket 不与 Android 应用框架 UI
+  交互,所以**没有权限时 `Socket.connect` 直接抛 `SocketException`**。必须在打开
+  socket **之前**申请完
+- 按 Flutter 文档,Android 16(API 36)上可以**主动开启**该行为来提前测试
+
+**本项目当前的状态**:`targetSdk` 由 Flutter 的 `FlutterExtension.targetSdkVersion`
+决定,当前是 **36**,所以这条**尚未生效**。但该字段的注释写着 "should always be the
+latest available stable version"——它会随 Flutter 升级而升到 37,届时**强制生效**。
+
+**必须实测的一点(比客户端更要紧)**:官方措辞覆盖的是 "discover, scan, or connect",
+**没有明说"监听/被连接"是否也受限**。主机是被客户端连入的一方,如果 `ServerSocket`
+同样被拦,那**整个方案在 Android 17 上直接不成立**——连"发 Web 页面给浏览器"都做不了。
+
+**所以要在 Android 16 上先打开该行为跑一次**:主机开房、客户端连入,看是否需要权限、
+需要谁的权限。这一条排在做任何联机实现之前。
+
+### 2.5 系统版本范围:Android 7 – 16 都可用
+
+**结论先行**:从 **Android 7.0(API 24)** 到 **Android 16(API 36)** 全段可用,
+且**不需要任何新增危险权限**——只要坚持两条已经定了的设计:**不用组播**(改用主动
+扫描)和**不用前台服务**。
+
+**本项目实测解析值**(读 `build/app/intermediates/merged_manifests/.../AndroidManifest.xml`):
+
+```
+android:minSdkVersion="24"      ← Android 7.0
+android:targetSdkVersion="36"   ← Android 16
+uses-permission: INTERNET       ← 仅此一条
+usesCleartextTraffic            ← 未设置(targetSdk≥28 时默认 false)
+```
+
+`minSdk`/`targetSdk` 都来自 Flutter 的 `FlutterExtension.kt`(当前 24 / 36),
+项目自己没覆盖。
+
+#### 逐版本影响
+
+| 版本 | API | 该版本引入的限制 | 对本方案 |
+| --- | --- | --- | --- |
+| 7.0 | 24 | **本项目的下限** | 基线 |
+| 8.0 | 26 | 后台执行限制、通知渠道 | 无关(不用通知) |
+| 9 | 28 | **明文 HTTP 默认禁止**(`usesCleartextTraffic=false`) | **需实测**,见下 |
+| 10 | 29 | 分区存储、后台启动 Activity 受限 | 无关 |
+| 11 | 30 | 软件包可见性 | 无关 |
+| 12 | 31 | `android:exported` 必填;接收组播需 `MulticastLock` | 无关(**不用组播**) |
+| 13 | 33 | `NEARBY_WIFI_DEVICES`(仅 WiFi 扫描类 API 需要) | **无关**——我们枚举网卡,不调 WiFiManager |
+| 14 | 34 | **前台服务必须声明类型** | 无关(**决定 6:不做前台服务**) |
+| 15 | 35 | 前台服务超时 | 无关 |
+| 16 | 36 | 本地网络保护可**手动开启**测试 | 见 §2.4 |
+| 17 | 37 | 本地网络保护**强制生效** | 见 §2.4,届时必须加权限 |
+
+**关键推论**:这条路径上真正的两个"关卡"是 **Android 9 的明文 HTTP** 和
+**Android 17 的本地网络权限**。中间那些版本限制(通知、前台服务、组播、WiFi 扫描、
+存储)全都因为我们不用那些 API 而绕开了。
+
+**一个顺带的好处**:因为用 `NetworkInterface.list()` 枚举网卡、而不是
+`WifiManager.getConnectionInfo()`,我们**不需要定位权限**。Android 10 起把 WiFi 名称
+划归定位权限,很多联机应用因此被迫申请位置——我们不碰这条路。
+
+#### 必须实测的两件事
+
+1. **Android 9+ 的明文策略会不会拦住 Dart 的 socket**
+
+   官方那份 [breaking change 文档](https://flutter-docs-prod.web.app/release/breaking-changes/network-policy-ios-android)
+   明确写着:
+
+   > Flutter does not enforce any policy at socket level... **If the socket is owned
+   > by Dart/Flutter, no policy will be enforced.**
+
+   按这句,我们的 `Socket` / `WebSocket.connect` / `HttpServer` 都是 Dart 持有的
+   socket,**不受影响**。但同一页的 Timeline 又写着 "Reverted in version: 2.2.0
+   (proposed)",且官方声明 "we don't keep these breaking change docs up to date"。
+
+   **所以不能按文档下结论,要在 Android 9 的真机上用 release 包跑一次**:
+   - 客户端 `Socket.connect` 到局域网地址(扫描探针)
+   - 客户端 `WebSocket.connect('ws://192.168.x.x:8080')`
+   - 主机 `HttpServer` 被浏览器访问
+
+   如果确实被拦,补救是加 `networkSecurityConfig` 允许明文——但注意
+   **Android 的 `<domain>` 不支持网段**,没法只放行 `192.168.0.0/16`,只能全局
+   `cleartextTrafficPermitted="true"`。这是要尽量避免的结果,也是为什么先测。
+
+2. **手机热点当主机能不能拿到自己的地址**
+
+   这是很常见的用法(没有路由器时,一台手机开热点,另一台连上)。热点网卡在
+   AOSP 上通常是 `192.168.43.1`,但 **Android 11 起各厂商差异很大**
+   (`swlan0` / `wlan1` / 有的干脆对应用不可见,因为跑在独立网络命名空间里)。
+
+   `NetworkInterface.list()` 能不能列出热点网卡,**是设备相关的,必须逐机型测**。
+   测不过的话,热点场景就只能靠手输地址(玩家从系统设置里看自己的热点 IP)。
+
+### 2.6 已有可复用资产
 
 | 资产 | 用途 |
 | --- | --- |
@@ -201,6 +312,13 @@ WebSocket 即将纳入该限制。这条路径要接受将来可能被浏览器�
 ### 决定 5:发现方式 → **手动输入**(扫码仅作增强)
 
 不做 mDNS。
+
+> **2026-09 追加:这条决定需要重新评估。** 当初否决的是 **mDNS**,理由是组播在真实
+> 网络里不可靠(AP 隔离、访客网络、多网卡)。但**主动 TCP 扫描不用组播**,那条理由
+> 对它不成立,而本文档当时没有把这个选项列出来。
+>
+> 补充分析见 `docs/LAN_MULTIPLAYER_UI.md` §5.3。倾向改为:**主动扫描为主,手输兜底**。
+> 这条仍是待你拍板的决定,不是既成事实。
 
 ### 决定 6:息屏 → **接受断连,不做前台服务**
 
