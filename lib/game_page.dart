@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'game_session.dart';
+import 'go_analysis.dart';
+import 'go_encoding.dart';
 import 'go_file_service.dart';
 import 'go_sgf.dart';
 import 'go_record.dart';
@@ -9,7 +11,6 @@ import 'go_variation_tree.dart';
 import 'go_storage.dart';
 import 'go_ai_settings.dart';
 import 'go_models.dart';
-import 'go_model_manager.dart';
 import 'go_engine_profiles.dart';
 import 'go_engine_manager.dart';
 import 'go_engine_runtime.dart';
@@ -46,17 +47,52 @@ class _GoGameSetup {
   const _GoGameSetup(this.goConfig, this.aiSettings);
 }
 
+/// Stands in for the engine in the setup dialog's dropdown when nobody is
+/// playing the other colour. Not an engine id, so it can never be resolved.
+const _noEngineId = '__none__';
+
+/// What the robot panel is currently for.
+///
+/// A game that is already being played against the engine opens straight on
+/// [play]; only a game with nothing decided yet asks which of the two it is.
+enum _GoPanelMode {
+  /// Two ways in: call the engine out, or review the position.
+  choose,
+
+  /// Board actions: 设置 / 分析 / 停一手 / 悔棋 / 认输.
+  play,
+
+  /// Review: run the engine's analysis and show its overlays.
+  review,
+}
+
 class GamePage extends StatefulWidget {
   final GameType type;
   final GoConfig? goConfig;
   final GoAiSettings? aiSettings;
   final bool? useAndroidKataGo;
+
+  /// Test hook: keeps board interaction available without starting the engine,
+  /// which would make moves on its own and race with an assertion.
+  final bool allowComputerMoves;
+
+  /// Whether to ask for rules and opponent before the first move.
+  ///
+  /// The AI 对弈 entry wants that dialog; 新建棋谱 and a reopened game already
+  /// know what they are and would only be asked again.
+  final bool askForSetup;
+
+  /// A stored game to reopen instead of starting from an empty board.
+  final GoSavedRecord? reopen;
   const GamePage({
     super.key,
     required this.type,
     this.goConfig,
     this.aiSettings,
     this.useAndroidKataGo,
+    this.allowComputerMoves = true,
+    this.askForSetup = true,
+    this.reopen,
   });
   @override
   State<GamePage> createState() => _GamePageState();
@@ -79,11 +115,66 @@ class _GamePageState extends State<GamePage> {
   bool _engineUnavailableNotified = false;
   GoPlacementMode placementMode = GoPlacementMode.automatic;
 
+  /// Bottom panels. Each card holds two tabs and collapses on its own, matching
+  /// the reference layout: notes/AI summary above, tree/PV below.
+  int _noteTab = 0;
+  int _treeTab = 0;
+  static const bool _noteCollapsed = false;
+  static const bool _treeCollapsed = false;
+
+  /// Analysis is a separate feature from playing a move; the panel tracks its
+  /// own running state so the stop button has something to control.
+  bool _analysisRunning = false;
+
+  /// Latest engine analysis of the board, if any.
+  ///
+  /// Every number in it describes exactly one position, so the result is retired
+  /// as soon as the session it was computed from is replaced or edited, rather
+  /// than shown next to a different board.
+  GoAnalysis? _analysisResult;
+  GameSession? _analysisSession;
+  int _analysisDeadStones = 0;
+  String? _analysisError;
+
+  GoAnalysis? get _analysis =>
+      identical(_analysisSession, session) &&
+          _analysisDeadStones == session.deadGoStones.length
+      ? _analysisResult
+      : null;
+
+  /// Which candidate row the PV tab is showing; always a valid index while
+  /// [_analysis] has moves.
+  int _analysisFocus = 0;
+
+  /// The robot button reveals this panel; it holds the AI / review choice that
+  /// used to live in the state card and in the new-game dialog.
+  bool _robotPanelOpen = false;
+
+  /// What the robot panel is showing.
+  _GoPanelMode _panelMode = _GoPanelMode.choose;
+
+  /// Review overlays drawn on the board.
+  bool _showMoveHints = false;
+  bool _showOwnership = false;
+
+  /// True when the two record cards are merged into one card with four tabs.
+  bool _cardsMerged = false;
+  int _mergedTab = 1;
+
+  /// Whether the engine is expected to answer for the other colour.
+  ///
+  /// `allowComputerMoves: false` means no engine is consulted, so neither the
+  /// turn gate nor the scheduler may treat one colour as the engine's.
+  bool get _computerPlays =>
+      widget.allowComputerMoves &&
+      vsComputer &&
+      aiSettings.opponentMode == GoOpponentMode.kataGo;
+
   bool get _canPlay =>
       !_modalOpen &&
       !session.gameOver &&
       !computerThinking &&
-      (!vsComputer || session.turn == humanSide);
+      (!_computerPlays || session.turn == humanSide);
 
   bool get _usesKataGo => aiSettings.opponentMode == GoOpponentMode.kataGo;
 
@@ -105,7 +196,7 @@ class _GamePageState extends State<GamePage> {
       computerThinking = false;
       aiSettings = aiSettings.copyWith(opponentMode: GoOpponentMode.local);
     });
-    _notice('KataGo 不可用，已切换为本地双人模式：$reason');
+    _notice('内置引擎不可用，已切换为本地双人模式：$reason');
     _persistGo();
   }
 
@@ -135,15 +226,40 @@ class _GamePageState extends State<GamePage> {
     _goRecord = _newRecordForSession(session);
     aiSettings = widget.aiSettings ?? const GoAiSettings();
     vsComputer = aiSettings.opponentMode != GoOpponentMode.local;
+    // A game with an engine opens on the board actions; a bare record has to be
+    // asked what it is for first.
+    _panelMode = vsComputer ? _GoPanelMode.play : _GoPanelMode.choose;
     humanSide = aiSettings.resolvePlayerSide();
     GoPlacementPreferences.load().then((value) {
       if (mounted) setState(() => placementMode = value);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && widget.type == GameType.go) {
-        _showGoSettings(requiredAtStart: true);
+      if (!mounted || widget.type != GameType.go) return;
+      final saved = widget.reopen;
+      if (saved != null) {
+        _openSavedGame(saved);
+        return;
       }
+      if (widget.askForSetup) _showGoSettings(requiredAtStart: true);
     });
+  }
+
+  /// Reopens a stored game: position, opponent and player colour together, so a
+  /// game continued from the Go home page picks up where it stopped.
+  void _openSavedGame(GoSavedRecord saved) {
+    try {
+      final record = GoSgfController.fromSgf(saved.sgf);
+      _replaceGo(
+        record.replayCurrentPath(),
+        record: record,
+        id: saved.id.isEmpty ? null : saved.id,
+        computer: saved.vsComputer,
+        settings: saved.aiSettings,
+        restoredHumanSide: saved.humanSide,
+      );
+    } catch (error) {
+      _notice('棋谱载入失败：$error');
+    }
   }
 
   GoSgfController _newRecordForSession(GameSession game) {
@@ -570,7 +686,7 @@ class _GamePageState extends State<GamePage> {
   void _scheduleComputerMove() {
     if (!mounted ||
         _modalOpen ||
-        !vsComputer ||
+        !_computerPlays ||
         session.gameOver ||
         session.turn == humanSide ||
         computerThinking) {
@@ -736,6 +852,8 @@ class _GamePageState extends State<GamePage> {
       targets = const [];
       computerThinking = false;
       _adjudicationInProgress = false;
+      // A fresh board with the same opponent has nothing chosen for it yet.
+      _panelMode = vsComputer ? _GoPanelMode.play : _GoPanelMode.choose;
     });
     try {
       await _kataGo.stop();
@@ -762,6 +880,59 @@ class _GamePageState extends State<GamePage> {
     } else {
       _scheduleComputerMove();
     }
+  }
+
+  /// Ends the game as a resignation.
+  ///
+  /// Resigning is destructive and irreversible, so it asks first; an accidental
+  /// tap here would otherwise throw away the game.
+  Future<void> _resign() async {
+    if (widget.type != GameType.go || session.gameOver) return;
+    _pauseComputer();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('确认认输？'),
+        content: Text(
+          vsComputer
+              ? '本局将判${humanSide.opponent.label}胜。'
+              : '本局将判${session.turn.opponent.label}胜。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('认输'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    setState(() => _modalOpen = false);
+    if (confirmed != true) {
+      _scheduleComputerMove();
+      return;
+    }
+    // With an engine in the game the human is the one giving up; a record can
+    // resign for whoever is to move.
+    final side = vsComputer ? humanSide : session.turn;
+    final candidate = _goRecord.replayCurrentPath();
+    if (!candidate.resignGo(side)) {
+      _scheduleComputerMove();
+      return;
+    }
+    _goRecord.appendResignation(side);
+    setState(() {
+      session = _goRecord.replayCurrentPath();
+      selected = null;
+      targets = const [];
+      computerThinking = false;
+      _adjudicationInProgress = false;
+    });
+    _persistGo();
   }
 
   Future<void> _continueGo() async {
@@ -870,7 +1041,10 @@ class _GamePageState extends State<GamePage> {
     ),
   );
 
-  Future<void> _showGoSettings({bool requiredAtStart = false}) async {
+  Future<void> _showGoSettings({
+    bool requiredAtStart = false,
+    bool preferEngine = false,
+  }) async {
     if (widget.type != GameType.go) return;
     if (requiredAtStart) {
       _computerGeneration++;
@@ -889,7 +1063,9 @@ class _GamePageState extends State<GamePage> {
     );
     var komiEdited = false;
     var handicap = session.goConfig.handicap;
-    var mode = aiSettings.opponentMode;
+    var mode = preferEngine && aiSettings.opponentMode == GoOpponentMode.local
+        ? GoOpponentMode.kataGo
+        : aiSettings.opponentMode;
     var playerColor = aiSettings.playerColor;
     var rank = aiSettings.rank;
     var style = aiSettings.style;
@@ -898,39 +1074,33 @@ class _GamePageState extends State<GamePage> {
     final humanProfile = TextEditingController(
       text: aiSettings.humanSLProfile ?? '',
     );
-    var useBuiltinHumanStyle = aiSettings.useBuiltinHumanStyle;
+    // The engine profile is the single source of truth for which networks to
+    // load; there is no separately selectable "current model".
     var availableModels = <GoModelInfo>[GoModelLibrary.bundledModel];
-    var activeModel = GoModelLibrary.bundledId;
     var engines = <GoEngineProfile>[GoEngineProfile.builtIn];
     var activeEngine = GoEngineProfile.builtIn.id;
     try {
       availableModels = await GoModelLibrary.available();
-      activeModel = await GoModelLibrary.activeId();
       engines = await GoEngineLibrary.available();
       activeEngine = await GoEngineLibrary.activeId();
     } catch (error) {
       _notice('读取 KataGo 模型列表失败，暂用内置 b6 模型：$error');
     }
-    var modelId = kIsWeb
-        ? GoModelLibrary.bundledId
-        : requiredAtStart && widget.aiSettings == null
-        ? activeModel
-        : availableModels.any((model) => model.id == aiSettings.modelId)
-        ? aiSettings.modelId
-        : activeModel;
+    var modelId = kIsWeb ? GoModelLibrary.bundledId : GoModelLibrary.bundledId;
     var engineProfileId = requiredAtStart && widget.aiSettings == null
         ? activeEngine
         : engines.any((engine) => engine.id == aiSettings.engineProfileId)
         ? aiSettings.engineProfileId
         : activeEngine;
-    void applyModelSelection() {
-      useBuiltinHumanStyle = availableModels
-          .firstWhere((m) => m.id == modelId)
-          .isHumanModel;
-      if (useBuiltinHumanStyle) {
-        humanModelId = null;
-        style = GoAiStyle.human;
-      }
+
+    /// Ranks the loaded main model can actually back. The bundled b6 is a small
+    /// v8 network, so it stops at 5d instead of offering labels it cannot reach.
+    List<GoAiRank> selectableRanks() {
+      final model = availableModels.where((m) => m.id == modelId).firstOrNull;
+      final bundled = model == null || model.bundled;
+      final highest = bundled ? -4 : -8;
+      final ranks = GoAiRank.availableFor(highestHumanRank: highest);
+      return ranks.isEmpty ? GoAiRank.values : ranks;
     }
 
     void applyEngineSelection() {
@@ -944,10 +1114,9 @@ class _GamePageState extends State<GamePage> {
           )
           ? selected.humanModelId
           : null;
-      applyModelSelection();
       if (humanModelId != null) {
         style = GoAiStyle.human;
-      } else if (!useBuiltinHumanStyle && style == GoAiStyle.human) {
+      } else if (style == GoAiStyle.human) {
         style = GoAiStyle.modern;
       }
     }
@@ -973,7 +1142,7 @@ class _GamePageState extends State<GamePage> {
               horizontal: 16,
               vertical: 24,
             ),
-            title: Text(requiredAtStart ? '新建 AI 对局' : '对局设置'),
+            title: Text(requiredAtStart ? '新建 AI 对局' : 'AI 设置'),
             content: Form(
               key: formKey,
               child: SingleChildScrollView(
@@ -1059,32 +1228,41 @@ class _GamePageState extends State<GamePage> {
                       ),
                     ),
                     const SizedBox(height: 20),
-                    Text(
-                      'AI 设置',
-                      textAlign: TextAlign.start,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
+                    // The engine choice doubles as "is anyone playing the other
+                    // colour": 新建棋谱 opens with nobody, and this is where a
+                    // record hands the board over to the engine.
                     _setupField(
-                      '对局模式',
-                      DropdownButtonFormField<GoOpponentMode>(
-                        initialValue: mode,
+                      '引擎',
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        key: ValueKey('$mode/$engineProfileId'),
+                        initialValue: mode == GoOpponentMode.local
+                            ? _noEngineId
+                            : engineProfileId,
                         decoration: const InputDecoration(),
-                        items: const [
-                          DropdownMenuItem(
-                            value: GoOpponentMode.kataGo,
-                            child: Text('人机 · KataGo'),
+                        items: [
+                          const DropdownMenuItem(
+                            value: _noEngineId,
+                            child: Text('不下棋（仅记录）'),
                           ),
-                          DropdownMenuItem(
-                            value: GoOpponentMode.local,
-                            child: Text('本地双人'),
-                          ),
+                          for (final engine in engines)
+                            DropdownMenuItem(
+                              value: engine.id,
+                              child: Text(engine.name),
+                            ),
                         ],
-                        onChanged: (value) =>
-                            setDialogState(() => mode = value ?? mode),
+                        onChanged: (value) => setDialogState(() {
+                          if (value == _noEngineId) {
+                            mode = GoOpponentMode.local;
+                            return;
+                          }
+                          mode = GoOpponentMode.kataGo;
+                          engineProfileId = value ?? engineProfileId;
+                          applyEngineSelection();
+                        }),
                       ),
                     ),
-                    if (mode != GoOpponentMode.local) ...[
-                      const SizedBox(height: 8),
+                    if (mode != GoOpponentMode.local)
                       Wrap(
                         alignment: WrapAlignment.spaceEvenly,
                         spacing: 4,
@@ -1102,32 +1280,10 @@ class _GamePageState extends State<GamePage> {
                             ),
                         ],
                       ),
-                    ],
                     if (mode == GoOpponentMode.kataGo) ...[
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _setupField(
-                            'AI 引擎',
-                            DropdownButtonFormField<String>(
-                              isExpanded: true,
-                              key: ValueKey(engineProfileId),
-                              initialValue: engineProfileId,
-                              decoration: const InputDecoration(),
-                              items: engines
-                                  .map(
-                                    (engine) => DropdownMenuItem(
-                                      value: engine.id,
-                                      child: Text(engine.name),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (value) => setDialogState(() {
-                                engineProfileId = value ?? engineProfileId;
-                                applyEngineSelection();
-                              }),
-                            ),
-                          ),
                           Align(
                             alignment: Alignment.centerRight,
                             child: IconButton(
@@ -1170,7 +1326,7 @@ class _GamePageState extends State<GamePage> {
                           DropdownButtonFormField<GoAiRank>(
                             initialValue: rank,
                             decoration: const InputDecoration(),
-                            items: GoAiRank.values
+                            items: selectableRanks()
                                 .map(
                                   (value) => DropdownMenuItem(
                                     value: value,
@@ -1182,24 +1338,26 @@ class _GamePageState extends State<GamePage> {
                                 setDialogState(() => rank = value ?? rank),
                           ),
                         ),
-                      _setupField(
-                        '风格',
-                        DropdownButtonFormField<GoAiStyle>(
-                          key: ValueKey(style),
-                          initialValue: style,
-                          decoration: const InputDecoration(),
-                          items: GoAiStyle.values
-                              .map(
-                                (value) => DropdownMenuItem(
-                                  value: value,
-                                  child: Text(value.label),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: (value) =>
-                              setDialogState(() => style = value ?? style),
+                      // Style is a property of the engine, not of a game: it only
+                      // appears once the engine binds a human-style network, and
+                      // then human style is the only possibility.
+                      if (humanModelId != null)
+                        _setupField(
+                          '风格',
+                          DropdownButtonFormField<GoAiStyle>(
+                            key: ValueKey(style),
+                            initialValue: style,
+                            decoration: const InputDecoration(),
+                            items: const [
+                              DropdownMenuItem(
+                                value: GoAiStyle.human,
+                                child: Text('人类棋风'),
+                              ),
+                            ],
+                            onChanged: (value) =>
+                                setDialogState(() => style = value ?? style),
+                          ),
                         ),
-                      ),
                       if (style == GoAiStyle.human) ...[
                         _setupField(
                           '人类棋风段位',
@@ -1226,115 +1384,7 @@ class _GamePageState extends State<GamePage> {
                             ),
                           ),
                         ),
-                        SwitchListTile.adaptive(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('使用主模型内置人类棋风'),
-                          subtitle: const Text('启用后不再加载独立 human model'),
-                          value: useBuiltinHumanStyle,
-                          onChanged: (value) => setDialogState(() {
-                            useBuiltinHumanStyle = value;
-                            if (value) humanModelId = null;
-                          }),
-                        ),
-                        if (!useBuiltinHumanStyle)
-                          _setupField(
-                            '人类棋风模型',
-                            DropdownButtonFormField<String?>(
-                              isExpanded: true,
-                              key: ValueKey(humanModelId),
-                              initialValue: humanModelId,
-                              decoration: const InputDecoration(
-                                hintText: '请选择已导入的人类棋风模型',
-                              ),
-                              items: availableModels
-                                  .where(
-                                    (model) => model.kind == GoModelKind.human,
-                                  )
-                                  .map(
-                                    (model) => DropdownMenuItem<String?>(
-                                      value: model.id,
-                                      child: Text(model.name),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (value) =>
-                                  setDialogState(() => humanModelId = value),
-                            ),
-                          ),
                       ],
-                      _setupField(
-                        '模型',
-                        Row(
-                          children: [
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                isExpanded: true,
-                                key: ValueKey(modelId),
-                                initialValue: modelId,
-                                decoration: const InputDecoration(),
-                                items: availableModels
-                                    .map(
-                                      (model) => DropdownMenuItem(
-                                        value: model.id,
-                                        child: Text(
-                                          model.name,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                    )
-                                    .toList(),
-                                onChanged: (value) => setDialogState(() {
-                                  modelId = value ?? modelId;
-                                  applyModelSelection();
-                                }),
-                              ),
-                            ),
-                            IconButton(
-                              tooltip: '管理模型',
-                              onPressed: () async {
-                                try {
-                                  await Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) =>
-                                          const GoModelManagerPage(),
-                                    ),
-                                  );
-                                  final models =
-                                      await GoModelLibrary.available();
-                                  final active =
-                                      await GoModelLibrary.activeId();
-                                  final profiles =
-                                      await GoEngineLibrary.available();
-                                  final activeProfile =
-                                      await GoEngineLibrary.activeId();
-                                  if (!context.mounted) return;
-                                  setDialogState(() {
-                                    availableModels = models;
-                                    modelId = active;
-                                    if (humanModelId != null &&
-                                        !models.any(
-                                          (m) => m.id == humanModelId,
-                                        )) {
-                                      humanModelId = null;
-                                    }
-                                    engines = profiles;
-                                    engineProfileId = activeProfile;
-                                    applyModelSelection();
-                                  });
-                                } catch (error) {
-                                  if (context.mounted) {
-                                    setDialogState(
-                                      () => setupError = '读取模型列表失败：$error',
-                                    );
-                                  }
-                                }
-                              },
-                              icon: const Icon(Icons.settings_outlined),
-                            ),
-                          ],
-                        ),
-                      ),
                       if (engines
                               .firstWhere((e) => e.id == engineProfileId)
                               .backend ==
@@ -1367,14 +1417,9 @@ class _GamePageState extends State<GamePage> {
                                         humanProfile.text.trim().isEmpty
                                         ? null
                                         : humanProfile.text.trim(),
-                                    humanModelId:
-                                        style == GoAiStyle.human &&
-                                            !useBuiltinHumanStyle
+                                    humanModelId: style == GoAiStyle.human
                                         ? humanModelId
                                         : null,
-                                    useBuiltinHumanStyle:
-                                        style == GoAiStyle.human &&
-                                        useBuiltinHumanStyle,
                                   ),
                                 ),
                               ),
@@ -1420,9 +1465,7 @@ class _GamePageState extends State<GamePage> {
                               engineProfileId,
                             );
                             final human =
-                                style != GoAiStyle.human ||
-                                    useBuiltinHumanStyle ||
-                                    humanModelId == null
+                                style != GoAiStyle.human || humanModelId == null
                                 ? null
                                 : await GoModelLibrary.byId(humanModelId!);
                             final checkedSettings = GoAiSettings(
@@ -1432,9 +1475,6 @@ class _GamePageState extends State<GamePage> {
                               humanSLProfile: humanProfile.text.trim().isEmpty
                                   ? null
                                   : humanProfile.text.trim(),
-                              useBuiltinHumanStyle:
-                                  style == GoAiStyle.human &&
-                                  useBuiltinHumanStyle,
                             );
                             checkedSettings.validateHumanStyle();
                             if (human != null) {
@@ -1444,18 +1484,12 @@ class _GamePageState extends State<GamePage> {
                               model: selectedModel,
                               engine: selectedEngine,
                               humanModel: human,
-                              useBuiltinHumanStyle:
-                                  style == GoAiStyle.human &&
-                                  useBuiltinHumanStyle,
                             );
-                            if (selectedModel.isHumanModel &&
-                                style != GoAiStyle.human) {
-                              throw StateError('人类棋风主模型需要选择人类棋风和有效段位');
+                            if (selectedModel.isHumanModel) {
+                              throw StateError('人类棋风网络只能作为人类棋风模型，不能作为主模型');
                             }
-                            if (style == GoAiStyle.human &&
-                                !useBuiltinHumanStyle &&
-                                human == null) {
-                              throw StateError('人类棋风模式需要选择 human model');
+                            if (style == GoAiStyle.human && human == null) {
+                              throw StateError('人类棋风模式需要在引擎里配置人类棋风模型');
                             }
                           } catch (error) {
                             if (!context.mounted) return;
@@ -1483,18 +1517,13 @@ class _GamePageState extends State<GamePage> {
                               style: style,
                               modelId: modelId,
                               engineProfileId: engineProfileId,
-                              humanModelId:
-                                  style == GoAiStyle.human &&
-                                      !useBuiltinHumanStyle
+                              humanModelId: style == GoAiStyle.human
                                   ? humanModelId
                                   : null,
                               humanStyleRank: humanRank,
                               humanSLProfile: humanProfile.text.trim().isEmpty
                                   ? null
                                   : humanProfile.text.trim(),
-                              useBuiltinHumanStyle:
-                                  style == GoAiStyle.human &&
-                                  useBuiltinHumanStyle,
                             ),
                           ),
                         );
@@ -1505,7 +1534,7 @@ class _GamePageState extends State<GamePage> {
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : Text(requiredAtStart ? '开始对局' : '应用并重开'),
+                    : Text(requiredAtStart ? '开始对局' : '保存'),
               ),
             ],
           ),
@@ -1522,6 +1551,38 @@ class _GamePageState extends State<GamePage> {
     if (result != null) {
       await _kataGo.stop();
       if (!mounted) return;
+      // Board size, rules, komi and handicap are baked into the position that
+      // has already been played out, so changing one has to start a new game.
+      // The opponent can be swapped mid-game, which is what 设置 is usually for.
+      final current = session.goConfig;
+      final next = result.goConfig;
+      final shapeChanged =
+          current.boardSize != next.boardSize ||
+          current.rules != next.rules ||
+          current.komi != next.komi ||
+          current.handicap != next.handicap;
+      if (!requiredAtStart && !shapeChanged) {
+        final hadOpponent = vsComputer;
+        setState(() {
+          aiSettings = result.aiSettings;
+          vsComputer = aiSettings.opponentMode != GoOpponentMode.local;
+          // Only follow the engine in or out of the game; leaving the panel
+          // where it was avoids a jump when nothing about the opponent changed.
+          if (hadOpponent != vsComputer) {
+            _panelMode = vsComputer ? _GoPanelMode.play : _GoPanelMode.choose;
+          }
+          humanSide = aiSettings.resolvePlayerSide();
+          _engineUnavailableNotified = false;
+          // The engine is about to be different, so nothing it said still holds.
+          _analysisResult = null;
+          _analysisSession = null;
+          computerThinking = false;
+          _adjudicationInProgress = false;
+        });
+        _persistGo();
+        _scheduleComputerMove();
+        return;
+      }
       setState(() {
         _gameId = DateTime.now().microsecondsSinceEpoch.toString();
         session = GameSession(GameType.go, goConfig: result.goConfig);
@@ -1581,6 +1642,7 @@ class _GamePageState extends State<GamePage> {
           );
       _engineUnavailableNotified = false;
       vsComputer = computer && aiSettings.opponentMode == GoOpponentMode.kataGo;
+      _panelMode = vsComputer ? _GoPanelMode.play : _GoPanelMode.choose;
       humanSide = restoredHumanSide ?? aiSettings.resolvePlayerSide();
       selected = null;
       targets = const [];
@@ -1593,7 +1655,7 @@ class _GamePageState extends State<GamePage> {
   Future<void> _importSgf() async {
     _pauseComputer();
     try {
-      final text = await GoFileService.pickSgf();
+      final text = await pickKifuText(context);
       if (text == null || !mounted) return;
       final paths = GoSgf.variations(text);
       var selectedPath = 0;
@@ -1758,7 +1820,7 @@ class _GamePageState extends State<GamePage> {
       final text = await showDialog<String>(
         context: context,
         builder: (context) => SimpleDialog(
-          title: const Text('本地棋谱（最近20盘）'),
+          title: const Text('本地棋谱'),
           children: records.isEmpty
               ? [
                   const Padding(
@@ -1802,7 +1864,6 @@ class _GamePageState extends State<GamePage> {
         PopupMenuButton<String>(
           tooltip: '更多',
           onSelected: (value) {
-            if (value == 'pass' && widget.type == GameType.go) _pass();
             if (value == 'reset') _restart();
             if (value == 'records') {
               if (widget.type == GameType.go) {
@@ -1812,7 +1873,6 @@ class _GamePageState extends State<GamePage> {
               }
             }
             if (value == 'restore') _restoreGo();
-            if (value == 'settings') _showGoSettings();
             if (value == 'sgf') _exportSgf();
             if (value == 'import') _importSgf();
             if (value == 'variations') _chooseSgfVariation();
@@ -1821,15 +1881,7 @@ class _GamePageState extends State<GamePage> {
           },
           itemBuilder: (_) => [
             if (widget.type == GameType.go)
-              PopupMenuItem(
-                value: 'pass',
-                enabled: _canPlay,
-                child: const Text('停一手'),
-              ),
-            if (widget.type == GameType.go)
               const PopupMenuItem(value: 'restore', child: Text('恢复上次对局')),
-            if (widget.type == GameType.go)
-              const PopupMenuItem(value: 'settings', child: Text('棋盘与规则设置')),
             if (widget.type == GameType.go)
               const PopupMenuItem(value: 'sgf', child: Text('导出 SGF')),
             if (widget.type == GameType.go)
@@ -1858,6 +1910,8 @@ class _GamePageState extends State<GamePage> {
           session: session,
           selected: selected,
           targets: targets,
+          analysisHints: _analysisHints,
+          analysisOwnership: _analysisOwnership,
           onCell: _onCell,
           placementMode: placementMode,
           onPreviewCell: _previewGoCell,
@@ -1867,27 +1921,785 @@ class _GamePageState extends State<GamePage> {
               : const {},
         );
         final side = _sidePanel(context);
+        // The action bar and the record cards go under the row rather than in
+        // the board's column: nesting them there would shrink the board by the
+        // side panel's width, which silently moves every tap target.
+        final belowBoard = Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (widget.type == GameType.go) ...[
+              _recordToolbar(context),
+              if (_cardsMerged)
+                _mergedCard(context)
+              else ...[
+                _notesCard(context),
+                const SizedBox(height: 8),
+                _treeCard(context),
+              ],
+            ],
+          ],
+        );
+        final upper = wide
+            ? Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: board),
+                  const SizedBox(width: 24),
+                  SizedBox(width: 310, child: side),
+                ],
+              )
+            : Column(children: [board, const SizedBox(height: 16), side]);
         return SingleChildScrollView(
           padding: EdgeInsets.all(wide ? 24 : 16),
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 1120),
-              child: wide
-                  ? Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(child: board),
-                        const SizedBox(width: 24),
-                        SizedBox(width: 310, child: side),
-                      ],
-                    )
-                  : Column(children: [board, const SizedBox(height: 16), side]),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  upper,
+                  if (widget.type == GameType.go) ...[
+                    const SizedBox(height: 16),
+                    belowBoard,
+                  ],
+                ],
+              ),
             ),
           ),
         );
       },
     ),
   );
+
+  /// Action bar between the board and the record cards.
+  ///
+  /// The AI / review choice lives here rather than in the state card, so a
+  /// record can switch between playing against the engine and reviewing it
+  /// without reopening the new-game dialog.
+  Widget _recordToolbar(BuildContext context) {
+    final navEnabled = widget.type == GameType.go;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            IconButton(
+              tooltip: '上一步',
+              onPressed: navEnabled ? _navigateRecordPrevious : null,
+              icon: const Icon(Icons.arrow_back),
+            ),
+            IconButton(
+              tooltip: '下一步',
+              onPressed: navEnabled ? _navigateRecordNext : null,
+              icon: const Icon(Icons.arrow_forward),
+            ),
+            IconButton(
+              tooltip: '上一分支点',
+              onPressed: navEnabled ? _navigateRecordPreviousBranch : null,
+              icon: const Icon(Icons.arrow_upward),
+            ),
+            IconButton(
+              tooltip: '删除最后一步',
+              onPressed: navEnabled && _goRecord.current.parent != null
+                  ? _deleteLastNode
+                  : null,
+              icon: const Icon(Icons.backspace_outlined),
+            ),
+            // Only meaningful once the game has ended: it steps back before the
+            // terminal move so the next move becomes a sibling variation.
+            IconButton(
+              tooltip: session.gameOver ? '续弈（在终局前接着下）' : '续弈：对局结束后可用',
+              onPressed: session.gameOver ? _continueGo : null,
+              icon: const Icon(Icons.play_circle_outline),
+            ),
+            IconButton(
+              tooltip: _robotPanelOpen ? '收起' : 'AI 与复盘',
+              onPressed: () =>
+                  setState(() => _robotPanelOpen = !_robotPanelOpen),
+              icon: Icon(
+                _robotPanelOpen ? Icons.keyboard_arrow_up : Icons.smart_toy,
+              ),
+            ),
+          ],
+        ),
+        if (_robotPanelOpen) ...[
+          const SizedBox(height: 6),
+          switch (_panelMode) {
+            _GoPanelMode.choose => Row(
+              children: [
+                Expanded(
+                  child: _panelEntry(
+                    icon: Icons.smart_toy_outlined,
+                    label: 'AI 对弈',
+                    onPressed: _startEngineGame,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _panelEntry(
+                    icon: Icons.insights_outlined,
+                    label: '分析',
+                    onPressed: _enterReview,
+                  ),
+                ),
+              ],
+            ),
+            _GoPanelMode.review => Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                if (_analysisRunning)
+                  TextButton.icon(
+                    onPressed: _stopAnalysis,
+                    icon: const Icon(Icons.stop, size: 18),
+                    label: const Text('停止'),
+                  )
+                else
+                  TextButton.icon(
+                    onPressed: _runAnalysis,
+                    icon: const Icon(Icons.insights_outlined, size: 18),
+                    label: Text(_analysis == null ? '分析' : '重新分析'),
+                  ),
+                // The overlays are part of the analysis, so they appear with it.
+                if (_analysis != null) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      FilterChip(
+                        label: const Text('选点'),
+                        selected: _showMoveHints,
+                        onSelected: (value) =>
+                            setState(() => _showMoveHints = value),
+                      ),
+                      const SizedBox(width: 8),
+                      FilterChip(
+                        label: const Text('局势'),
+                        selected: _showOwnership,
+                        onSelected: (value) =>
+                            setState(() => _showOwnership = value),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+            _GoPanelMode.play => Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _toolbarAction(
+                  icon: Icons.tune,
+                  label: '设置',
+                  onPressed: _showGoSettings,
+                ),
+                _toolbarAction(
+                  icon: Icons.insights_outlined,
+                  label: '分析',
+                  onPressed: _enterReview,
+                ),
+                _toolbarAction(
+                  icon: Icons.pause_circle_outline,
+                  label: '停一手',
+                  onPressed: _canPlay ? _pass : null,
+                ),
+                _toolbarAction(
+                  icon: Icons.undo,
+                  label: '悔棋',
+                  onPressed: session.moves.isEmpty ? null : _undo,
+                ),
+                _toolbarAction(
+                  icon: Icons.flag_outlined,
+                  label: '认输',
+                  onPressed: session.gameOver ? null : _resign,
+                ),
+              ],
+            ),
+          },
+        ],
+        const SizedBox(height: 4),
+      ],
+    );
+  }
+
+  /// One of the two ways into the panel, before anything has been chosen.
+  Widget _panelEntry({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+  }) => FilledButton.tonalIcon(
+    onPressed: onPressed,
+    icon: Icon(icon, size: 20),
+    label: Text(label),
+    style: FilledButton.styleFrom(
+      padding: const EdgeInsets.symmetric(vertical: 14),
+    ),
+  );
+
+  /// One labelled action under the navigation row.
+  ///
+  /// The icon and its word sit together so the row reads as a menu of things the
+  /// board can do, rather than requiring the icons to be memorised.
+  Widget _toolbarAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+    bool highlighted = false,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+    final colour = onPressed == null
+        ? colors.onSurfaceVariant.withValues(alpha: .38)
+        : highlighted
+        ? colors.primary
+        : colors.onSurfaceVariant;
+    return Tooltip(
+      message: label,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 22, color: colour),
+              const SizedBox(height: 4),
+              Text(label, style: TextStyle(fontSize: 12, color: colour)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Removes the last node of the current variation and steps back to it.
+  ///
+  /// Distinct from [_deleteCurrentNode], which acts on wherever the cursor is
+  /// and asks what to do with the children. Here the node has no children by
+  /// construction, so there is nothing to preserve.
+  Future<void> _deleteLastNode() async {
+    var node = _goRecord.current;
+    while (node.children.isNotEmpty) {
+      node = node.mainChild!;
+    }
+    if (node.parent == null) return;
+    _goRecord.navigateTo(node);
+    if (!_goRecord.deleteCurrent(preserveChildren: false)) return;
+    await _applyRecordCursor();
+    _notice('已删除最后一步');
+  }
+
+  /// Runs one bounded `kata-analyze` over the position on the board.
+  ///
+  /// The engine keeps the position from [_startKataGoAndReplay] onwards, so an
+  /// analysis started while it is idle has to bring it up to date first.
+  Future<void> _runAnalysis() async {
+    if (_analysisRunning || widget.type != GameType.go) return;
+    final generation = _computerGeneration;
+    final node = _goRecord.current;
+    setState(() {
+      _analysisRunning = true;
+      _analysisError = null;
+    });
+    try {
+      if (!_androidKataGoSupported) {
+        throw UnsupportedError('当前平台没有内置引擎，无法分析');
+      }
+      if (!_kataGo.isStarted) await _startKataGoAndReplay();
+      final analysis = await _kataGo.analyze(
+        boardSize: session.size,
+        side: session.turn,
+        budget: const Duration(seconds: 5),
+      );
+      if (!mounted ||
+          generation != _computerGeneration ||
+          !identical(node, _goRecord.current)) {
+        return;
+      }
+      setState(() {
+        _analysisResult = analysis;
+        _analysisSession = session;
+        _analysisDeadStones = session.deadGoStones.length;
+        _analysisFocus = 0;
+        _analysisRunning = false;
+        // The point of analysing is to see the result, so show it.
+        _showMoveHints = true;
+        _noteTab = 1;
+      });
+    } catch (error) {
+      if (!mounted || generation != _computerGeneration) return;
+      setState(() {
+        _analysisRunning = false;
+        _analysisError = '$error';
+      });
+    }
+  }
+
+  Future<void> _stopAnalysis() async {
+    if (!_analysisRunning) return;
+    // The analysis itself reports the partial result; this only shortens it.
+    await _kataGo.cancelAnalysis();
+  }
+
+  /// Candidate moves for the board badges, in rank order.
+  List<Cell> get _analysisHints {
+    final analysis = _analysis;
+    if (analysis == null || !_showMoveHints) return const [];
+    final cells = <Cell>[];
+    for (final move in analysis.moves) {
+      final cell = cellFromGtpVertex(move.vertex, boardSize: session.size);
+      if (cell != null) cells.add(cell);
+    }
+    return cells;
+  }
+
+  /// Ownership wash for the board, positive being Black, or null when hidden.
+  List<double>? get _analysisOwnership =>
+      _showOwnership ? _analysis?.ownership : null;
+
+  /// The candidate whose continuation the PV tab shows.
+  GoAnalysisMove? get _focusedAnalysisMove {
+    final analysis = _analysis;
+    if (analysis == null || analysis.moves.isEmpty) return null;
+    final index = _analysisFocus.clamp(0, analysis.moves.length - 1);
+    return analysis.moves[index];
+  }
+
+  /// Calls the engine out: setup first, then the board actions.
+  ///
+  /// The two entry buttons disappear either way, which is what makes them a
+  /// question rather than a mode switch.
+  Future<void> _startEngineGame() async {
+    setState(() => _panelMode = _GoPanelMode.play);
+    // A record has nobody playing the other colour, so the question that opened
+    // this dialog has already answered itself.
+    await _showGoSettings(preferEngine: true);
+  }
+
+  /// Switches the panel to the engine's review of the current position.
+  void _enterReview() {
+    setState(() => _panelMode = _GoPanelMode.review);
+    _runAnalysis();
+  }
+
+  Future<void> _navigateRecordPrevious() async {
+    if (!_goRecord.navigateParent()) return;
+    await _applyRecordCursor();
+  }
+
+  Future<void> _navigateRecordNext() async {
+    final child = _goRecord.current.mainChild;
+    if (child == null) return;
+    await _navigateRecordTo(child);
+  }
+
+  /// Jumps to the nearest ancestor that has more than one continuation.
+  Future<void> _navigateRecordPreviousBranch() async {
+    var parent = _goRecord.current.parent;
+    while (parent != null && !parent.isVariationPoint) {
+      parent = parent.parent;
+    }
+    if (parent == null) return;
+    await _navigateRecordTo(parent);
+  }
+
+  /// Collapsible bottom card with two tabs, as in the reference layout.
+  /// Extracted as its own widget so the panel chrome stays out of the already
+  /// long side panel.
+  Widget _panelCard({
+    required List<String> tabs,
+    required int selected,
+    required ValueChanged<int> onSelect,
+    required bool collapsed,
+    required VoidCallback onToggleCollapse,
+    required Widget child,
+  }) => Card(
+    elevation: 0,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 6, 6, 0),
+          child: Row(
+            children: [
+              for (var i = 0; i < tabs.length; i++)
+                _panelTab(
+                  context,
+                  tabs[i],
+                  selected: i == selected,
+                  onTap: collapsed
+                      ? () {
+                          onToggleCollapse();
+                          onSelect(i);
+                        }
+                      : () => onSelect(i),
+                ),
+              const Spacer(),
+              IconButton(
+                tooltip: collapsed ? '展开面板' : '收起面板',
+                visualDensity: VisualDensity.compact,
+                onPressed: onToggleCollapse,
+                icon: Icon(
+                  collapsed
+                      ? Icons.crop_square_outlined
+                      : Icons.crop_16_9_outlined,
+                  size: 20,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (!collapsed)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: child,
+          ),
+      ],
+    ),
+  );
+
+  Widget _panelTab(
+    BuildContext context,
+    String label, {
+    required bool selected,
+    required VoidCallback onTap,
+  }) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(6),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      child: Container(
+        padding: const EdgeInsets.only(bottom: 4),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              width: 2,
+              color: selected
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.transparent,
+            ),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontWeight: selected ? FontWeight.bold : FontWeight.normal,
+            color: selected
+                ? Theme.of(context).colorScheme.onSurface
+                : Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    ),
+  );
+
+  /// Tabs: notes / AI summary.
+  Widget _notesCard(BuildContext context) => _panelCard(
+    tabs: const ['注释', 'AI 摘要'],
+    selected: _noteTab,
+    onSelect: (value) => setState(() => _noteTab = value),
+    collapsed: _noteCollapsed,
+    onToggleCollapse: () => setState(() {
+      _cardsMerged = true;
+      _mergedTab = _noteTab;
+    }),
+    child: _noteTab == 0 ? _commentBody(context) : _analysisBody(context),
+  );
+
+  /// Tabs: variation tree / principal variation.
+  Widget _treeCard(BuildContext context) => _panelCard(
+    tabs: const ['变化树', 'PV'],
+    selected: _treeTab,
+    onSelect: (value) => setState(() => _treeTab = value),
+    collapsed: _treeCollapsed,
+    onToggleCollapse: () => setState(() {
+      _cardsMerged = true;
+      _mergedTab = _treeTab + 2;
+    }),
+    child: _treeTab == 0 ? _treeBody(context) : _pvBody(context),
+  );
+
+  /// Four tabs in one card. Either card's collapse button merges them, and the
+  /// tab the user was on is kept, which is why the selected index is shared.
+  Widget _mergedCard(BuildContext context) => _panelCard(
+    tabs: const ['注释', 'AI 摘要', '变化树', 'PV'],
+    selected: _mergedTab,
+    onSelect: (value) => setState(() => _mergedTab = value),
+    collapsed: false,
+    onToggleCollapse: () => setState(() {
+      _cardsMerged = false;
+      // Keep whatever tab was showing in the card it belongs to.
+      if (_mergedTab <= 1) {
+        _noteTab = _mergedTab;
+      } else {
+        _treeTab = _mergedTab - 2;
+      }
+    }),
+    child: switch (_mergedTab) {
+      0 => _commentBody(context),
+      1 => _analysisBody(context),
+      2 => _treeBody(context),
+      _ => _pvBody(context),
+    },
+  );
+
+  Widget _commentBody(BuildContext context) {
+    final comment = _goRecord.current.properties['C']?.firstOrNull;
+    return InkWell(
+      onTap: _editComment,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Text(
+          comment == null || comment.isEmpty ? '暂无注释，点击编辑。' : comment,
+          style: TextStyle(
+            fontStyle: comment == null || comment.isEmpty
+                ? FontStyle.italic
+                : FontStyle.normal,
+            color: comment == null || comment.isEmpty
+                ? Theme.of(context).colorScheme.onSurfaceVariant
+                : null,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Engine review of the current position: a one-line verdict plus the ranked
+  /// candidate moves the board badges refer to by number.
+  Widget _analysisBody(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = TextStyle(
+      fontSize: 12,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final analysis = _analysis;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                _analysisRunning
+                    ? '正在分析…'
+                    : analysis == null
+                    ? '暂无分析'
+                    : _analysisVerdict(analysis),
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+            if (_analysisRunning)
+              TextButton.icon(
+                onPressed: _stopAnalysis,
+                icon: const Icon(Icons.stop, size: 18),
+                label: const Text('停止'),
+              )
+            else
+              FilledButton.tonalIcon(
+                onPressed: _runAnalysis,
+                icon: const Icon(Icons.insights_outlined, size: 18),
+                label: Text(analysis == null ? '分析' : '重新分析'),
+              ),
+          ],
+        ),
+        if (_analysisError != null) ...[
+          const SizedBox(height: 4),
+          Text('分析失败：$_analysisError', style: muted),
+        ],
+        if (analysis != null && analysis.moves.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          _analysisTable(context, analysis),
+        ] else if (!_analysisRunning && _analysisError == null) ...[
+          const SizedBox(height: 8),
+          Text('点击「分析」让引擎评估当前局面。', style: muted),
+        ],
+      ],
+    );
+  }
+
+  /// One-line summary of the position, always read from Black's side.
+  String _analysisVerdict(GoAnalysis analysis) {
+    final winRate = (analysis.rootWinRate * 100).toStringAsFixed(1);
+    final lead = analysis.rootScoreLead;
+    final leader = lead >= 0 ? '黑' : '白';
+    return '黑棋胜率 $winRate%   $leader棋领先 ${lead.abs().toStringAsFixed(1)} 目'
+        '   搜索 ${analysis.rootVisits}';
+  }
+
+  Widget _analysisTable(BuildContext context, GoAnalysis analysis) {
+    final theme = Theme.of(context);
+    final header = TextStyle(
+      fontSize: 11,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
+            children: [
+              SizedBox(width: 28, child: Text('序号', style: header)),
+              SizedBox(width: 48, child: Text('着点', style: header)),
+              Expanded(child: Text('胜率', style: header)),
+              Expanded(child: Text('目差', style: header)),
+              Expanded(child: Text('搜索量', style: header)),
+              Expanded(child: Text('占比', style: header)),
+            ],
+          ),
+        ),
+        const Divider(height: 8),
+        for (var i = 0; i < analysis.moves.length; i++)
+          _analysisRow(context, analysis, i),
+      ],
+    );
+  }
+
+  Widget _analysisRow(BuildContext context, GoAnalysis analysis, int index) {
+    final theme = Theme.of(context);
+    final move = analysis.moves[index];
+    final focused = index == _analysisFocus.clamp(0, analysis.moves.length - 1);
+    final label = TextStyle(
+      fontSize: 12,
+      fontWeight: focused ? FontWeight.bold : FontWeight.normal,
+      color: focused ? theme.colorScheme.primary : null,
+    );
+    return InkWell(
+      // Selecting a row retargets the PV tab rather than playing the move: the
+      // board must keep showing the position the numbers were computed for.
+      onTap: () => setState(() => _analysisFocus = index),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 3),
+        child: Row(
+          children: [
+            SizedBox(width: 28, child: Text('${index + 1}', style: label)),
+            SizedBox(width: 48, child: Text(move.vertex, style: label)),
+            Expanded(
+              child: Text(
+                '${(move.winRate * 100).toStringAsFixed(1)}%',
+                style: label,
+              ),
+            ),
+            Expanded(
+              child: Text(
+                '${move.scoreLead >= 0 ? '+' : '-'}'
+                '${move.scoreLead.abs().toStringAsFixed(1)}',
+                style: label,
+              ),
+            ),
+            Expanded(child: Text('${move.visits}', style: label)),
+            Expanded(
+              child: Text(
+                '${(move.shareOf(analysis.rootVisits) * 100).toStringAsFixed(0)}%',
+                style: label,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _treeBody(BuildContext context) {
+    if (widget.type != GameType.go) {
+      return Text(
+        '仅围棋支持变化树。',
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Text(
+              _goRecord.current.isRoot
+                  ? '棋谱起点'
+                  : '第 ${GoVariationLayout.moveNumber(_goRecord.current)} 手',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const Spacer(),
+            if (_goRecord.current.children.isNotEmpty)
+              TextButton.icon(
+                onPressed: _chooseSgfVariation,
+                icon: const Icon(Icons.fork_right, size: 18),
+                label: const Text('选择后续变化'),
+              ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        GoVariationTree(
+          root: _goRecord.root,
+          current: _goRecord.current,
+          onSelect: _navigateRecordTo,
+        ),
+      ],
+    );
+  }
+
+  Widget _pvBody(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = TextStyle(
+      fontSize: 13,
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final move = _focusedAnalysisMove;
+    if (move == null) {
+      return Text('暂无 PV。先在上方「AI 摘要」里分析当前局面。', style: muted);
+    }
+    final analysis = _analysis!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              '第 ${_analysisFocus.clamp(0, analysis.moves.length - 1) + 1} 选点',
+              style: theme.textTheme.bodyMedium,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '${(move.winRate * 100).toStringAsFixed(1)}%  '
+              '${move.scoreLead >= 0 ? '+' : '-'}'
+              '${move.scoreLead.abs().toStringAsFixed(1)} 目',
+              style: muted,
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        if (move.pv.isEmpty)
+          Text('引擎还没有给出后续变化。', style: muted)
+        else
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (var i = 0; i < move.pv.length; i++)
+                Chip(
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  // Blue for Black's moves and the default surface for White
+                  // mirrors the stones, so the colour of a move is obvious.
+                  backgroundColor: i.isEven
+                      ? theme.colorScheme.primaryContainer
+                      : null,
+                  label: Text(
+                    '${_analysisMoveNumber(analysis, i)} ${move.pv[i]}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+            ],
+          ),
+      ],
+    );
+  }
+
+  /// Move number of the [index]-th PV entry, continuing from the analysis.
+  int _analysisMoveNumber(GoAnalysis analysis, int index) =>
+      session.moves.length + index + 1;
 
   Widget _sidePanel(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1926,76 +2738,6 @@ class _GamePageState extends State<GamePage> {
                     ),
                   ),
                 ),
-              if (widget.type == GameType.go) ...[
-                const SizedBox(height: 12),
-                InkWell(
-                  onTap: _editComment,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.comment_outlined, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _goRecord.current.properties['C']?.firstOrNull ??
-                                '暂无注释，点击编辑。',
-                            style: TextStyle(
-                              color: _goRecord.current.properties['C'] == null
-                                  ? Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant
-                                  : null,
-                            ),
-                          ),
-                        ),
-                        const Icon(Icons.edit_outlined, size: 16),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-              const SizedBox(height: 14),
-              SegmentedButton<bool>(
-                segments: [
-                  ButtonSegment(
-                    value: true,
-                    label: Text(
-                      KataGoAndroidRuntime.isSupported ||
-                              KataGoWebRuntime.isSupported
-                          ? '电脑（KataGo ${aiSettings.rank.label}）'
-                          : '电脑（KataGo）',
-                    ),
-                    icon: Icon(Icons.smart_toy_outlined),
-                  ),
-                  ButtonSegment(
-                    value: false,
-                    label: Text('本地双人'),
-                    icon: Icon(Icons.people_outline),
-                  ),
-                ],
-                selected: {vsComputer},
-                onSelectionChanged: (value) {
-                  _computerGeneration++;
-                  setState(() {
-                    vsComputer = value.first;
-                    aiSettings = aiSettings.copyWith(
-                      opponentMode: value.first
-                          ? GoOpponentMode.kataGo
-                          : GoOpponentMode.local,
-                    );
-                    if (value.first) _engineUnavailableNotified = false;
-                    computerThinking = false;
-                    _adjudicationInProgress = false;
-                    selected = null;
-                    targets = const [];
-                  });
-                  _persistGo();
-                  _scheduleComputerMove();
-                },
-              ),
               const SizedBox(height: 12),
               Text(
                 widget.type == GameType.go
@@ -2058,48 +2800,16 @@ class _GamePageState extends State<GamePage> {
                   ),
                 ],
               ),
-              if (widget.type == GameType.go &&
-                  (_goRecord.current.parent != null ||
-                      _goRecord.current.children.isNotEmpty)) ...[
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Text(
-                      '变化树',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      _goRecord.current.isRoot
-                          ? '棋谱起点'
-                          : '第 ${GoVariationLayout.moveNumber(_goRecord.current)} 手',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                    if (_goRecord.current.children.isNotEmpty)
-                      IconButton(
-                        tooltip: '选择后续变化',
-                        visualDensity: VisualDensity.compact,
-                        onPressed: _chooseSgfVariation,
-                        icon: const Icon(Icons.fork_right, size: 20),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                // Tapping any disc jumps straight to that record node.
-                GoVariationTree(
-                  root: _goRecord.root,
-                  current: _goRecord.current,
-                  onSelect: _navigateRecordTo,
-                ),
-              ],
               const SizedBox(height: 8),
+              Text(
+                '招法',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 4),
               SizedBox(
                 height: 108,
                 child: session.moves.isEmpty

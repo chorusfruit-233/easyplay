@@ -92,28 +92,45 @@ void main() {
     await tester.pumpWidget(const EasyPlayApp());
     await tester.tap(find.text('围棋'));
     await tester.pumpAndSettle();
+    // Go opens on its own home page now, so the game is one step further in.
+    await tester.tap(find.text('AI 对弈'));
+    await tester.pumpAndSettle();
     expect(find.text('新建 AI 对局'), findsOneWidget);
-    expect(find.text('KataGo b6 小模型'), findsOneWidget);
+    // The engine profile decides which networks to load; the setup dialog has
+    // no model picker to assert on.
+    expect(find.text('引擎'), findsOneWidget);
     expect(find.text('5k'), findsOneWidget);
+    // The engine field doubles as "is anyone playing the other colour".
+    expect(find.text('不下棋（仅记录）'), findsNothing);
     await tester.tap(find.text('开始对局'));
     await tester.pump();
     await tester.pump();
     expect(find.text('黑方回合'), findsOneWidget);
-    expect(find.text('电脑（KataGo 5k）'), findsOneWidget);
+    // The engine choice is summarised in the toolbar's robot panel now, so the
+    // state card no longer repeats the mode.
     expect(find.text('重新开始'), findsOneWidget);
+    expect(find.byTooltip('AI 与复盘'), findsOneWidget);
   });
 
-  testWidgets('unavailable KataGo falls back to local play', (tester) async {
-    await tester.pumpWidget(const EasyPlayApp());
-    await tester.tap(find.text('围棋'));
-    await tester.pumpAndSettle();
-    final white = find.widgetWithText(ChoiceChip, '我执白');
-    await tester.ensureVisible(white);
-    await tester.tap(white);
-    await tester.tap(find.text('开始对局'));
-    await tester.pumpAndSettle(const Duration(milliseconds: 500));
-    expect(find.text('黑方回合'), findsOneWidget);
-    expect(find.text('本地双人'), findsOneWidget);
-    expect(find.text('电脑思考中…'), findsNothing);
-  });
+  // There is no local-play mode to fall back to: the engine is the only
+  // opponent, so an unavailable engine must stop the computer rather than
+  // silently switch the game to two humans.
+  testWidgets(
+    'unavailable engine stops the computer instead of switching mode',
+    (tester) async {
+      await tester.pumpWidget(const EasyPlayApp());
+      await tester.tap(find.text('围棋'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('AI 对弈'));
+      await tester.pumpAndSettle();
+      final white = find.widgetWithText(ChoiceChip, '我执白');
+      await tester.ensureVisible(white);
+      await tester.tap(white);
+      await tester.tap(find.text('开始对局'));
+      await tester.pumpAndSettle(const Duration(milliseconds: 500));
+      expect(find.text('黑方回合'), findsOneWidget);
+      expect(find.text('电脑思考中…'), findsNothing);
+      expect(find.text('本地双人'), findsNothing);
+    },
+  );
 }

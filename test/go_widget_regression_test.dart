@@ -39,6 +39,7 @@ void main() {
     GoConfig? config,
     double width = 1100,
     bool useAndroidKataGo = false,
+    bool allowComputerMoves = true,
   }) async {
     tester.view.physicalSize = Size(width, 1100);
     tester.view.devicePixelRatio = 1;
@@ -50,6 +51,7 @@ void main() {
           type: GameType.go,
           goConfig: config,
           useAndroidKataGo: useAndroidKataGo,
+          allowComputerMoves: allowComputerMoves,
         ),
       ),
     );
@@ -66,6 +68,17 @@ void main() {
     await tester.tap(find.byTooltip('更多'));
     await tester.pumpAndSettle();
     await tester.tap(find.text(label).last);
+    await tester.pumpAndSettle();
+  }
+
+  /// 停一手 and 设置 are labelled actions under the board's navigation row, so
+  /// they need the action panel opened first.
+  Future<void> action(WidgetTester tester, String label) async {
+    if (find.byTooltip(label).evaluate().isEmpty) {
+      await tester.tap(find.byTooltip('AI 与复盘'));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.byTooltip(label));
     await tester.pumpAndSettle();
   }
 
@@ -93,17 +106,21 @@ void main() {
       final rect = tester.getRect(find.byType(Board));
       final step = rect.width / 19;
       final point = rect.topLeft + Offset(step * 5.5, step * 5.5);
+      // Move by whole cells rather than a fixed pixel offset: a fixed offset
+      // lands on a different intersection when the board shifts inside the
+      // scroll view, which made this test depend on the layout above it.
+
       await tester.tapAt(point);
       await tester.pump();
       expect(session(tester).moves, isEmpty);
 
-      await tester.dragFrom(point, const Offset(0, -40));
+      await tester.dragFrom(point, Offset(0, -step));
       await tester.pump();
       expect(session(tester).moves, isEmpty);
 
       await tester.tapAt(point);
       await tester.pump();
-      await tester.dragFrom(point, const Offset(0, 40));
+      await tester.dragFrom(point, Offset(0, step));
       await tester.pump();
       expect(session(tester).moves, hasLength(1));
       expect(session(tester).pieceAt(const Cell(5, 5))?.side, Side.black);
@@ -219,9 +236,7 @@ void main() {
   });
 
   testWidgets('320px game controls fit without overflow', (tester) async {
-    await open(tester, width: 320);
-    await tester.ensureVisible(find.text('本地双人'));
-    await tester.tap(find.text('本地双人'));
+    await open(tester, allowComputerMoves: false, width: 320);
     await tester.pumpAndSettle();
     expect(tester.takeException(), null);
   });
@@ -283,14 +298,13 @@ void main() {
   testWidgets('scoring, mark, confirm and resume work on narrow screen', (
     tester,
   ) async {
-    await open(tester, width: 390);
-    await tester.ensureVisible(find.text('本地双人'));
-    await tester.tap(find.text('本地双人'));
+    await open(tester, allowComputerMoves: false, width: 390);
+    await tester.pumpAndSettle();
     await tester.pump();
     tester.widget<Board>(find.byType(Board)).onCell(const Cell(4, 4));
     await tester.pump();
-    await menu(tester, '停一手');
-    await menu(tester, '停一手');
+    await action(tester, '停一手');
+    await action(tester, '停一手');
     expect(find.text('待确认计分'), findsOneWidget);
     tester.widget<Board>(find.byType(Board)).onCell(const Cell(4, 4));
     await tester.pump();
@@ -321,14 +335,13 @@ void main() {
   testWidgets('double pass stays manually adjudicable without KataGo', (
     tester,
   ) async {
-    await open(tester);
-    await tester.ensureVisible(find.text('本地双人'));
-    await tester.tap(find.text('本地双人'));
+    await open(tester, allowComputerMoves: false);
+    await tester.pumpAndSettle();
     await tester.pump();
     tester.widget<Board>(find.byType(Board)).onCell(const Cell(4, 4));
     await tester.pump();
-    await menu(tester, '停一手');
-    await menu(tester, '停一手');
+    await action(tester, '停一手');
+    await action(tester, '停一手');
     await tester.pumpAndSettle();
     await tester.pumpAndSettle();
     expect(session(tester).gameOver, isTrue);
@@ -339,9 +352,9 @@ void main() {
 
   testWidgets('invalid komi cannot reset the game', (tester) async {
     await open(tester, width: 390);
-    await menu(tester, '棋盘与规则设置');
+    await action(tester, '设置');
     await tester.enterText(find.byType(TextFormField).last, 'NaN');
-    await tester.tap(find.text('应用并重开'));
+    await tester.tap(find.text('保存'));
     await tester.pump();
     expect(find.text('请输入 -100 至 100 的贴目'), findsOneWidget);
     expect(session(tester).goConfig.komi, 7.5);
