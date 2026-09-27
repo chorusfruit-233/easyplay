@@ -1,6 +1,6 @@
 # AI 引擎开发与使用
 
-参考资料为 `upstream/围棋大师_1.4.0.apks` 中的配置、资源和可观察行为；仓库没有该应用的原始 Dart 源码。EasyPlay 自行构建固定版本 KataGo v1.16.5，通过标准 GTP 接入。
+参考资料为 `upstream/围棋大师_1.4.0.apks` 中的配置、资源和可观察行为；仓库没有该应用的原始 Dart 源码。EasyPlay 自行构建固定版本 KataGo v1.18.2（Android 与 Web 用同一份 pin），通过标准 GTP 接入。
 
 ## 使用入口
 

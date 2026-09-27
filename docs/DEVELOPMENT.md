@@ -260,7 +260,7 @@ enum PieceKind { stone, pawn, rook, knight, bishop, queen, king, checker }
 
 围棋人机模式只使用 KataGo。Android 引擎启动失败、WebAssembly 初始化失败或局面同步失败时，当前请求会被取消，界面自动切换为本地双人模式；双方随后都由用户手动落子，不会再生成模拟电脑着法。
 
-`assets/katago/` 内置约 3.8 MB 的 g170 b6 网络，运行前校验 SHA-256。Android APK 将 KataGo v1.16.5 arm64 GTP 程序作为 `jniLibs/arm64-v8a/libkatago.so` 打包，使系统提取到可执行的 `nativeLibraryDir`；不要从 `filesDir` 解压并执行，因为部分 Android 设备会对应用可写目录启用 `noexec`。Flutter 通过 `easyplay/katago` MethodChannel 启停进程并串行发送命令，CPU 使用 Eigen 后端，模型和配置复制到应用私有目录。Web 使用相同模型和 KataGo 源码编译的 WASM，在同源 Worker 中推理。WASM 的 pthread 需要浏览器 `SharedArrayBuffer`，所以静态托管必须返回 COOP/COEP 响应头；`web/_headers` 为支持该格式的静态主机提供配置。未启用跨源隔离时 Web 会提示并切换本地双人模式。模型与 KataGo/Eigen 许可证位于 `assets/katago/` 和 `docs/licenses/`。Android 重建运行 `tools/build_katago_android.sh`，要求 Android NDK 28.2.13676358；Web 重建运行 `tools/build_katago_web.sh`，要求 Emscripten 6.0.3。两份脚本都会固定校验 KataGo/Eigen commit。
+`assets/katago/` 内置约 3.8 MB 的 g170 b6 网络，运行前校验 SHA-256。Android APK 将 KataGo v1.18.2 arm64 GTP 程序作为 `jniLibs/arm64-v8a/libkatago.so` 打包，使系统提取到可执行的 `nativeLibraryDir`；不要从 `filesDir` 解压并执行，因为部分 Android 设备会对应用可写目录启用 `noexec`。Flutter 通过 `easyplay/katago` MethodChannel 启停进程并串行发送命令，CPU 使用 Eigen 后端，模型和配置复制到应用私有目录。Web 使用相同模型和 KataGo 源码编译的 WASM，在同源 Worker 中推理。WASM 的 pthread 需要浏览器 `SharedArrayBuffer`，所以静态托管必须返回 COOP/COEP 响应头；`web/_headers` 为支持该格式的静态主机提供配置。未启用跨源隔离时 Web 会提示并切换本地双人模式。模型与 KataGo/Eigen 许可证位于 `assets/katago/` 和 `docs/licenses/`。Android 重建运行 `tools/build_katago_android.sh`，要求 Android NDK 28.2.13676358；Web 重建运行 `tools/build_katago_web.sh`，要求 Emscripten 6.0.3。两份脚本都会固定校验 KataGo/Eigen commit。
 
 ### 《围棋大师》APK 参考实现核查
 

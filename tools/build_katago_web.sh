@@ -7,8 +7,13 @@ EMSDK="${EASYPLAY_EMSDK_DIR:-$CACHE/emsdk}"
 KATAGO="${EASYPLAY_KATAGO_SOURCE:-$CACHE/KataGo}"
 EIGEN="${EASYPLAY_EIGEN_SOURCE:-$CACHE/eigen}"
 BUILD="$CACHE/build"
-KATAGO_COMMIT="ba938676d7f42d70950b3a535af2466fb642008c"
+# Kept in step with build_katago_android.sh: the Web build must run the same
+# engine as the Android one, or the two platforms disagree about which model
+# versions they can load.
+KATAGO_COMMIT="fd0723fdbc0e9d82cf269c9630af8c27c57c07c4"
+KATAGO_TAG="v1.18.2"
 EIGEN_COMMIT="3147391d946bb4b6c68edd901f2add6ac1f31f8c"
+EIGEN_TAG="3.4.0"
 EMSDK_VERSION="6.0.3"
 
 mkdir -p "$CACHE"
@@ -16,10 +21,14 @@ if [[ ! -d "$EMSDK/.git" ]]; then
   git clone --depth 1 https://github.com/emscripten-core/emsdk.git "$EMSDK"
 fi
 if [[ ! -d "$KATAGO/.git" ]]; then
-  git clone --depth 1 --branch v1.16.5 https://github.com/lightvector/KataGo.git "$KATAGO"
+  git clone --depth 1 --branch "$KATAGO_TAG" https://github.com/lightvector/KataGo.git "$KATAGO"
+elif [[ "$(git -C "$KATAGO" rev-parse HEAD)" != "$KATAGO_COMMIT" ]]; then
+  # An older check-out is present; fetch just the pinned tag and move to it.
+  git -C "$KATAGO" fetch --depth 1 origin "refs/tags/$KATAGO_TAG:refs/tags/$KATAGO_TAG"
+  git -C "$KATAGO" checkout --detach "$KATAGO_COMMIT"
 fi
 if [[ ! -d "$EIGEN/.git" ]]; then
-  git clone --depth 1 --branch 3.4.0 https://gitlab.com/libeigen/eigen.git "$EIGEN"
+  git clone --depth 1 --branch "$EIGEN_TAG" https://gitlab.com/libeigen/eigen.git "$EIGEN"
 fi
 for spec in "$KATAGO:$KATAGO_COMMIT" "$EIGEN:$EIGEN_COMMIT"; do
   dir="${spec%%:*}"
