@@ -25,10 +25,10 @@ class _GoEngineEditorState extends State<GoEngineEditor> {
     text: '${widget.profile?.searchThreads ?? 2}',
   );
   late final _gpu = TextEditingController(
-    text: '${widget.profile?.openclGpuIdx ?? 0}',
+    text: widget.profile?.openclGpuIdx?.toString() ?? '',
   );
   late final _library = TextEditingController(
-    text: widget.profile?.openclLibraryName ?? 'libOpenCL.so',
+    text: widget.profile?.openclLibraryName ?? '',
   );
   late final _cfg = TextEditingController(
     text: widget.profile?.customConfig ?? '',
@@ -221,8 +221,10 @@ class _GoEngineEditorState extends State<GoEngineEditor> {
         'backend': _backend.name,
         'maxTimeSeconds': int.parse(_time.text),
         'searchThreads': int.parse(_threads.text),
-        'openclGpuIdx': int.tryParse(_gpu.text),
-        'openclLibraryName': _library.text.trim(),
+        'openclGpuIdx': int.tryParse(_gpu.text.trim()),
+        'openclLibraryName': _library.text.trim().isEmpty
+            ? null
+            : _library.text.trim(),
         'customConfig': _cfg.text,
         'configOverrides': _overrides.text,
         'modelId': _modelId,
@@ -341,7 +343,7 @@ class _GoEngineEditorState extends State<GoEngineEditor> {
                 const SizedBox(height: 4),
                 Text(
                   '设备 OpenCL 驱动：${_library.text.trim().isEmpty ? '自动' : _library.text.trim()}'
-                  '　GPU ${_gpu.text.trim().isEmpty ? '0' : _gpu.text.trim()}',
+                  '　设备：${_gpu.text.trim().isEmpty ? '自动' : _gpu.text.trim()}',
                   style: TextStyle(
                     fontSize: 12,
                     color: colors.onSurfaceVariant,
