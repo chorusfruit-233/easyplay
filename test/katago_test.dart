@@ -87,6 +87,38 @@ void main() {
     },
   );
 
+  test('OpenCL config leaves device selection automatic unless explicitly set', () {
+    final automatic = parseKataGoConfig(
+      buildKataGoConfig(
+        'openclDeviceToUse = 7\nopenclUseFP16 = true',
+        config: const GoConfig(),
+        settings: const GoAiSettings(),
+        engine: const GoEngineProfile(
+          id: 'auto-gpu',
+          name: 'Auto GPU',
+          backend: GoEngineBackend.opencl,
+        ),
+      ),
+    );
+    expect(automatic.containsKey('openclDeviceToUse'), false);
+    expect(automatic['openclUseFP16'], 'true');
+
+    final explicit = parseKataGoConfig(
+      buildKataGoConfig(
+        '',
+        config: const GoConfig(),
+        settings: const GoAiSettings(),
+        engine: const GoEngineProfile(
+          id: 'gpu-2',
+          name: 'GPU 2',
+          backend: GoEngineBackend.opencl,
+          openclGpuIdx: 2,
+        ),
+      ),
+    );
+    expect(explicit['openclDeviceToUse'], '2');
+  });
+
   test('AI resignation records the correct winner and SGF result', () {
     final game = GameSession(GameType.go);
     game.placeGo(const Cell(3, 3));
