@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:easyplay/lan/lan_page.dart';
+import 'package:easyplay/lan/lan_match_page.dart';
 import 'package:easyplay/game_session.dart';
 import 'package:easyplay/lan/lan_game.dart';
 import 'package:easyplay/lan/lan_transport.dart';
