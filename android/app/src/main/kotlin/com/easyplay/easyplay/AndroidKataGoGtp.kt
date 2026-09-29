@@ -154,15 +154,16 @@ internal class AndroidKataGoGtp(
             val devices = json.optJSONArray("devices")
             val list = (0 until (devices?.length() ?: 0)).map { i ->
                 val device = devices!!.getJSONObject(i)
-                mapOf("index" to device.getInt("index"), "name" to device.getString("name"),
-                    "vendor" to device.getString("vendor"), "version" to device.getString("version"))
+                mapOf("index" to device.getInt("index"), "type" to device.optString("type", "Device"),
+                    "name" to device.getString("name"), "vendor" to device.getString("vendor"),
+                    "version" to device.getString("version"))
             }
             val gpu = gpuIndex(args)
             val available = json.optBoolean("available") && (gpu < 0 || list.any { it["index"] == gpu })
             val key = if (args["model"] is ByteArray) tuningKey(args) else null
             return mapOf("backend" to backend, "available" to available, "runnable" to available,
                 "library" to binary.absolutePath, "devices" to list,
-                "reason" to if (available) null else "未找到可访问的 OpenCL GPU，请检查 GPU 编号和厂商驱动",
+                "reason" to if (available) null else "未找到可访问的 OpenCL 设备，请检查设备编号和厂商驱动",
                 "tuningId" to key, "tuned" to (key?.let { isTuned(it) } ?: false))
         } catch (error: Exception) {
             return mapOf("backend" to backend, "available" to false, "runnable" to false,
