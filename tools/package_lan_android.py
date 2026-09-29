@@ -34,6 +34,7 @@ def main() -> None:
     output.add_argument("--debug", action="store_true", help="build a debug APK")
     output.add_argument("--appbundle", action="store_true", help="build a signed release AAB")
     args = parser.parse_args()
+    subprocess.run(["python3", "tools/prepare_stockfish.py"], cwd=ROOT, check=True)
     original = PUBSPEC.read_text()
     if "# LAN_WEB_ASSETS_START" in original:
         raise SystemExit("pubspec.yaml contains a previous temporary bundle block")

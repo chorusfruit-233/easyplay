@@ -1,25 +1,23 @@
-import '../draughts/draughts.dart';
-import '../game_session.dart' show Cell, Side, SideX;
+import '../chess/chess.dart';
 import 'lan_protocol.dart';
 
-class DraughtsNegotiation {
-  const DraughtsNegotiation(this.seq, this.side);
+class ChessNegotiation {
+  const ChessNegotiation(this.seq, this.side);
   final int seq;
   final Side side;
 }
 
-/// Host-owned Draughts state. LAN requests contain one complete move path;
+/// Host-owned Chess state. LAN requests contain one complete move path;
 /// every move is validated by the same rules engine used by local games.
-class DraughtsAuthority {
-  DraughtsAuthority(this.variant) : _state = _DraughtsLanState(variant);
+class ChessAuthority {
+  ChessAuthority() : _state = _ChessLanState();
 
-  final DraughtsVariant variant;
-  final _DraughtsLanState _state;
+  final _ChessLanState _state;
   final List<LanMessage> _events = [];
   int get seq => _events.length;
-  DraughtsSession get session => _state.session;
-  DraughtsNegotiation? get undoRequest => _state.undoRequest;
-  DraughtsNegotiation? get drawRequest => _state.drawRequest;
+  ChessSession get session => _state.session;
+  ChessNegotiation? get undoRequest => _state.undoRequest;
+  ChessNegotiation? get drawRequest => _state.drawRequest;
 
   LanMessage submit(Side authenticatedSide, LanMessage request) {
     String? reason;
@@ -37,6 +35,11 @@ class DraughtsAuthority {
     }
     _events.add(request);
     return request;
+  }
+
+  void dispose() {
+    session.dispose();
+    _events.clear();
   }
 
   LanMessage? expireUndo(int requestSeq) {
@@ -71,41 +74,42 @@ class DraughtsAuthority {
     }
     return LanMessage(LanMessageType.stateSync, seq, {
       'roomVersion': lanProtocolVersion,
-      'game': 'draughts',
-      'variant': variant.name,
-      'rulesVersion': draughtsRulesVersion,
+      'game': 'chess',
+      'rulesVersion': chessRulesVersion,
       'events': _events.map((event) => event.toWire()).toList(),
     });
   }
 }
 
-class DraughtsLanReplica {
-  DraughtsLanReplica(this.variant) : _state = _DraughtsLanState(variant);
+class ChessLanReplica {
+  ChessLanReplica() : _state = _ChessLanState();
 
-  final DraughtsVariant variant;
-  _DraughtsLanState _state;
+  _ChessLanState _state;
   int _seq = 0;
   int get seq => _seq;
-  DraughtsSession get session => _state.session;
-  DraughtsNegotiation? get undoRequest => _state.undoRequest;
-  DraughtsNegotiation? get drawRequest => _state.drawRequest;
+  ChessSession get session => _state.session;
+  ChessNegotiation? get undoRequest => _state.undoRequest;
+  ChessNegotiation? get drawRequest => _state.drawRequest;
 
   bool receive(LanMessage event) {
     if (event.type == LanMessageType.stateSync) {
       if (event.seq < seq ||
-          event.body['game'] != 'draughts' ||
-          event.body['variant'] != variant.name ||
-          event.body['rulesVersion'] != draughtsRulesVersion) {
+          event.body['game'] != 'chess' ||
+          event.body['rulesVersion'] != chessRulesVersion) {
         return false;
       }
       final events = event.body['events'];
       if (events is! List || events.length != event.seq) return false;
-      final candidate = _DraughtsLanState(variant);
+      final candidate = _ChessLanState();
+      var replayed = 0;
       for (final raw in events) {
         if (raw is! Map<String, dynamic>) return false;
         final message = LanMessage.fromWire(raw.cast<String, Object?>());
-        if (candidate.apply(message) != null) return false;
+        if (message.seq != ++replayed || candidate.apply(message) != null) {
+          return false;
+        }
       }
+      _state.session.dispose();
       _state = candidate;
       _seq = event.seq;
       return true;
@@ -118,18 +122,18 @@ class DraughtsLanReplica {
     return true;
   }
 
+  void dispose() => session.dispose();
+
   LanMessage stateRequest() =>
       LanMessage(LanMessageType.stateRequest, seq, {'lastSeq': seq});
 }
 
-class _DraughtsLanState {
-  _DraughtsLanState(this.variant)
-    : session = DraughtsSession(DraughtsRules.forVariant(variant));
+class _ChessLanState {
+  _ChessLanState() : session = ChessSession();
 
-  final DraughtsVariant variant;
-  final DraughtsSession session;
-  DraughtsNegotiation? undoRequest;
-  DraughtsNegotiation? drawRequest;
+  final ChessSession session;
+  ChessNegotiation? undoRequest;
+  ChessNegotiation? drawRequest;
 
   String? apply(LanMessage event) {
     final side = event.side;
@@ -139,24 +143,19 @@ class _DraughtsLanState {
         if (session.gameOver) return '对局已经结束';
         if (undoRequest != null || drawRequest != null) return '请先处理待确认请求';
         if (session.turn != side) return '尚未轮到你落子';
-        final rawPath = data['path'];
-        if (rawPath is! List) return '缺少完整着法路径';
-        final path = rawPath.map((raw) {
-          final cell = LanMessage.parseCell(raw);
-          return Cell(cell.row, cell.col);
-        }).toList();
-        final move = session
-            .legalMoves()
-            .where(
-              (candidate) =>
-                  candidate.path.length == path.length &&
-                  List.generate(
-                    path.length,
-                    (i) => candidate.path[i] == path[i],
-                  ).every((v) => v),
-            )
-            .firstOrNull;
-        if (move == null || !session.applyMove(move)) return '完整着法不合法';
+        final rawMove = data['move'];
+        if (rawMove is! String) return '缺少 UCI 着法';
+        final move = parseUciMove(rawMove);
+        if (!session.applyMove(move)) return '着法不合法';
+      case LanMessageType.drawClaim:
+        if (undoRequest != null || drawRequest != null) return '请先处理待确认请求';
+        if (session.turn != side) return '只能在自己的回合申请和棋';
+        final intended = data['move'];
+        if (!session.claimDraw(
+          intended == null ? null : parseUciMove(intended as String),
+        )) {
+          return '不满足和棋条件';
+        }
       case LanMessageType.resign:
         if (session.gameOver) return '对局已经结束';
         if (undoRequest != null || drawRequest != null) return '请先处理待确认请求';
@@ -165,7 +164,7 @@ class _DraughtsLanState {
         if (session.gameOver) return '对局已经结束';
         if (undoRequest != null || drawRequest != null) return '已有待处理请求';
         if (session.moves.isEmpty) return '没有可以悔回的着手';
-        undoRequest = DraughtsNegotiation(event.seq, side);
+        undoRequest = ChessNegotiation(event.seq, side);
       case LanMessageType.undoAccept:
       case LanMessageType.undoReject:
         final pending = undoRequest;
@@ -181,7 +180,7 @@ class _DraughtsLanState {
       case LanMessageType.drawRequest:
         if (session.gameOver) return '对局已经结束';
         if (undoRequest != null || drawRequest != null) return '已有待处理请求';
-        drawRequest = DraughtsNegotiation(event.seq, side);
+        drawRequest = ChessNegotiation(event.seq, side);
       case LanMessageType.drawAccept:
       case LanMessageType.drawReject:
         final pending = drawRequest;
@@ -193,7 +192,7 @@ class _DraughtsLanState {
         if (event.type == LanMessageType.drawAccept) session.agreeDraw();
         drawRequest = null;
       default:
-        return '不是跳棋联机操作';
+        return '不是国际象棋联机操作';
     }
     return null;
   }

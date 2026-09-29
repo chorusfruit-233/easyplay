@@ -1,3 +1,5 @@
+import '../chess/chess_session.dart' show chessRulesVersion;
+import 'chess_lan_game.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -18,16 +20,23 @@ class LanHostServer {
   LanHostServer({
     LanAuthority? authority,
     this.draughtsAuthority,
+    this.chessAuthority,
     required this.token,
   })
     // ignore: prefer_initializing_formals
     : _authority = authority {
-    if ((_authority == null) == (draughtsAuthority == null)) {
+    if ([
+          _authority,
+          draughtsAuthority,
+          chessAuthority,
+        ].where((a) => a != null).length !=
+        1) {
       throw ArgumentError('provide exactly one game authority');
     }
   }
   final LanAuthority? _authority;
   final DraughtsAuthority? draughtsAuthority;
+  final ChessAuthority? chessAuthority;
   LanAuthority get authority => _authority!;
   final String token;
   HttpServer? _server;
@@ -41,12 +50,15 @@ class LanHostServer {
   int get playerCount => _clients.where((peer) => peer.side != null).length;
   bool get started => _started;
   bool get isDraughts => draughtsAuthority != null;
-  int get seq => draughtsAuthority?.seq ?? authority.seq;
-  int get boardSize =>
-      draughtsAuthority?.session.rules.boardSize ??
-      authority.session.goConfig.boardSize;
+  int get seq => chessAuthority?.seq ?? draughtsAuthority?.seq ?? authority.seq;
+  int get boardSize => chessAuthority != null
+      ? 8
+      : draughtsAuthority?.session.rules.boardSize ??
+            authority.session.goConfig.boardSize;
   bool get gameOver =>
-      draughtsAuthority?.session.gameOver ?? authority.session.gameOver;
+      chessAuthority?.session.gameOver ??
+      draughtsAuthority?.session.gameOver ??
+      authority.session.gameOver;
   Stream<int> get playerCounts => _playerCounts.stream;
 
   void startMatch() {
@@ -94,7 +106,11 @@ class LanHostServer {
         'app': 'easyplay',
         'version': lanProtocolVersion,
         'board': boardSize,
-        'game': isDraughts ? 'draughts' : 'go',
+        'game': chessAuthority != null
+            ? 'chess'
+            : isDraughts
+            ? 'draughts'
+            : 'go',
         if (draughtsAuthority != null)
           'variant': draughtsAuthority!.variant.name,
         'players': playerCount,
@@ -186,7 +202,9 @@ class LanHostServer {
     if (event.type == LanMessageType.undoRequest) {
       _undoTimer?.cancel();
       _undoTimer = Timer(const Duration(seconds: 30), () {
-        final expired = draughtsAuthority != null
+        final expired = chessAuthority != null
+            ? chessAuthority!.expireUndo(event.seq)
+            : draughtsAuthority != null
             ? draughtsAuthority!.expireUndo(event.seq)
             : authority.expireUndo(event.seq);
         if (expired != null) _broadcast(expired);
@@ -194,7 +212,9 @@ class LanHostServer {
     } else if (event.type == LanMessageType.drawRequest) {
       _undoTimer?.cancel();
       _undoTimer = Timer(const Duration(seconds: 30), () {
-        final expired = draughtsAuthority?.expireDraw(event.seq);
+        final expired =
+            chessAuthority?.expireDraw(event.seq) ??
+            draughtsAuthority?.expireDraw(event.seq);
         if (expired != null) _broadcast(expired);
       });
     } else if (event.type == LanMessageType.undoAccept ||
@@ -210,13 +230,20 @@ class LanHostServer {
   }
 
   LanMessage sync(LanMessage request) =>
-      draughtsAuthority?.sync(request) ?? authority.sync(request);
+      chessAuthority?.sync(request) ??
+      draughtsAuthority?.sync(request) ??
+      authority.sync(request);
 
   LanMessage submit(Side side, LanMessage request) =>
+      chessAuthority?.submit(side, request) ??
       draughtsAuthority?.submit(side, request) ??
       authority.submit(side, request);
 
   bool acceptsHello(Map<String, Object?> body) {
+    if (chessAuthority != null) {
+      return body['game'] == 'chess' &&
+          body['rulesVersion'] == chessRulesVersion;
+    }
     if (isDraughts) {
       return body['game'] == 'draughts' &&
           body['variant'] == draughtsAuthority!.variant.name &&
@@ -235,6 +262,7 @@ class LanHostServer {
     await _server?.close(force: true);
     _server = null;
     await _playerCounts.close();
+    chessAuthority?.dispose();
   }
 }
 
@@ -315,10 +343,13 @@ class _LanPeer {
           return;
         }
         final requested = message.body['resumeSide'];
+        final firstSide = server.chessAuthority != null
+            ? Side.white
+            : Side.black;
         side = requested == null
-            ? (server._clients.any((peer) => peer.side == Side.black)
-                  ? Side.white
-                  : Side.black)
+            ? (server._clients.any((peer) => peer.side == firstSide)
+                  ? firstSide.opponent
+                  : firstSide)
             : LanMessage.parseSide(requested);
         if (server._clients.any((peer) => peer != this && peer.side == side)) {
           socket.add(
@@ -420,10 +451,16 @@ bool _sameConfig(GoConfig left, GoConfig right) =>
     left.handicap == right.handicap;
 
 class LanClientConnection {
-  LanClientConnection(this.config) : draughtsVariant = null;
+  LanClientConnection(this.config) : draughtsVariant = null, isChess = false;
   LanClientConnection.draughts(DraughtsVariant variant)
     : config = const GoConfig(),
-      draughtsVariant = variant;
+      draughtsVariant = variant,
+      isChess = false;
+  LanClientConnection.chess()
+    : config = const GoConfig(),
+      draughtsVariant = null,
+      isChess = true;
+  final bool isChess;
   final GoConfig config;
   final DraughtsVariant? draughtsVariant;
   final _messages = StreamController<LanMessage>.broadcast();
@@ -435,9 +472,10 @@ class LanClientConnection {
   DateTime _lastPong = DateTime.now();
   LanReplica? replica;
   DraughtsLanReplica? draughtsReplica;
+  ChessLanReplica? chessReplica;
   Side? side;
   bool started = false;
-  int get seq => draughtsReplica?.seq ?? replica?.seq ?? 0;
+  int get seq => chessReplica?.seq ?? draughtsReplica?.seq ?? replica?.seq ?? 0;
   Stream<LanMessage> get messages => _messages.stream;
   Stream<void> get disconnections => _disconnections.stream;
 
@@ -454,7 +492,9 @@ class LanClientConnection {
         : uri.replace(path: '/easyplay/ws');
     final socket = await WebSocket.connect(socketUri.toString());
     _socket = socket;
-    if (draughtsVariant != null) {
+    if (isChess) {
+      chessReplica ??= ChessLanReplica();
+    } else if (draughtsVariant != null) {
       draughtsReplica ??= DraughtsLanReplica(draughtsVariant!);
     } else {
       replica ??= LanReplica(config);
@@ -476,7 +516,7 @@ class LanClientConnection {
           if (message.type == LanMessageType.helloAck) {
             side = LanMessage.parseSide(message.body['assignedSide']);
             started = message.body['started'] as bool;
-            if (!handshake.isCompleted) handshake.complete();
+            if (!isChess && !handshake.isCompleted) handshake.complete();
           } else if (message.type == LanMessageType.matchStart) {
             started = true;
           } else if (message.type == LanMessageType.rejected &&
@@ -489,7 +529,17 @@ class LanClientConnection {
               message.type == LanMessageType.pass ||
               message.type == LanMessageType.resign ||
               LanMessage.eventTypes.contains(message.type)) {
-            if (draughtsVariant != null) {
+            if (isChess) {
+              if (!chessReplica!.receive(message)) {
+                if (message.type == LanMessageType.stateSync) {
+                  throw const FormatException('国际象棋同步失败');
+                }
+                socket.add(chessReplica!.stateRequest().encode());
+              } else if (message.type == LanMessageType.stateSync &&
+                  !handshake.isCompleted) {
+                handshake.complete();
+              }
+            } else if (draughtsVariant != null) {
               draughtsReplica?.receive(message);
             } else {
               replica?.receive(message);
@@ -522,10 +572,16 @@ class LanClientConnection {
     socket.add(
       LanMessage(LanMessageType.hello, 0, {
         'roomVersion': lanProtocolVersion,
-        if (draughtsVariant == null) ...LanMessage.configToWire(config),
-        'game': draughtsVariant == null ? 'go' : 'draughts',
+        if (!isChess && draughtsVariant == null)
+          ...LanMessage.configToWire(config),
+        'game': isChess
+            ? 'chess'
+            : draughtsVariant == null
+            ? 'go'
+            : 'draughts',
         if (draughtsVariant != null) 'variant': draughtsVariant!.name,
         if (draughtsVariant != null) 'rulesVersion': draughtsRulesVersion,
+        if (isChess) 'rulesVersion': chessRulesVersion,
         'token': token,
         if (side != null) 'resumeSide': LanMessage.sideCode(side!),
       }).encode(),
@@ -565,8 +621,9 @@ class LanClientConnection {
   Future<void> close() async {
     _heartbeat?.cancel();
     await _socket?.close();
-    await _messages.close();
-    await _disconnections.close();
+    chessReplica?.dispose();
+    if (!_messages.isClosed) await _messages.close();
+    if (!_disconnections.isClosed) await _disconnections.close();
     _socket = null;
   }
 }

@@ -177,27 +177,8 @@ void main() {
     });
   });
 
-  group('Chess rules', () {
-    test('starts with pieces and allows a pawn double-step', () {
-      final game = GameSession(GameType.chess);
-      expect(game.pieceAt(const Cell(0, 0))?.kind, PieceKind.rook);
-      expect(game.pieceAt(const Cell(0, 4))?.kind, PieceKind.king);
-      expect(game.legalMovesFrom(const Cell(1, 4)), [
-        const Cell(2, 4),
-        const Cell(3, 4),
-      ]);
-      expect(game.movePiece(const Cell(1, 4), const Cell(3, 4)), isTrue);
-      expect(game.turn, Side.white);
-    });
-
-    test('does not allow a move that leaves its king in check', () {
-      final game = GameSession(GameType.chess);
-      game.board = List.generate(8, (_) => List<GamePiece?>.filled(8, null));
-      game.board[7][4] = const GamePiece(Side.white, PieceKind.king);
-      game.board[0][4] = const GamePiece(Side.black, PieceKind.rook);
-      game.board[7][0] = const GamePiece(Side.white, PieceKind.rook);
-      expect(game.legalMovesFrom(const Cell(7, 0)), isEmpty);
-    });
+  test('legacy GameSession rejects Chess', () {
+    expect(() => GameSession(GameType.chess), throwsUnsupportedError);
   });
 
   test(

@@ -18,8 +18,26 @@ jobs:
           flutter-version: '3.44.0'
           channel: stable
           cache: true
+      - name: Verify Stockfish assets
+        run: python3 tools/prepare_stockfish.py
+
       - run: flutter pub get
       - run: dart analyze lib test
+      - name: Native Stockfish smoke setup
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y qemu-user
+          printf '#!/bin/sh\nexec qemu-aarch64 "%s"\n' "$PWD/android/app/src/main/jniLibs/arm64-v8a/libstockfish.so" > "$RUNNER_TEMP/stockfish-test"
+          chmod +x "$RUNNER_TEMP/stockfish-test"
+          echo "STOCKFISH_TEST_EXECUTABLE=$RUNNER_TEMP/stockfish-test" >> "$GITHUB_ENV"
       - run: flutter test
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Stockfish browser Worker smoke
+        run: |
+          npm install --no-save --package-lock=false playwright@1.58.2
+          npx playwright install --with-deps chromium
+          node tools/test_stockfish_web.cjs
       - run: flutter build web --no-wasm-dry-run
       - run: python3 tools/package_lan_android.py --debug

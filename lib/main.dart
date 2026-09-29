@@ -7,6 +7,7 @@ import 'go_section_page.dart';
 import 'app_theme.dart';
 import 'settings_page.dart';
 import 'draughts/widgets/draughts_new_game_page.dart';
+import 'chess/widgets/chess_home_page.dart';
 
 export 'board.dart';
 export 'game_page.dart';
@@ -145,6 +146,13 @@ class _ShellState extends State<Shell> {
   // Every entry into Go goes through the section shell, so the board and the
   // library always share the same bottom bar.
   void _openGame(GameType game) {
+    if (game == GameType.chess) {
+      Navigator.push<void>(
+        context,
+        MaterialPageRoute(builder: (_) => const ChessHomePage()),
+      );
+      return;
+    }
     if (game == GameType.checkers) {
       Navigator.push(
         context,
@@ -270,9 +278,7 @@ class HomePage extends StatelessWidget {
                         (g) => GameCard(
                           type: g,
                           selected: selected == g,
-                          onTap: g == GameType.go || g == GameType.checkers
-                              ? () => onPlay(g)
-                              : null,
+                          onTap: () => onPlay(g),
                         ),
                       )
                       .toList(),
@@ -312,7 +318,7 @@ class GameCard extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
-    final available = type == GameType.go || type == GameType.checkers;
+    final available = onTap != null;
     final active = selected && available;
     final colors = Theme.of(context).colorScheme;
     // Deliberately not an InkWell/Ink pair.

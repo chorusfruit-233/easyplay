@@ -31,6 +31,9 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Verify Stockfish assets
+        run: python3 tools/prepare_stockfish.py --web-only
+
       - name: Install dependencies
         run: flutter pub get
 

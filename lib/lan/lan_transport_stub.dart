@@ -1,3 +1,4 @@
+import 'chess_lan_game.dart';
 import '../game_session.dart';
 import '../draughts/draughts_variant.dart';
 import 'draughts_lan_game.dart';
@@ -9,6 +10,7 @@ class LanHostServer {
   LanHostServer({
     LanAuthority? authority,
     this.draughtsAuthority,
+    this.chessAuthority,
     required this.token,
   })
     // ignore: prefer_initializing_formals
@@ -16,6 +18,7 @@ class LanHostServer {
   final LanAuthority? _authority;
   LanAuthority get authority => _authority!;
   final DraughtsAuthority? draughtsAuthority;
+  final ChessAuthority? chessAuthority;
   final String token;
   int? get port => null;
   int get playerCount => 0;
@@ -30,17 +33,24 @@ class LanHostServer {
 }
 
 class LanClientConnection {
-  LanClientConnection(this.config) : draughtsVariant = null;
+  LanClientConnection(this.config) : draughtsVariant = null, isChess = false;
   LanClientConnection.draughts(DraughtsVariant variant)
     : config = const GoConfig(),
-      draughtsVariant = variant;
+      draughtsVariant = variant,
+      isChess = false;
+  LanClientConnection.chess()
+    : config = const GoConfig(),
+      draughtsVariant = null,
+      isChess = true;
+  final bool isChess;
   final GoConfig config;
   final DraughtsVariant? draughtsVariant;
   LanReplica? replica;
   DraughtsLanReplica? draughtsReplica;
+  ChessLanReplica? chessReplica;
   Side? side;
   bool started = false;
-  int get seq => draughtsReplica?.seq ?? replica?.seq ?? 0;
+  int get seq => chessReplica?.seq ?? draughtsReplica?.seq ?? replica?.seq ?? 0;
   Stream<LanMessage> get messages => const Stream.empty();
   Stream<void> get disconnections => const Stream.empty();
   Future<void> reconnect() async =>

@@ -1,0 +1,24 @@
+Stockfish 19 is licensed under the GNU General Public License, version 3.
+Copyright (c) the Stockfish authors, Tord Romstad, Marco Costalba, Joona Kiiski,
+Gary Linscott and contributors. Stockfish.js (c) 2026 Chess.com, LLC.
+
+Android: official Stockfish sf_19, unmodified official arm64 universal binary.
+Source commit: edb0d9db6731067ec50ce619ff372b463bc4dd5d
+Complete corresponding source and build scripts:
+https://github.com/official-stockfish/Stockfish/tree/edb0d9db6731067ec50ce619ff372b463bc4dd5d
+https://github.com/official-stockfish/Stockfish/releases/tag/sf_19
+(The release archive includes src/, neural network and build instructions.)
+
+Web: Stockfish.js v19.0.0, unmodified lite single-threaded WASM build.
+Source commit: 9cb3e5066d48f1a35d792afeda36eff37ae60570
+Complete corresponding source, network and build scripts:
+https://github.com/nmrugg/stockfish.js/tree/9cb3e5066d48f1a35d792afeda36eff37ae60570
+https://github.com/nmrugg/stockfish.js/releases/tag/v19.0.0
+Build: node build.js --single-threaded --lite -f
+Lite network by Chris Bao (sscg13), nn-61e7af4bb97d.
+The Web build uses the smaller network and is weaker than the native build.
+It runs in a Web Worker without SharedArrayBuffer.
+
+Pinned download and SHA-256 verification: tools/prepare_stockfish.py
+EasyPlay modifications to Stockfish itself: none.
+GPL-3.0 full text is available alongside this notice in the application.

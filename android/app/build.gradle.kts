@@ -64,6 +64,7 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = true
+            keepDebugSymbols += "**/libstockfish.so"
             keepDebugSymbols += "**/libkatago.so"
             keepDebugSymbols += "**/libkatago-opencl.so"
             keepDebugSymbols += "**/libkatago-opencl-probe.so"

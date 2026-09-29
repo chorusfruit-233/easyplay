@@ -208,22 +208,4 @@ void main() {
       expect(session.inside(Cell(0, size)), isFalse, reason: '列越界');
     }
   });
-
-  testWidgets('chess maps by cell index rather than intersection', (
-    tester,
-  ) async {
-    final session = GameSession(GameType.chess);
-    final taps = <Cell>[];
-    await tester.pumpWidget(
-      _Host(session: session, type: GameType.chess, taps: taps),
-    );
-    final rect = tester.getRect(find.byType(Board));
-    final step = rect.width / 8;
-
-    // Chess uses floor(dx / step): the cell origin is its top-left corner, so
-    // the centre of a square must land in that square.
-    await tester.tapAt(rect.topLeft + Offset(2.5 * step, 5.5 * step));
-    await tester.pump();
-    expect(taps.single, const Cell(5, 2));
-  });
 }
