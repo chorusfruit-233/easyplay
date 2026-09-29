@@ -12,6 +12,12 @@ static std::string quoted(const std::string& value) {
   }
   return result + "\"";
 }
+static const char* typeName(cl_device_type type) {
+  if(type & CL_DEVICE_TYPE_GPU) return "GPU";
+  if(type & CL_DEVICE_TYPE_CPU) return "CPU";
+  if(type & CL_DEVICE_TYPE_ACCELERATOR) return "Accelerator";
+  return "Device";
+}
 static std::string info(cl_device_id device, cl_device_info key) {
   size_t bytes = 0;
   if(clGetDeviceInfo(device, key, 0, nullptr, &bytes) != CL_SUCCESS || bytes == 0) return "";
@@ -40,7 +46,8 @@ int main() {
       // Match the device indexing used by KataGo's OpenCL helper.
       if(!(type & (CL_DEVICE_TYPE_CPU | CL_DEVICE_TYPE_GPU | CL_DEVICE_TYPE_ACCELERATOR))) continue;
       if(!devices.empty()) devices += ",";
-      devices += "{\"index\":" + std::to_string(index++) + ",\"name\":" + quoted(info(device, CL_DEVICE_NAME)) +
+      devices += "{\"index\":" + std::to_string(index++) + ",\"type\":" + quoted(typeName(type)) +
+        ",\"name\":" + quoted(info(device, CL_DEVICE_NAME)) +
         ",\"vendor\":" + quoted(info(device, CL_DEVICE_VENDOR)) + ",\"version\":" + quoted(info(device, CL_DRIVER_VERSION)) + "}";
     }
   }
