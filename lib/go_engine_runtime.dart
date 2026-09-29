@@ -56,8 +56,10 @@ class _GoEngineRuntimePageState extends State<GoEngineRuntimePage> {
           ? (await _channel
                 .invokeMapMethod<String, Object?>('backendPreflight', {
                   'backend': widget.profile.backend.name,
-                  'openclLibraryName': widget.profile.openclLibraryName,
-                  'openclGpuIdx': widget.profile.openclGpuIdx ?? 0,
+                  if (widget.profile.openclLibraryName != null)
+                    'openclLibraryName': widget.profile.openclLibraryName,
+                  if (widget.profile.openclGpuIdx != null)
+                    'openclGpuIdx': widget.profile.openclGpuIdx,
                 }))!
           : <String, Object?>{
               'runnable':
@@ -120,8 +122,10 @@ class _GoEngineRuntimePageState extends State<GoEngineRuntimePage> {
           engine: widget.profile,
         ),
         'boardSize': _board,
-        'openclGpuIdx': widget.profile.openclGpuIdx ?? 0,
-        'openclLibraryName': widget.profile.openclLibraryName,
+        if (widget.profile.openclGpuIdx != null)
+          'openclGpuIdx': widget.profile.openclGpuIdx,
+        if (widget.profile.openclLibraryName != null)
+          'openclLibraryName': widget.profile.openclLibraryName,
       };
       if (!mounted || generation != _generation) return;
       final response = (await _channel.invokeMapMethod<String, Object?>(
@@ -262,7 +266,8 @@ class _GoEngineRuntimePageState extends State<GoEngineRuntimePage> {
           const SizedBox(height: 12),
           for (final device in _preflight!['devices'] as List)
             Text(
-              'GPU ${device['index']} · ${device['name']} · ${device['vendor']}',
+              '${device['type'] ?? '设备'} ${device['index']} · '
+              '${device['name']} · ${device['vendor']}',
             ),
         ],
         const SizedBox(height: 24),
