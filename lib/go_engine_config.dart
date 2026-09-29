@@ -113,7 +113,12 @@ String buildKataGoConfig(
     values.removeWhere((key, _) => key.startsWith('humanSL'));
   }
   if (engine.backend == GoEngineBackend.opencl && !forWeb) {
-    values['openclDeviceToUse'] = '${engine.openclGpuIdx ?? 0}';
+    if (engine.openclGpuIdx != null) {
+      values['openclDeviceToUse'] = '${engine.openclGpuIdx}';
+    } else {
+      // Omit the selector entirely so KataGo can choose the best device.
+      values.remove('openclDeviceToUse');
+    }
   } else {
     values.removeWhere((key, _) => key.startsWith('opencl'));
   }
