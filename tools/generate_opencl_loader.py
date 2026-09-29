@@ -29,8 +29,11 @@ static void* driver() {
     const char* explicitLibrary = std::getenv("EASYPLAY_OPENCL_LIBRARY");
     if(explicitLibrary && explicitLibrary[0]) {
       handle = dlopen(explicitLibrary, RTLD_NOW | RTLD_LOCAL);
-      if(!handle) std::fprintf(stderr, "OpenCL loader: %s\n", dlerror());
-      return;
+      if(handle) {
+        std::fprintf(stderr, "OpenCL loader: %s\n", explicitLibrary);
+        return;
+      }
+      std::fprintf(stderr, "OpenCL loader: %s unavailable: %s\n", explicitLibrary, dlerror());
     }
     const char* candidates[] = {
       "libOpenCL.so", "/vendor/lib64/libOpenCL.so",
