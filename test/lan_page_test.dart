@@ -26,6 +26,23 @@ void main() {
     await connection.dispose();
   });
 
+  testWidgets('Go LAN resignation is shown as mid-game resignation', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final connection = _FakeResignedConnection();
+    await tester.pumpWidget(
+      MaterialApp(home: LanMatchPage(connection: connection)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('终局：白方中盘认输'), findsOneWidget);
+    expect(find.textContaining('胜 7.5 目'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox());
+    await connection.dispose();
+  });
+
   testWidgets('join page restores a recent address and validates the port', (
     tester,
   ) async {
@@ -59,6 +76,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('请输入有效端口'), findsOneWidget);
   });
+}
+
+class _FakeResignedConnection extends LanClientConnection {
+  _FakeResignedConnection() : super(const GoConfig()) {
+    replica = LanReplica(const GoConfig());
+    side = Side.black;
+    started = true;
+    replica!.receive(
+      LanMessage(LanMessageType.resign, 1, {'side': 'W'}),
+    );
+  }
+
+  final _events = StreamController<LanMessage>.broadcast();
+
+  @override
+  Stream<LanMessage> get messages => _events.stream;
+
+  @override
+  Future<void> close() async {}
+
+  Future<void> dispose() => _events.close();
 }
 
 class _FakeWaitingConnection extends LanClientConnection {
