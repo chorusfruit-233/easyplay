@@ -260,6 +260,12 @@ class _DraughtsLanJoinPageState extends State<DraughtsLanJoinPage> {
       _host.text = Uri.base.host;
       _port.text = '${Uri.base.port}';
     }
+    _host.addListener(_refresh);
+    _token.addListener(_refresh);
+  }
+
+  void _refresh() {
+    if (mounted) setState(() {});
   }
 
   @override
