@@ -65,6 +65,9 @@ void main() {
           .setMockMethodCallHandler(channel, (call) async {
             calls.add(call);
             if (call.method == 'backendPreflight') {
+              final args = call.arguments as Map;
+              expect(args.containsKey('openclGpuIdx'), false);
+              expect(args.containsKey('openclLibraryName'), false);
               return {'runnable': true, 'devices': []};
             }
             if (call.method == 'openclTuningStart') return starting.future;
@@ -121,6 +124,8 @@ void main() {
                 expect(args['boardSize'], 19);
                 expect(args['model'], isNotEmpty);
                 expect(args['config'], contains('rules = chinese'));
+                expect(args.containsKey('openclGpuIdx'), false);
+                expect(args.containsKey('openclLibraryName'), false);
                 return {'id': 'job', 'tuningId': 'key', 'status': 'running'};
               case 'openclTuningRead':
                 return {
