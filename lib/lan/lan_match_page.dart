@@ -251,10 +251,10 @@ class _LanMatchPageState extends State<LanMatchPage> {
             ),
             const SizedBox(height: 8),
             Text(
-              score != null
-                  ? (score.winner == null
-                        ? '终局：和棋'
-                        : '终局：${score.winner == Side.black ? '黑' : '白'}胜 ${score.margin} 目')
+              game.goResignedSide != null
+                  ? '终局：${game.goResignedSide!.label}中盘认输'
+                  : score != null
+                  ? '终局：${score.result}'
                   : game.gameOver
                   ? '双方标记死子后提交计分'
                   : _myTurn
