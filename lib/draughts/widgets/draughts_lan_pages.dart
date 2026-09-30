@@ -8,6 +8,7 @@ import '../../game_session.dart' show Cell, Side, SideX;
 import '../../lan/draughts_lan_game.dart';
 import '../../lan/lan_addresses.dart';
 import '../../lan/lan_protocol.dart';
+import '../../lan/lan_rematch_card.dart';
 import '../../lan/lan_scanner.dart';
 import '../../lan/lan_transport.dart';
 import '../draughts.dart';
@@ -538,18 +539,29 @@ class _DraughtsLanMatchPageState extends State<DraughtsLanMatchPage> {
   List<DraughtsMove> _candidates = [];
   bool _disconnected = false;
   bool _syncing = false;
+  bool _pending = false;
   String? _message;
   int? _handledUndoSeq;
   int? _handledDrawSeq;
   late final String _recordId =
       'online-${widget.variant.name}-${DateTime.now().microsecondsSinceEpoch}';
-  final DateTime _createdAt = DateTime.now().toUtc();
+  DateTime _createdAt = DateTime.now().toUtc();
+  late int _round;
 
   DraughtsLanReplica get _replica => widget.connection.draughtsReplica!;
   DraughtsSession get _session => _replica.session;
   Side? get _side => widget.connection.side;
+  bool get _connected =>
+      widget.connection.started && !_disconnected && !_syncing && !_pending;
+  bool get _negotiating =>
+      _replica.undoRequest != null ||
+      _replica.drawRequest != null ||
+      _replica.rematchRequest != null;
   bool get _myTurn =>
-      widget.connection.started && !_disconnected && _side == _session.turn;
+      _connected &&
+      !_negotiating &&
+      !_session.gameOver &&
+      _side == _session.turn;
 
   List<Cell> get _targets {
     if (_selected == null) return const [];
@@ -568,6 +580,7 @@ class _DraughtsLanMatchPageState extends State<DraughtsLanMatchPage> {
   @override
   void initState() {
     super.initState();
+    _round = _replica.round;
     _messages = widget.connection.messages.listen(_onMessage);
     _disconnects = widget.connection.disconnections.listen((_) {
       if (mounted) setState(() => _disconnected = true);
@@ -642,7 +655,7 @@ class _DraughtsLanMatchPageState extends State<DraughtsLanMatchPage> {
 
   void _send(LanMessageType type, [Map<String, Object?> body = const {}]) {
     final side = _side;
-    if (side == null || _disconnected) return;
+    if (side == null || !_connected) return;
     try {
       widget.connection.send(
         LanMessage(type, widget.connection.seq + 1, {
@@ -650,6 +663,7 @@ class _DraughtsLanMatchPageState extends State<DraughtsLanMatchPage> {
           'side': LanMessage.sideCode(side),
         }),
       );
+      setState(() => _pending = true);
     } catch (error) {
       setState(() => _message = '发送失败：$error');
     }
@@ -658,6 +672,7 @@ class _DraughtsLanMatchPageState extends State<DraughtsLanMatchPage> {
   void _onMessage(LanMessage message) {
     if (!mounted) return;
     if (message.type == LanMessageType.rejected) {
+      _pending = false;
       setState(() => _message = message.body['reason'] as String? ?? '操作未被接受');
       try {
         widget.connection.send(_replica.stateRequest());
@@ -669,6 +684,11 @@ class _DraughtsLanMatchPageState extends State<DraughtsLanMatchPage> {
     if (message.type == LanMessageType.stateSync ||
         LanMessage.eventTypes.contains(message.type)) {
       setState(() {
+        if (_round != _replica.round) {
+          _round = _replica.round;
+          _createdAt = DateTime.now().toUtc();
+        }
+        _pending = false;
         _message = null;
         _clearSelection();
       });
@@ -725,7 +745,10 @@ class _DraughtsLanMatchPageState extends State<DraughtsLanMatchPage> {
           : (accepted == true
                 ? LanMessageType.undoAccept
                 : LanMessageType.undoReject),
-      {'requestSeq': request.seq},
+      {
+        'requestSeq': request.seq,
+        if (!isDraw && accepted != true) 'reason': '对方拒绝悔棋',
+      },
     );
   }
 
@@ -736,7 +759,7 @@ class _DraughtsLanMatchPageState extends State<DraughtsLanMatchPage> {
           _session,
           kind: DraughtsGameKind.online,
           localSide: _side,
-          id: _recordId,
+          id: '$_recordId-${_replica.round}',
           createdAt: _createdAt,
         ),
       );
@@ -850,8 +873,18 @@ class _DraughtsLanMatchPageState extends State<DraughtsLanMatchPage> {
               targets: _targets,
               pendingPath: _pendingPath,
               onCell: _onCell,
+              flipped: side == Side.black,
             ),
             const SizedBox(height: 12),
+            if (session.gameOver && side != null)
+              LanRematchCard(
+                request: _replica.rematchRequest,
+                side: side,
+                enabled: _connected,
+                onSend: _send,
+              ),
+            if (_negotiating && !session.gameOver)
+              const Text('等待处理协商请求…', textAlign: TextAlign.center),
             Wrap(
               alignment: WrapAlignment.center,
               spacing: 8,
@@ -859,29 +892,24 @@ class _DraughtsLanMatchPageState extends State<DraughtsLanMatchPage> {
               children: [
                 OutlinedButton.icon(
                   onPressed:
-                      !widget.connection.started ||
-                          _disconnected ||
-                          session.gameOver
+                      !_connected ||
+                          _negotiating ||
+                          side == null ||
+                          !_replica.canRequestUndo(side)
                       ? null
                       : () => _send(LanMessageType.undoRequest),
                   icon: const Icon(Icons.undo),
                   label: const Text('请求悔棋'),
                 ),
                 OutlinedButton.icon(
-                  onPressed:
-                      !widget.connection.started ||
-                          _disconnected ||
-                          session.gameOver
+                  onPressed: !_connected || _negotiating || session.gameOver
                       ? null
                       : () => _send(LanMessageType.drawRequest),
                   icon: const Icon(Icons.handshake_outlined),
                   label: const Text('请求和棋'),
                 ),
                 OutlinedButton.icon(
-                  onPressed:
-                      !widget.connection.started ||
-                          _disconnected ||
-                          session.gameOver
+                  onPressed: !_connected || _negotiating || session.gameOver
                       ? null
                       : _resign,
                   icon: const Icon(Icons.flag_outlined),

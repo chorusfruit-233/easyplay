@@ -90,13 +90,13 @@ void main() {
     () {
       final m = Match();
       m.moves('e2e4 e7e5');
-      final undo = m.send(LanMessageType.undoRequest, Side.white);
+      final undo = m.send(LanMessageType.undoRequest, Side.black);
       expect(
         m.host
             .submit(
-              Side.white,
+              Side.black,
               LanMessage(LanMessageType.undoAccept, m.host.seq + 1, {
-                'side': 'W',
+                'side': 'B',
                 'requestSeq': undo.seq,
               }),
             )
@@ -115,7 +115,7 @@ void main() {
             .type,
         LanMessageType.rejected,
       );
-      m.send(LanMessageType.undoAccept, Side.black, {'requestSeq': undo.seq});
+      m.send(LanMessageType.undoAccept, Side.white, {'requestSeq': undo.seq});
       expect(m.host.session.moves.length, 1);
       m.sync();
       final draw = m.send(LanMessageType.drawRequest, Side.white);

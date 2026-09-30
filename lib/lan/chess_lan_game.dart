@@ -1,5 +1,6 @@
 import '../chess/chess.dart';
 import 'lan_protocol.dart';
+import 'lan_rematch.dart';
 
 class ChessNegotiation {
   const ChessNegotiation(this.seq, this.side);
@@ -18,6 +19,9 @@ class ChessAuthority {
   ChessSession get session => _state.session;
   ChessNegotiation? get undoRequest => _state.undoRequest;
   ChessNegotiation? get drawRequest => _state.drawRequest;
+  LanRematchRequest? get rematchRequest => _state.rematch.request;
+  int get round => _state.rematch.round;
+  bool canRequestUndo(Side side) => _state.canRequestUndo(side);
 
   LanMessage submit(Side authenticatedSide, LanMessage request) {
     String? reason;
@@ -90,6 +94,9 @@ class ChessLanReplica {
   ChessSession get session => _state.session;
   ChessNegotiation? get undoRequest => _state.undoRequest;
   ChessNegotiation? get drawRequest => _state.drawRequest;
+  LanRematchRequest? get rematchRequest => _state.rematch.request;
+  int get round => _state.rematch.round;
+  bool canRequestUndo(Side side) => _state.canRequestUndo(side);
 
   bool receive(LanMessage event) {
     if (event.type == LanMessageType.stateSync) {
@@ -131,9 +138,17 @@ class ChessLanReplica {
 class _ChessLanState {
   _ChessLanState() : session = ChessSession();
 
-  final ChessSession session;
+  ChessSession session;
+  final rematch = LanRematch();
   ChessNegotiation? undoRequest;
   ChessNegotiation? drawRequest;
+
+  bool canRequestUndo(Side side) =>
+      !session.gameOver &&
+      session.moves.isNotEmpty &&
+      session.turn != side &&
+      undoRequest == null &&
+      drawRequest == null;
 
   String? apply(LanMessage event) {
     final side = event.side;
@@ -164,6 +179,7 @@ class _ChessLanState {
         if (session.gameOver) return '对局已经结束';
         if (undoRequest != null || drawRequest != null) return '已有待处理请求';
         if (session.moves.isEmpty) return '没有可以悔回的着手';
+        if (session.turn == side) return '只能悔自己刚走且对方尚未应手的一步';
         undoRequest = ChessNegotiation(event.seq, side);
       case LanMessageType.undoAccept:
       case LanMessageType.undoReject:
@@ -191,6 +207,19 @@ class _ChessLanState {
         }
         if (event.type == LanMessageType.drawAccept) session.agreeDraw();
         drawRequest = null;
+      case LanMessageType.rematchRequest:
+      case LanMessageType.rematchAccept:
+      case LanMessageType.rematchReject:
+        return rematch.apply(
+          event,
+          gameOver: session.gameOver,
+          restart: () {
+            session.dispose();
+            session = ChessSession();
+            undoRequest = null;
+            drawRequest = null;
+          },
+        );
       default:
         return '不是国际象棋联机操作';
     }

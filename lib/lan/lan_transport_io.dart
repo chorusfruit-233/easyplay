@@ -14,6 +14,7 @@ import 'draughts_lan_game.dart';
 import 'lan_game.dart';
 import 'lan_ports.dart';
 import 'lan_protocol.dart';
+import 'lan_rematch.dart';
 
 class LanHostServer {
   // Preserve the existing named Go constructor parameter for callers.
@@ -59,6 +60,11 @@ class LanHostServer {
       chessAuthority?.session.gameOver ??
       draughtsAuthority?.session.gameOver ??
       authority.session.gameOver;
+  LanRematchRequest? get _rematchRequest => chessAuthority != null
+      ? chessAuthority!.rematchRequest
+      : draughtsAuthority != null
+      ? draughtsAuthority!.rematchRequest
+      : authority.rematchRequest;
   Stream<int> get playerCounts => _playerCounts.stream;
 
   void startMatch() {
@@ -217,7 +223,23 @@ class LanHostServer {
             draughtsAuthority?.expireDraw(event.seq);
         if (expired != null) _broadcast(expired);
       });
-    } else if (event.type == LanMessageType.undoAccept ||
+    } else if (event.type == LanMessageType.rematchRequest) {
+      _undoTimer?.cancel();
+      _undoTimer = Timer(const Duration(seconds: 30), () {
+        final pending = _rematchRequest;
+        if (pending == null || pending.seq != event.seq) return;
+        final expired = submit(
+          pending.side.opponent,
+          LanMessage(LanMessageType.rematchReject, seq + 1, {
+            'side': LanMessage.sideCode(pending.side.opponent),
+            'requestSeq': pending.seq,
+          }),
+        );
+        if (expired.type != LanMessageType.rejected) _broadcast(expired);
+      });
+    } else if (event.type == LanMessageType.rematchAccept ||
+        event.type == LanMessageType.rematchReject ||
+        event.type == LanMessageType.undoAccept ||
         event.type == LanMessageType.undoReject ||
         event.type == LanMessageType.drawAccept ||
         event.type == LanMessageType.drawReject) {
@@ -345,7 +367,7 @@ class _LanPeer {
         final requested = message.body['resumeSide'];
         final firstSide = server.chessAuthority != null
             ? Side.white
-            : Side.black;
+            : server.draughtsAuthority?.session.rules.firstMove ?? Side.black;
         side = requested == null
             ? (server._clients.any((peer) => peer.side == firstSide)
                   ? firstSide.opponent
@@ -502,6 +524,7 @@ class LanClientConnection {
     final handshake = Completer<void>();
     socket.listen(
       (raw) {
+        if (!identical(_socket, socket)) return;
         try {
           final message = LanMessage.decode(raw as String);
           _lastPong = DateTime.now();
@@ -516,7 +539,6 @@ class LanClientConnection {
           if (message.type == LanMessageType.helloAck) {
             side = LanMessage.parseSide(message.body['assignedSide']);
             started = message.body['started'] as bool;
-            if (!isChess && !handshake.isCompleted) handshake.complete();
           } else if (message.type == LanMessageType.matchStart) {
             started = true;
           } else if (message.type == LanMessageType.rejected &&
@@ -529,20 +551,25 @@ class LanClientConnection {
               message.type == LanMessageType.pass ||
               message.type == LanMessageType.resign ||
               LanMessage.eventTypes.contains(message.type)) {
-            if (isChess) {
-              if (!chessReplica!.receive(message)) {
-                if (message.type == LanMessageType.stateSync) {
-                  throw const FormatException('国际象棋同步失败');
-                }
-                socket.add(chessReplica!.stateRequest().encode());
-              } else if (message.type == LanMessageType.stateSync &&
-                  !handshake.isCompleted) {
-                handshake.complete();
+            final accepted = isChess
+                ? chessReplica!.receive(message)
+                : draughtsVariant != null
+                ? draughtsReplica!.receive(message)
+                : replica!.receive(message);
+            if (!accepted) {
+              if (message.type == LanMessageType.stateSync) {
+                throw const FormatException('对局同步失败');
               }
-            } else if (draughtsVariant != null) {
-              draughtsReplica?.receive(message);
-            } else {
-              replica?.receive(message);
+              final stateRequest =
+                  chessReplica?.stateRequest() ??
+                  draughtsReplica?.stateRequest() ??
+                  replica!.stateRequest();
+              socket.add(stateRequest.encode());
+              return;
+            }
+            if (message.type == LanMessageType.stateSync &&
+                !handshake.isCompleted) {
+              handshake.complete();
             }
           }
           _messages.add(message);

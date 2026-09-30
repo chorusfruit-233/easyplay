@@ -1,4 +1,4 @@
-# Chess implementation — v1.3.0
+# Chess implementation
 
 Chess now has three disposable match modes: local two-player, Stockfish 19 AI,
 and LAN multiplayer. The main menu opens `ChessHomePage`. No chess session,
@@ -46,8 +46,25 @@ Chess handshakes include `game: chess` and `rulesVersion: 1`; moves use UCI stri
 The host assigns White first, validates authenticated requests and commits seq
 only after success. Replicas apply committed events; clients never move early.
 Negotiated undo/draw, unilateral resignation and valid draw claims all replay.
+Undo may only request the sender's most recent move before the opponent replies.
+After a result, either player may invite a rematch; only the opponent can accept.
+Acceptance clears the game state while retaining the room, seats and monotonic
+sequence numbers. Requests time out after 30 seconds. The round transition is
+replayed on reconnect, including when a client missed the acceptance.
+Protocol version 3 requires both peers to update together. Checkers assigns the
+host the variant's first-moving side. Both Chess and Checkers keep the local
+player's pieces at the bottom, with input mapped to canonical board coordinates.
 A reconnect completes only after a full authoritative event-log replay, restoring
 FEN, result, repetition and negotiations. The room log is discarded when closed.
+
+## Board rendering
+
+Chess pieces are repo-owned vector silhouettes, shared with the promotion picker.
+The board painter captures an immutable position and redraws backgrounds, pieces
+and markers together. Moving, capturing, undoing and flipping are checked against
+a newly mounted board's pixels to guard against stale pieces at vacated squares.
+
+![Vector chess pieces after e2e4](images/chess-vector-board.png)
 
 ## Build and verify
 
@@ -84,5 +101,6 @@ Existing published versions are skipped; existing tags are never moved.
 - Dart analysis and release Web compilation pass locally.
 - Real WebSocket tests verify seat assignment, ordinary and special moves,
   negotiation, stale/invalid seq rejection, replay and disconnect/reconnect.
-- Browser Worker and Android packaging are CI gates. Physical Android device
-  interaction is not simulated by the QEMU UCI test.
+- The v1.3.0 CI passed the real browser Worker smoke and Android packaging,
+  and published the signed APK. Physical Android device interaction is not
+  simulated by the QEMU UCI test.

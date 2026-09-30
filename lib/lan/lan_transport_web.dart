@@ -104,6 +104,7 @@ class LanClientConnection {
       if (!handshake.isCompleted) handshake.completeError(StateError('连接已关闭'));
     }).toJS;
     socket.onmessage = ((web.Event event) {
+      if (!identical(_socket, socket)) return;
       try {
         final raw = (event as web.MessageEvent).data;
         if (raw == null || !raw.isA<JSString>()) return;
@@ -120,7 +121,6 @@ class LanClientConnection {
         if (message.type == LanMessageType.helloAck) {
           side = LanMessage.parseSide(message.body['assignedSide']);
           started = message.body['started'] as bool;
-          if (!isChess && !handshake.isCompleted) handshake.complete();
         } else if (message.type == LanMessageType.matchStart) {
           started = true;
         } else if (message.type == LanMessageType.rejected &&
@@ -128,20 +128,25 @@ class LanClientConnection {
           handshake.completeError(StateError(message.body['reason'] as String));
         } else if (message.type == LanMessageType.stateSync ||
             LanMessage.eventTypes.contains(message.type)) {
-          if (isChess) {
-            if (!chessReplica!.receive(message)) {
-              if (message.type == LanMessageType.stateSync) {
-                throw const FormatException('国际象棋同步失败');
-              }
-              socket.send(chessReplica!.stateRequest().encode().toJS);
-            } else if (message.type == LanMessageType.stateSync &&
-                !handshake.isCompleted) {
-              handshake.complete();
+          final accepted = isChess
+              ? chessReplica!.receive(message)
+              : draughtsVariant != null
+              ? draughtsReplica!.receive(message)
+              : replica!.receive(message);
+          if (!accepted) {
+            if (message.type == LanMessageType.stateSync) {
+              throw const FormatException('对局同步失败');
             }
-          } else if (draughtsVariant != null) {
-            draughtsReplica?.receive(message);
-          } else {
-            replica?.receive(message);
+            final stateRequest =
+                chessReplica?.stateRequest() ??
+                draughtsReplica?.stateRequest() ??
+                replica!.stateRequest();
+            socket.send(stateRequest.encode().toJS);
+            return;
+          }
+          if (message.type == LanMessageType.stateSync &&
+              !handshake.isCompleted) {
+            handshake.complete();
           }
         }
         _messages.add(message);

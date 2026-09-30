@@ -20,6 +20,19 @@ class LanHostServer {
   final DraughtsAuthority? draughtsAuthority;
   final ChessAuthority? chessAuthority;
   final String token;
+  int get seq => chessAuthority?.seq ?? draughtsAuthority?.seq ?? authority.seq;
+  bool get gameOver =>
+      chessAuthority?.session.gameOver ??
+      draughtsAuthority?.session.gameOver ??
+      authority.session.gameOver;
+  LanMessage submit(Side side, LanMessage request) =>
+      chessAuthority?.submit(side, request) ??
+      draughtsAuthority?.submit(side, request) ??
+      authority.submit(side, request);
+  LanMessage sync(LanMessage request) =>
+      chessAuthority?.sync(request) ??
+      draughtsAuthority?.sync(request) ??
+      authority.sync(request);
   int? get port => null;
   int get playerCount => 0;
   bool get started => false;

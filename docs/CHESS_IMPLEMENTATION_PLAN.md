@@ -1,9 +1,11 @@
 # EasyPlay Chess 一次性实现计划
 
-**状态：实现已完成，等待 GitHub CI 的浏览器 Worker 与 Android APK 构建验收。**
+**状态：实现与 CI 验收已完成，v1.3.0 APK 已发布。**
 
 实现说明与构建命令见 [CHESS_IMPLEMENTATION.md](CHESS_IMPLEMENTATION.md)。
-本地已通过 286 项测试、全部 perft、ARM64 原生引擎 UCI 模拟执行测试、Dart 静态分析与 Web 构建。
+v1.3.0 已通过 286 项测试、全部 perft、ARM64 原生引擎 UCI 模拟执行测试、Dart 静态分析、真实浏览器 Worker 测试、Web 构建与 Android APK 构建。
+验收记录：[PR #3 CI](https://github.com/chorusfruit-233/easyplay/actions/runs/36645265861)；[v1.3.0 Release](https://github.com/chorusfruit-233/easyplay/releases/tag/v1.3.0)。
+Android 真机触摸与长时间运行仍需设备体验验证，不等同于 QEMU UCI 测试。
 
 ## 1. 目标
 
@@ -748,8 +750,8 @@ python3 tools/package_lan_android.py --debug
 ### AI
 
 - [x] Stockfish 19 启动
-- [ ] Android AI 正常
-- [ ] Web AI 正常
+- [x] Android AI 原生 UCI 测试和集成构建通过（真机体验验证见上方说明）
+- [x] Web AI 正常
 - [x] 用户可执白
 - [x] 用户可执黑
 - [x] 随机执棋
@@ -785,7 +787,7 @@ python3 tools/package_lan_android.py --debug
 - [x] KataGo 不受影响
 - [x] Go LAN 不受影响
 - [x] Draughts 不受影响
-- [ ] Android 构建通过
+- [x] Android 构建通过
 - [x] Web 构建通过
 - [x] 全测试通过
 
