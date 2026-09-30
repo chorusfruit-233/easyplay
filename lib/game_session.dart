@@ -1,5 +1,3 @@
-import 'dart:math';
-
 enum GameType { go, chess, checkers }
 
 enum Side { black, white }
@@ -155,8 +153,7 @@ class _Snapshot {
   );
 }
 
-/// Rules and mutable state for Go plus the basic Chess prototype. Draughts uses
-/// its independent rules engine under `lib/draughts/`.
+/// Go rules and mutable state. Chess and Draughts own independent sessions.
 class GameSession {
   final GameType type;
   GoConfig _goConfig;
@@ -184,6 +181,9 @@ class GameSession {
 
   GameSession(this.type, {GoConfig? goConfig})
     : _goConfig = goConfig ?? const GoConfig() {
+    if (type == GameType.chess) {
+      throw UnsupportedError('Use ChessSession for Chess');
+    }
     if (type == GameType.checkers) {
       throw UnsupportedError('Use DraughtsSession for Checkers / Draughts');
     }
@@ -199,7 +199,6 @@ class GameSession {
       : gameOver
       ? (winner == null ? '平局' : '${winner!.label}获胜')
       : '${turn.label}回合';
-  bool get isInCheckTurn => type == GameType.chess && _isInCheck(turn);
 
   void setGoConfig(GoConfig config) {
     if (type != GameType.go) return;
@@ -314,7 +313,6 @@ class GameSession {
     _undo.clear();
     _positions.clear();
     _consecutivePasses = 0;
-    if (type == GameType.chess) _setupChess();
     if (type == GameType.go && goConfig.handicap > 0) {
       for (final point in _handicapPoints(goConfig.boardSize)) {
         board[point.row][point.col] = const GamePiece(
@@ -342,25 +340,6 @@ class GameSession {
       if (count >= 8) ...[Cell(d, center), Cell(m, center)],
       if (count.isOdd) Cell(center, center),
     ];
-  }
-
-  void _setupChess() {
-    const back = [
-      PieceKind.rook,
-      PieceKind.knight,
-      PieceKind.bishop,
-      PieceKind.queen,
-      PieceKind.king,
-      PieceKind.bishop,
-      PieceKind.knight,
-      PieceKind.rook,
-    ];
-    for (var c = 0; c < 8; c++) {
-      board[0][c] = GamePiece(Side.black, back[c]);
-      board[1][c] = const GamePiece(Side.black, PieceKind.pawn);
-      board[6][c] = const GamePiece(Side.white, PieceKind.pawn);
-      board[7][c] = GamePiece(Side.white, back[c]);
-    }
   }
 
   bool placeGo(Cell cell) {
@@ -401,54 +380,6 @@ class GameSession {
     _consecutivePasses++;
     if (_consecutivePasses >= 2) gameOver = true;
     _finishTurn();
-    _positions.add(_signature(board));
-    return true;
-  }
-
-  List<Cell> legalMovesFrom(Cell from) {
-    if (gameOver || !inside(from)) return const [];
-    final piece = board[from.row][from.col];
-    if (piece == null || piece.side != turn || type == GameType.go) {
-      return const [];
-    }
-    return _chessPseudoMoves(from, piece).where((to) {
-      if (board[to.row][to.col]?.kind == PieceKind.king) return false;
-      final test = _copyBoard(board);
-      _moveOn(test, from, to, promote: true);
-      return !_isInCheck(turn, test);
-    }).toList();
-  }
-
-  bool movePiece(Cell from, Cell to) {
-    if (gameOver || type == GameType.go || !inside(from) || !inside(to)) {
-      return false;
-    }
-    final piece = board[from.row][from.col];
-    if (piece == null ||
-        piece.side != turn ||
-        !legalMovesFrom(from).contains(to)) {
-      return false;
-    }
-    _save();
-    final capturedPiece = board[to.row][to.col];
-    _moveOn(board, from, to, promote: true);
-    final captured = capturedPiece != null;
-    if (captured) {
-      if (turn == Side.black) {
-        blackCaptures++;
-      } else {
-        whiteCaptures++;
-      }
-    }
-    moves.add(GameMove(from: from, to: to, captured: captured));
-    final movedSide = turn;
-    _finishTurn();
-    if (type == GameType.chess) {
-      if (!_hasAnyLegalMove(turn)) {
-        gameOver = true;
-        winner = _isInCheck(turn) ? movedSide : null;
-      }
-    }
     _positions.add(_signature(board));
     return true;
   }
@@ -544,149 +475,6 @@ class GameSession {
       resignation: goResignedSide != null,
       marginOverride: _adjudicatedMargin,
     );
-  }
-
-  List<Cell> _chessPseudoMoves(Cell from, GamePiece p) {
-    final result = <Cell>[];
-    void addStep(int dr, int dc) {
-      final to = Cell(from.row + dr, from.col + dc);
-      if (inside(to) && board[to.row][to.col]?.side != p.side) result.add(to);
-    }
-
-    if (p.kind == PieceKind.knight) {
-      for (final d in const [
-        (2, 1),
-        (2, -1),
-        (-2, 1),
-        (-2, -1),
-        (1, 2),
-        (1, -2),
-        (-1, 2),
-        (-1, -2),
-      ]) {
-        addStep(d.$1, d.$2);
-      }
-    } else if (p.kind == PieceKind.king) {
-      for (var dr = -1; dr <= 1; dr++) {
-        for (var dc = -1; dc <= 1; dc++) {
-          if (dr != 0 || dc != 0) addStep(dr, dc);
-        }
-      }
-    } else if (p.kind == PieceKind.pawn) {
-      final dir = p.side == Side.white ? -1 : 1;
-      final one = Cell(from.row + dir, from.col);
-      if (inside(one) && board[one.row][one.col] == null) {
-        result.add(one);
-        final start = p.side == Side.white ? 6 : 1;
-        final two = Cell(from.row + dir * 2, from.col);
-        if (from.row == start && board[two.row][two.col] == null) {
-          result.add(two);
-        }
-      }
-      for (final dc in [-1, 1]) {
-        final to = Cell(from.row + dir, from.col + dc);
-        if (inside(to) && board[to.row][to.col]?.side == p.side.opponent) {
-          result.add(to);
-        }
-      }
-    } else {
-      final dirs = <(int, int)>[];
-      if (p.kind == PieceKind.rook || p.kind == PieceKind.queen) {
-        dirs.addAll(const [(1, 0), (-1, 0), (0, 1), (0, -1)]);
-      }
-      if (p.kind == PieceKind.bishop || p.kind == PieceKind.queen) {
-        dirs.addAll(const [(1, 1), (1, -1), (-1, 1), (-1, -1)]);
-      }
-      for (final d in dirs) {
-        var r = from.row + d.$1, c = from.col + d.$2;
-        while (inside(Cell(r, c))) {
-          final target = board[r][c];
-          if (target == null) {
-            result.add(Cell(r, c));
-          } else {
-            if (target.side != p.side) result.add(Cell(r, c));
-            break;
-          }
-          r += d.$1;
-          c += d.$2;
-        }
-      }
-    }
-    return result;
-  }
-
-  bool _isInCheck(Side side, [List<List<GamePiece?>>? state]) {
-    final b = state ?? board;
-    Cell? king;
-    for (var r = 0; r < 8; r++) {
-      for (var c = 0; c < 8; c++) {
-        final p = b[r][c];
-        if (p?.side == side && p?.kind == PieceKind.king) king = Cell(r, c);
-      }
-    }
-    if (king == null) return false;
-    for (var r = 0; r < 8; r++) {
-      for (var c = 0; c < 8; c++) {
-        final p = b[r][c];
-        if (p == null || p.side == side) continue;
-        if (_attacks(b, Cell(r, c), king, p)) return true;
-      }
-    }
-    return false;
-  }
-
-  bool _attacks(List<List<GamePiece?>> b, Cell from, Cell target, GamePiece p) {
-    final dr = target.row - from.row, dc = target.col - from.col;
-    if (p.kind == PieceKind.pawn) {
-      return dr == (p.side == Side.white ? -1 : 1) && dc.abs() == 1;
-    }
-    if (p.kind == PieceKind.knight) {
-      return (dr.abs() == 2 && dc.abs() == 1) ||
-          (dr.abs() == 1 && dc.abs() == 2);
-    }
-    if (p.kind == PieceKind.king) return max(dr.abs(), dc.abs()) == 1;
-    final diagonal = dr.abs() == dc.abs() && dr != 0;
-    final straight = (dr == 0) != (dc == 0);
-    if (!((p.kind == PieceKind.bishop && diagonal) ||
-        (p.kind == PieceKind.rook && straight) ||
-        (p.kind == PieceKind.queen && (diagonal || straight)))) {
-      return false;
-    }
-    final sr = dr == 0 ? 0 : dr ~/ dr.abs(), sc = dc == 0 ? 0 : dc ~/ dc.abs();
-    var r = from.row + sr, c = from.col + sc;
-    while (r != target.row || c != target.col) {
-      if (b[r][c] != null) return false;
-      r += sr;
-      c += sc;
-    }
-    return true;
-  }
-
-  bool _hasAnyLegalMove(Side side) {
-    final old = turn;
-    turn = side;
-    var found = false;
-    for (var r = 0; r < size && !found; r++) {
-      for (var c = 0; c < size && !found; c++) {
-        if (legalMovesFrom(Cell(r, c)).isNotEmpty) found = true;
-      }
-    }
-    turn = old;
-    return found;
-  }
-
-  void _moveOn(
-    List<List<GamePiece?>> b,
-    Cell from,
-    Cell to, {
-    required bool promote,
-  }) {
-    var p = b[from.row][from.col]!;
-    b[from.row][from.col] = null;
-    if (promote && p.kind == PieceKind.pawn && (to.row == 0 || to.row == 7)) {
-      p = GamePiece(p.side, PieceKind.queen);
-    }
-    b[to.row][to.col] = p;
   }
 
   bool _canPlayGo(Cell cell, Side side) {

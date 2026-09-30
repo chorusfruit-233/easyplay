@@ -356,21 +356,6 @@ class _GamePageState extends State<GamePage> {
         session.placeGo(cell);
         selected = null;
         targets = const [];
-      } else if (selected == null) {
-        if (session.pieceAt(cell)?.side == session.turn) {
-          selected = cell;
-          targets = session.legalMovesFrom(cell);
-        }
-      } else if (targets.contains(cell)) {
-        session.movePiece(selected!, cell);
-        selected = null;
-        targets = const [];
-      } else if (session.pieceAt(cell)?.side == session.turn) {
-        selected = cell;
-        targets = session.legalMovesFrom(cell);
-      } else {
-        selected = null;
-        targets = const [];
       }
     });
     if (session.moves.length != before) _persistGo();
@@ -2754,17 +2739,6 @@ class _GamePageState extends State<GamePage> {
                     context,
                   ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                 ),
-                if (session.isInCheckTurn && !session.gameOver)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      '将军',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
                 if (computerThinking)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),

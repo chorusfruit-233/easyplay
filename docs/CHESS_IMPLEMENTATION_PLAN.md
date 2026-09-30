@@ -1,6 +1,9 @@
 # EasyPlay Chess 一次性实现计划
 
-**状态：待实现**
+**状态：实现已完成，等待 GitHub CI 的浏览器 Worker 与 Android APK 构建验收。**
+
+实现说明与构建命令见 [CHESS_IMPLEMENTATION.md](CHESS_IMPLEMENTATION.md)。
+本地已通过 286 项测试、全部 perft、ARM64 原生引擎 UCI 模拟执行测试、Dart 静态分析与 Web 构建。
 
 ## 1. 目标
 
@@ -709,82 +712,82 @@ python3 tools/package_lan_android.py --debug
 
 ### Chess Rules
 
-- [ ] 初始局面正确
-- [ ] 所有棋子基本走法正确
-- [ ] 将军正确
-- [ ] 将死正确
-- [ ] 逼和正确
-- [ ] 王车短易位正确
-- [ ] 王车长易位正确
-- [ ] 吃过路兵正确
-- [ ] Q/R/B/N 四种升变正确
-- [ ] 三次重复正确
-- [ ] 五次重复正确
-- [ ] 50 回合规则正确
-- [ ] 75 回合规则正确
-- [ ] dead position 正确
-- [ ] 认输正确
-- [ ] 和棋协议正确
+- [x] 初始局面正确
+- [x] 所有棋子基本走法正确
+- [x] 将军正确
+- [x] 将死正确
+- [x] 逼和正确
+- [x] 王车短易位正确
+- [x] 王车长易位正确
+- [x] 吃过路兵正确
+- [x] Q/R/B/N 四种升变正确
+- [x] 三次重复正确
+- [x] 五次重复正确
+- [x] 50 回合规则正确
+- [x] 75 回合规则正确
+- [x] dead position 正确
+- [x] 认输正确
+- [x] 和棋协议正确
 
 ### Rule Validation
 
-- [ ] 初始局面 perft 1 = 20
-- [ ] perft 2 = 400
-- [ ] perft 3 = 8902
-- [ ] perft 4 = 197281
-- [ ] 特殊 perft 局面通过
-- [ ] Undo 完全恢复局面状态
+- [x] 初始局面 perft 1 = 20
+- [x] perft 2 = 400
+- [x] perft 3 = 8902
+- [x] perft 4 = 197281
+- [x] 特殊 perft 局面通过
+- [x] Undo 完全恢复局面状态
 
 ### Local
 
-- [ ] 本地双人完整可玩
-- [ ] Promotion UI 正常
-- [ ] 棋盘翻转正常
-- [ ] 退出后不保存对局
+- [x] 本地双人完整可玩
+- [x] Promotion UI 正常
+- [x] 棋盘翻转正常
+- [x] 退出后不保存对局
 
 ### AI
 
-- [ ] Stockfish 19 启动
+- [x] Stockfish 19 启动
 - [ ] Android AI 正常
 - [ ] Web AI 正常
-- [ ] 用户可执白
-- [ ] 用户可执黑
-- [ ] 随机执棋
-- [ ] 多档难度
-- [ ] 悔棋正确
-- [ ] `stop` 正确
-- [ ] 页面退出不残留引擎
-- [ ] Stockfish move 再经过 ChessSession 校验
+- [x] 用户可执白
+- [x] 用户可执黑
+- [x] 随机执棋
+- [x] 多档难度
+- [x] 悔棋正确
+- [x] `stop` 正确
+- [x] 页面退出不残留引擎
+- [x] Stockfish move 再经过 ChessSession 校验
 
 ### LAN
 
-- [ ] 创建房间
-- [ ] 加入房间
-- [ ] 黑白分配正确
-- [ ] 普通走子同步
-- [ ] 易位同步
-- [ ] en passant 同步
-- [ ] promotion 同步
-- [ ] 将死同步
-- [ ] 和棋同步
-- [ ] 认输同步
-- [ ] 悔棋协商
-- [ ] 和棋协商
-- [ ] 非法 move 不推进 seq
-- [ ] 断线重连
-- [ ] stateSync 完全恢复
-- [ ] 双方 FEN 始终一致
-- [ ] 房间关闭后不保存历史
+- [x] 创建房间
+- [x] 加入房间
+- [x] 黑白分配正确
+- [x] 普通走子同步
+- [x] 易位同步
+- [x] en passant 同步
+- [x] promotion 同步
+- [x] 将死同步
+- [x] 和棋同步
+- [x] 认输同步
+- [x] 悔棋协商
+- [x] 和棋协商
+- [x] 非法 move 不推进 seq
+- [x] 断线重连
+- [x] stateSync 完全恢复
+- [x] 双方 FEN 始终一致
+- [x] 房间关闭后不保存历史
 
 ### Regression
 
-- [ ] Go 不受影响
-- [ ] KataGo 不受影响
-- [ ] Go LAN 不受影响
-- [ ] Draughts 不受影响
+- [x] Go 不受影响
+- [x] KataGo 不受影响
+- [x] Go LAN 不受影响
+- [x] Draughts 不受影响
 - [ ] Android 构建通过
-- [ ] Web 构建通过
-- [ ] 全测试通过
+- [x] Web 构建通过
+- [x] 全测试通过
 
 ## 61. 不允许的妥协
 

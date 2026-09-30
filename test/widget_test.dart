@@ -22,34 +22,36 @@ void main() {
     expect(find.text('围棋'), findsOneWidget);
     expect(find.text('国际象棋'), findsOneWidget);
     expect(find.text('跳棋'), findsOneWidget);
-    expect(find.text('未完成'), findsOneWidget);
+    expect(find.text('未完成'), findsNothing);
     expect(find.text('每日题目'), findsNothing);
     expect(find.text('积分'), findsNothing);
     expect(find.text('棋手 001'), findsNothing);
   });
 
-  testWidgets(
-    'Chess remains unavailable and Draughts opens the variant picker',
-    (tester) async {
-      await tester.pumpWidget(const EasyPlayApp());
-      await tester.tap(find.text('国际象棋'));
-      await tester.pumpAndSettle();
-      expect(find.text('今天，\n来一局好棋。'), findsOneWidget);
-      expect(find.text('黑方回合'), findsNothing);
+  testWidgets('Chess opens its home and Draughts opens the variant picker', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const EasyPlayApp());
+    await tester.tap(find.text('国际象棋'));
+    await tester.pumpAndSettle();
+    expect(find.text('本地双人'), findsOneWidget);
+    expect(find.text('AI 对战'), findsOneWidget);
+    expect(find.text('黑方回合'), findsNothing);
 
-      await tester.tap(find.text('跳棋'));
-      await tester.pumpAndSettle();
-      expect(find.text('Checkers / Draughts'), findsOneWidget);
-      expect(find.text('英式 / 美式'), findsOneWidget);
-      await tester.scrollUntilVisible(
-        find.text('本地双人对局'),
-        300,
-        scrollable: find.byType(Scrollable).last,
-      );
-      expect(find.text('本地双人对局'), findsOneWidget);
-      expect(find.text('局域网联机'), findsOneWidget);
-    },
-  );
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('跳棋'));
+    await tester.pumpAndSettle();
+    expect(find.text('Checkers / Draughts'), findsOneWidget);
+    expect(find.text('英式 / 美式'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('本地双人对局'),
+      300,
+      scrollable: find.byType(Scrollable).last,
+    );
+    expect(find.text('本地双人对局'), findsOneWidget);
+    expect(find.text('局域网联机'), findsOneWidget);
+  });
 
   testWidgets('settings expose appearance and bundled licenses', (
     tester,

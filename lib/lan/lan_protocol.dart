@@ -1,5 +1,8 @@
 import 'dart:convert';
 
+import '../chess/chess_session.dart' show chessRulesVersion;
+import '../chess/chess_uci.dart' show parseUciMove;
+
 import '../draughts/draughts_session.dart' show draughtsRulesVersion;
 import '../game_session.dart';
 
@@ -21,6 +24,7 @@ enum LanMessageType {
   undoRequest,
   undoAccept,
   undoReject,
+  drawClaim,
   drawRequest,
   drawAccept,
   drawReject,
@@ -150,6 +154,10 @@ class LanMessage {
         final game = data['game'] ?? 'go';
         if (game == 'go') {
           parseConfig(data);
+        } else if (game == 'chess') {
+          if (data['rulesVersion'] != chessRulesVersion) {
+            throw const FormatException('国际象棋规则版本不兼容');
+          }
         } else if (game == 'draughts') {
           if (data['variant'] is! String || data['rulesVersion'] is! int) {
             throw const FormatException('跳棋规则握手无效');
@@ -172,7 +180,11 @@ class LanMessage {
       case LanMessageType.stateSync:
         integer('roomVersion');
         final draughts = data['game'] == 'draughts';
-        if (draughts) {
+        if (data['game'] == 'chess') {
+          if (data['rulesVersion'] != chessRulesVersion) {
+            throw const FormatException('国际象棋规则版本不兼容');
+          }
+        } else if (draughts) {
           if (data['variant'] is! String ||
               data['rulesVersion'] is! int ||
               data['rulesVersion'] != draughtsRulesVersion) {
@@ -200,7 +212,9 @@ class LanMessage {
         }
       case LanMessageType.move:
         parseSide(data['side']);
-        if (data['path'] is List) {
+        if (data['move'] is String) {
+          parseUciMove(data['move'] as String);
+        } else if (data['path'] is List) {
           final path = data['path']! as List;
           if (path.length < 2 || path.length > 100) {
             throw const FormatException('无效的完整着法路径');
@@ -221,6 +235,12 @@ class LanMessage {
         parseSide(data['side']);
         integer('requestSeq');
         if (type == LanMessageType.undoReject) string('reason', 256);
+      case LanMessageType.drawClaim:
+        parseSide(data['side']);
+        if (data['move'] != null) {
+          if (data['move'] is! String) throw const FormatException('无效的声明着法');
+          parseUciMove(data['move'] as String);
+        }
       case LanMessageType.drawRequest:
       case LanMessageType.drawAccept:
       case LanMessageType.drawReject:
@@ -252,6 +272,7 @@ class LanMessage {
     LanMessageType.undoRequest,
     LanMessageType.undoAccept,
     LanMessageType.undoReject,
+    LanMessageType.drawClaim,
     LanMessageType.drawRequest,
     LanMessageType.drawAccept,
     LanMessageType.drawReject,
