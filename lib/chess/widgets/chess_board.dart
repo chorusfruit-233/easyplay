@@ -1,5 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+
 import '../chess.dart';
+import 'chess_piece_painter.dart';
 
 class ChessBoard extends StatelessWidget {
   const ChessBoard({
@@ -18,10 +21,13 @@ class ChessBoard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Capture immutable state, rather than retaining a mutable session in a
+    // painter. Each position change invalidates the entire board, including
+    // vacated squares, captures, castling and en passant.
+    final position = session.position;
     final check = session.isInCheck(session.turn)
-        ? ChessMoveGenerator.kingSquare(session.position, session.turn)
+        ? ChessMoveGenerator.kingSquare(position, session.turn)
         : null;
-    final last = session.moves.lastOrNull;
     return Center(
       child: ConstrainedBox(
         constraints: BoxConstraints(
@@ -29,120 +35,145 @@ class ChessBoard extends StatelessWidget {
         ),
         child: AspectRatio(
           aspectRatio: 1,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final size = constraints.maxWidth / 8;
-              return Column(
+          child: ClipRect(
+            child: CustomPaint(
+              painter: _BoardPainter(
+                position: position,
+                last: session.moves.lastOrNull,
+                check: check,
+                selected: selected,
+                targets: List.unmodifiable(targets),
+                flipped: flipped,
+              ),
+              child: Column(
                 children: List.generate(
                   8,
-                  (visualRow) => Row(
-                    children: List.generate(8, (visualCol) {
-                      final cell = Cell(
-                        flipped ? 7 - visualRow : visualRow,
-                        flipped ? 7 - visualCol : visualCol,
-                      );
-                      final piece = session.position.pieceAt(cell);
-                      final isTarget = targets.contains(cell);
-                      var color = (cell.row + cell.col).isEven
-                          ? const Color(0xffe7ddc9)
-                          : const Color(0xff789284);
-                      if (cell == last?.from || cell == last?.to) {
-                        color = Color.lerp(color, Colors.amber, .42)!;
-                      }
-                      if (cell == check) color = const Color(0xffdc7373);
-                      if (cell == selected) color = const Color(0xffd1bd63);
-                      return Semantics(
-                        label:
-                            '${chessSquare(cell)} ${piece == null ? '空格' : '${piece.side.label}${piece.label}'}',
-                        button: onCell != null,
-                        child: GestureDetector(
-                          key: ValueKey('square-${chessSquare(cell)}'),
-                          onTap: onCell == null ? null : () => onCell!(cell),
-                          child: Container(
-                            width: size,
-                            height: size,
-                            color: color,
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                if (piece != null)
-                                  Text(
-                                    piece.symbol,
-                                    style: TextStyle(
-                                      fontSize: size * .76,
-                                      height: 1.1,
-                                      color: piece.side == Side.white
-                                          ? const Color(0xfffefdf6)
-                                          : const Color(0xff17271f),
-                                      shadows: const [
-                                        Shadow(
-                                          color: Color(0xff263b2d),
-                                          blurRadius: 1.5,
-                                          offset: Offset(.5, .5),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                if (isTarget)
-                                  Container(
-                                    width: piece == null
-                                        ? size * .25
-                                        : size * .88,
-                                    height: piece == null
-                                        ? size * .25
-                                        : size * .88,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: piece == null
-                                          ? Colors.black26
-                                          : null,
-                                      border: piece == null
-                                          ? null
-                                          : Border.all(
-                                              color: Colors.black38,
-                                              width: 3,
-                                            ),
-                                    ),
-                                  ),
-                                if (visualCol == 0)
-                                  Positioned(
-                                    top: 2,
-                                    left: 3,
-                                    child: Text(
-                                      '${8 - cell.row}',
-                                      style: TextStyle(
-                                        fontSize: size * .18,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                  ),
-                                if (visualRow == 7)
-                                  Positioned(
-                                    bottom: 1,
-                                    right: 3,
-                                    child: Text(
-                                      chessSquare(cell)[0],
-                                      style: TextStyle(
-                                        fontSize: size * .18,
-                                        color: Colors.black87,
-                                      ),
-                                    ),
-                                  ),
-                              ],
+                  (visualRow) => Expanded(
+                    child: Row(
+                      children: List.generate(8, (visualCol) {
+                        final cell = _cellAt(visualRow, visualCol, flipped);
+                        final piece = position.pieceAt(cell);
+                        return Expanded(
+                          child: Semantics(
+                            label:
+                                '${chessSquare(cell)} ${piece == null ? '空格' : '${piece.side.label}${piece.label}'}',
+                            button: onCell != null,
+                            child: GestureDetector(
+                              key: ValueKey('square-${chessSquare(cell)}'),
+                              behavior: HitTestBehavior.opaque,
+                              onTap: onCell == null
+                                  ? null
+                                  : () => onCell!(cell),
+                              child: const SizedBox.expand(),
                             ),
                           ),
-                        ),
-                      );
-                    }),
+                        );
+                      }),
+                    ),
                   ),
                 ),
-              );
-            },
+              ),
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+Cell _cellAt(int row, int col, bool flipped) =>
+    Cell(flipped ? 7 - row : row, flipped ? 7 - col : col);
+
+class _BoardPainter extends CustomPainter {
+  const _BoardPainter({
+    required this.position,
+    required this.last,
+    required this.check,
+    required this.selected,
+    required this.targets,
+    required this.flipped,
+  });
+
+  final ChessPosition position;
+  final ChessMove? last;
+  final Cell? check;
+  final Cell? selected;
+  final List<Cell> targets;
+  final bool flipped;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final square = size.width / 8;
+    final background = Paint();
+    for (var row = 0; row < 8; row++) {
+      for (var col = 0; col < 8; col++) {
+        final cell = _cellAt(row, col, flipped);
+        final bounds = Rect.fromLTWH(
+          col * square,
+          row * square,
+          square,
+          square,
+        );
+        var color = (cell.row + cell.col).isEven
+            ? const Color(0xffe7ddc9)
+            : const Color(0xff789284);
+        if (cell == last?.from || cell == last?.to) {
+          color = Color.lerp(color, Colors.amber, .42)!;
+        }
+        if (cell == check) color = const Color(0xffdc7373);
+        if (cell == selected) color = const Color(0xffd1bd63);
+        canvas.drawRect(bounds, background..color = color);
+        final piece = position.pieceAt(cell);
+        if (piece != null) paintChessPiece(canvas, bounds, piece);
+        if (targets.contains(cell)) {
+          final marker = Paint()..color = const Color(0x55203327);
+          if (piece == null) {
+            canvas.drawCircle(bounds.center, square * .12, marker);
+          } else {
+            marker
+              ..style = PaintingStyle.stroke
+              ..strokeWidth = square * .045;
+            canvas.drawCircle(bounds.center, square * .44, marker);
+          }
+        }
+        void label(String text, Offset at) {
+          final painter = TextPainter(
+            text: TextSpan(
+              text: text,
+              style: TextStyle(
+                fontSize: square * .18,
+                fontFamily: 'Roboto',
+                fontWeight: FontWeight.w600,
+                color: const Color(0xff243c2f),
+              ),
+            ),
+            textDirection: TextDirection.ltr,
+          )..layout();
+          painter.paint(canvas, at);
+          painter.dispose();
+        }
+
+        if (col == 0) {
+          label('${8 - cell.row}', bounds.topLeft + const Offset(3, 2));
+        }
+        if (row == 7) {
+          label(
+            chessSquare(cell)[0],
+            bounds.bottomRight - Offset(square * .18, square * .22),
+          );
+        }
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_BoardPainter oldDelegate) =>
+      position != oldDelegate.position ||
+      last != oldDelegate.last ||
+      check != oldDelegate.check ||
+      selected != oldDelegate.selected ||
+      flipped != oldDelegate.flipped ||
+      !listEquals(targets, oldDelegate.targets);
 }
 
 Future<ChessMove?> chooseChessPromotion(
@@ -158,10 +189,17 @@ Future<ChessMove?> chooseChessPromotion(
       children: [
         for (final move in choices)
           SimpleDialogOption(
+            key: ValueKey('promotion-${move.promotion!.name}'),
             onPressed: () => Navigator.pop(context, move),
-            child: Text(
-              '${ChessPiece(side, move.promotion!).symbol}  ${ChessPiece(side, move.promotion!).label}',
-              style: const TextStyle(fontSize: 24),
+            child: Row(
+              children: [
+                ChessPieceIcon(piece: ChessPiece(side, move.promotion!)),
+                const SizedBox(width: 12),
+                Text(
+                  ChessPiece(side, move.promotion!).label,
+                  style: const TextStyle(fontSize: 20),
+                ),
+              ],
             ),
           ),
       ],

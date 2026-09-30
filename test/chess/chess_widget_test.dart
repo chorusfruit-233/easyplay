@@ -53,7 +53,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('选择升变棋子'), findsOneWidget);
     expect(find.byType(SimpleDialogOption), findsNWidgets(4));
-    await tester.tap(find.text('♘  马'));
+    await tester.tap(find.byKey(const ValueKey('promotion-knight')));
     await tester.pumpAndSettle();
     expect(
       session.position.pieceAt(parseChessSquare('a8'))?.type,

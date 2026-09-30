@@ -206,13 +206,13 @@ void main() {
         'side': 'B',
         'cell': [0, 0],
       });
-      final request = submit(Side.white, LanMessageType.undoRequest, 2, {
-        'side': 'W',
+      final request = submit(Side.black, LanMessageType.undoRequest, 2, {
+        'side': 'B',
       });
       expect(request.type, LanMessageType.undoRequest);
       expect(host.session.moves, hasLength(1));
-      final accept = submit(Side.black, LanMessageType.undoAccept, 3, {
-        'side': 'B',
+      final accept = submit(Side.white, LanMessageType.undoAccept, 3, {
+        'side': 'W',
         'requestSeq': 2,
       });
       expect(accept.type, LanMessageType.undoAccept);
@@ -271,8 +271,8 @@ void main() {
     expect(black.receive(move), isTrue);
     expect(white.receive(move), isTrue);
     final request = host.submit(
-      Side.white,
-      LanMessage(LanMessageType.undoRequest, 2, {'side': 'W'}),
+      Side.black,
+      LanMessage(LanMessageType.undoRequest, 2, {'side': 'B'}),
     );
     expect(black.receive(request), isTrue);
     expect(white.receive(request), isTrue);

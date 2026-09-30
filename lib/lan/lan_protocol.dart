@@ -6,7 +6,7 @@ import '../chess/chess_uci.dart' show parseUciMove;
 import '../draughts/draughts_session.dart' show draughtsRulesVersion;
 import '../game_session.dart';
 
-const lanProtocolVersion = 2;
+const lanProtocolVersion = 3;
 const lanMaxEvents = 20000;
 
 /// Requests propose the next seq; only the authority assigns/broadcasts it.
@@ -28,6 +28,9 @@ enum LanMessageType {
   drawRequest,
   drawAccept,
   drawReject,
+  rematchRequest,
+  rematchAccept,
+  rematchReject,
   scoreProposal,
   scoreAccept,
   scoreCounter,
@@ -228,10 +231,13 @@ class LanMessage {
       case LanMessageType.pass:
       case LanMessageType.resign:
       case LanMessageType.undoRequest:
+      case LanMessageType.rematchRequest:
         parseSide(data['side']);
       case LanMessageType.undoAccept:
       case LanMessageType.undoReject:
       case LanMessageType.scoreAccept:
+      case LanMessageType.rematchAccept:
+      case LanMessageType.rematchReject:
         parseSide(data['side']);
         integer('requestSeq');
         if (type == LanMessageType.undoReject) string('reason', 256);
@@ -276,6 +282,9 @@ class LanMessage {
     LanMessageType.drawRequest,
     LanMessageType.drawAccept,
     LanMessageType.drawReject,
+    LanMessageType.rematchRequest,
+    LanMessageType.rematchAccept,
+    LanMessageType.rematchReject,
     LanMessageType.scoreProposal,
     LanMessageType.scoreAccept,
     LanMessageType.scoreCounter,

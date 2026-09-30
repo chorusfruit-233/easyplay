@@ -7,6 +7,7 @@ import '../game_session.dart';
 import '../go_placement.dart';
 import '../go_storage.dart';
 import 'lan_protocol.dart';
+import 'lan_rematch_card.dart';
 import 'lan_transport.dart';
 
 /// A LAN game has one source of truth: committed events from the host.
@@ -32,6 +33,7 @@ class _LanMatchPageState extends State<LanMatchPage> {
   GoPlacementMode _placementMode = GoPlacementMode.automatic;
   int? _shownUndo;
   int? _shownScore;
+  int _round = 1;
   String? _status;
 
   LanClientConnection get _connection => widget.connection;
@@ -65,6 +67,11 @@ class _LanMatchPageState extends State<LanMatchPage> {
 
   void _onMessage(LanMessage message) {
     if (!mounted) return;
+    if (_round != _connection.replica!.round) {
+      _round = _connection.replica!.round;
+      _dead.clear();
+      _status = null;
+    }
     if (LanMessage.eventTypes.contains(message.type)) {
       if (message.type == LanMessageType.scoreAccept) _dead.clear();
       if (_connection.replica!.seq < message.seq) {
@@ -125,7 +132,7 @@ class _LanMatchPageState extends State<LanMatchPage> {
     try {
       await GoStorage.saveLast(
         _connection.replica!.sgf,
-        gameId: _gameId,
+        gameId: '$_gameId-${_connection.replica!.round}',
         kind: GoGameKind.online,
         humanSide: _side,
       );
@@ -293,8 +300,7 @@ class _LanMatchPageState extends State<LanMatchPage> {
                     onPressed:
                         !_pending &&
                             !_recovering &&
-                            game.moves.isNotEmpty &&
-                            _connection.replica!.undoRequest == null
+                            _connection.replica!.canRequestUndo(_side)
                         ? () => _submit(LanMessageType.undoRequest)
                         : null,
                     child: const Text('请求悔棋'),
@@ -306,6 +312,13 @@ class _LanMatchPageState extends State<LanMatchPage> {
                     child: const Text('认输'),
                   ),
                 ],
+              ),
+            if (game.goScoreConfirmed)
+              LanRematchCard(
+                request: _connection.replica!.rematchRequest,
+                side: _side,
+                enabled: !_pending && !_recovering,
+                onSend: _submit,
               ),
             if (game.gameOver &&
                 !game.goScoreConfirmed &&

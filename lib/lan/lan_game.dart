@@ -1,6 +1,7 @@
 import '../game_session.dart';
 import '../go_record.dart';
 import 'lan_protocol.dart';
+import 'lan_rematch.dart';
 
 class LanNegotiation {
   LanNegotiation(this.seq, this.side, [Set<Cell> dead = const {}])
@@ -20,6 +21,9 @@ class LanAuthority {
   GameSession get session => _state.snapshot();
   String get sgf => _state.record.exportSgf();
   LanNegotiation? get undoRequest => _state.undoRequest;
+  LanRematchRequest? get rematchRequest => _state.rematch.request;
+  int get round => _state.rematch.round;
+  bool canRequestUndo(Side side) => _state.canRequestUndo(side);
   LanNegotiation? get scoreProposal => _state.scoreProposal;
   bool get allowsAnalysis => _state.game.goScoreConfirmed;
 
@@ -85,6 +89,9 @@ class LanReplica {
   GameSession get session => _state.snapshot();
   String get sgf => _state.record.exportSgf();
   LanNegotiation? get undoRequest => _state.undoRequest;
+  LanRematchRequest? get rematchRequest => _state.rematch.request;
+  int get round => _state.rematch.round;
+  bool canRequestUndo(Side side) => _state.canRequestUndo(side);
   LanNegotiation? get scoreProposal => _state.scoreProposal;
   bool get allowsAnalysis => _state.game.goScoreConfirmed;
 
@@ -130,15 +137,37 @@ class _LanState {
 
   final GoConfig config;
   GameSession game;
-  final GoSgfController record;
+  GoSgfController record;
+  final rematch = LanRematch();
   LanNegotiation? undoRequest;
   LanNegotiation? scoreProposal;
 
   GameSession snapshot() => record.replayCurrentPath();
 
+  bool canRequestUndo(Side side) =>
+      !game.goScoreConfirmed &&
+      game.moves.isNotEmpty &&
+      game.turn != side &&
+      undoRequest == null &&
+      scoreProposal == null;
+
   String? apply(LanMessage event) {
     final side = event.side;
     final data = event.body;
+    if (event.type == LanMessageType.rematchRequest ||
+        event.type == LanMessageType.rematchAccept ||
+        event.type == LanMessageType.rematchReject) {
+      return rematch.apply(
+        event,
+        gameOver: game.goScoreConfirmed,
+        restart: () {
+          game = GameSession(GameType.go, goConfig: config);
+          record = GoSgfController(config: config);
+          undoRequest = null;
+          scoreProposal = null;
+        },
+      );
+    }
     if (game.goScoreConfirmed) return '对局已经结束';
     switch (event.type) {
       case LanMessageType.move:
@@ -164,6 +193,7 @@ class _LanState {
       case LanMessageType.undoRequest:
         if (undoRequest != null || scoreProposal != null) return '已有待处理的协商';
         if (game.moves.isEmpty) return '没有可以悔回的着手';
+        if (game.turn == side) return '只能悔自己刚走且对方尚未应手的一步';
         undoRequest = LanNegotiation(event.seq, side);
       case LanMessageType.undoAccept:
       case LanMessageType.undoReject:
@@ -174,7 +204,7 @@ class _LanState {
           return '悔棋请求已失效或不能自行同意';
         }
         if (event.type == LanMessageType.undoAccept) {
-          // Protocol v1 always withdraws exactly the most recent move.
+          // Withdraw only the requesting player's unanswered move.
           game.undo();
           record.navigateParent();
         }

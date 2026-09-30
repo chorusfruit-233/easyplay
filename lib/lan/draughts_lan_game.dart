@@ -1,6 +1,7 @@
 import '../draughts/draughts.dart';
 import '../game_session.dart' show Cell, Side, SideX;
 import 'lan_protocol.dart';
+import 'lan_rematch.dart';
 
 class DraughtsNegotiation {
   const DraughtsNegotiation(this.seq, this.side);
@@ -20,6 +21,9 @@ class DraughtsAuthority {
   DraughtsSession get session => _state.session;
   DraughtsNegotiation? get undoRequest => _state.undoRequest;
   DraughtsNegotiation? get drawRequest => _state.drawRequest;
+  LanRematchRequest? get rematchRequest => _state.rematch.request;
+  int get round => _state.rematch.round;
+  bool canRequestUndo(Side side) => _state.canRequestUndo(side);
 
   LanMessage submit(Side authenticatedSide, LanMessage request) {
     String? reason;
@@ -89,6 +93,9 @@ class DraughtsLanReplica {
   DraughtsSession get session => _state.session;
   DraughtsNegotiation? get undoRequest => _state.undoRequest;
   DraughtsNegotiation? get drawRequest => _state.drawRequest;
+  LanRematchRequest? get rematchRequest => _state.rematch.request;
+  int get round => _state.rematch.round;
+  bool canRequestUndo(Side side) => _state.canRequestUndo(side);
 
   bool receive(LanMessage event) {
     if (event.type == LanMessageType.stateSync) {
@@ -127,9 +134,17 @@ class _DraughtsLanState {
     : session = DraughtsSession(DraughtsRules.forVariant(variant));
 
   final DraughtsVariant variant;
-  final DraughtsSession session;
+  DraughtsSession session;
+  final rematch = LanRematch();
   DraughtsNegotiation? undoRequest;
   DraughtsNegotiation? drawRequest;
+
+  bool canRequestUndo(Side side) =>
+      !session.gameOver &&
+      session.moves.isNotEmpty &&
+      session.turn != side &&
+      undoRequest == null &&
+      drawRequest == null;
 
   String? apply(LanMessage event) {
     final side = event.side;
@@ -165,6 +180,7 @@ class _DraughtsLanState {
         if (session.gameOver) return '对局已经结束';
         if (undoRequest != null || drawRequest != null) return '已有待处理请求';
         if (session.moves.isEmpty) return '没有可以悔回的着手';
+        if (session.turn == side) return '只能悔自己刚走且对方尚未应手的一步';
         undoRequest = DraughtsNegotiation(event.seq, side);
       case LanMessageType.undoAccept:
       case LanMessageType.undoReject:
@@ -192,6 +208,18 @@ class _DraughtsLanState {
         }
         if (event.type == LanMessageType.drawAccept) session.agreeDraw();
         drawRequest = null;
+      case LanMessageType.rematchRequest:
+      case LanMessageType.rematchAccept:
+      case LanMessageType.rematchReject:
+        return rematch.apply(
+          event,
+          gameOver: session.gameOver,
+          restart: () {
+            session = DraughtsSession(DraughtsRules.forVariant(variant));
+            undoRequest = null;
+            drawRequest = null;
+          },
+        );
       default:
         return '不是跳棋联机操作';
     }

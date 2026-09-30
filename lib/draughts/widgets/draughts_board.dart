@@ -11,6 +11,7 @@ class DraughtsBoard extends StatelessWidget {
     this.selected,
     this.targets = const [],
     this.pendingPath = const [],
+    this.flipped = false,
   });
 
   final DraughtsSession session;
@@ -18,6 +19,7 @@ class DraughtsBoard extends StatelessWidget {
   final Cell? selected;
   final List<Cell> targets;
   final List<Cell> pendingPath;
+  final bool flipped;
 
   @override
   Widget build(BuildContext context) {
@@ -38,8 +40,10 @@ class DraughtsBoard extends StatelessWidget {
               crossAxisCount: size,
             ),
             itemBuilder: (context, index) {
-              final row = index ~/ size;
-              final col = index % size;
+              final visualRow = index ~/ size;
+              final visualCol = index % size;
+              final row = flipped ? size - 1 - visualRow : visualRow;
+              final col = flipped ? size - 1 - visualCol : visualCol;
               final cell = Cell(row, col);
               final piece = session.pieceAt(cell);
               final playable = session.rules.isPlayable(cell);
@@ -48,6 +52,7 @@ class DraughtsBoard extends StatelessWidget {
               final isTarget = targets.contains(cell);
               final isPath = pendingPath.contains(cell);
               return GestureDetector(
+                key: ValueKey('draughts-square-$row-$col'),
                 behavior: HitTestBehavior.opaque,
                 onTap: playable ? () => onCell(cell) : null,
                 child: AnimatedContainer(

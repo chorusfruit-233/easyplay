@@ -6,6 +6,7 @@ import '../engine/chess_engine.dart';
 import '../engine/stockfish_runtime.dart';
 import '../../lan/chess_lan_game.dart';
 import '../../lan/lan_protocol.dart';
+import '../../lan/lan_rematch_card.dart';
 import '../../lan/lan_transport.dart';
 import 'chess_board.dart';
 
@@ -76,7 +77,7 @@ class _ChessGamePageState extends State<ChessGamePage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _flipped = widget.mode != ChessGameMode.local && _side == Side.black;
+    _flipped = widget.mode == ChessGameMode.ai && _side == Side.black;
     if (_online) {
       _messages = widget.connection!.messages.listen(_onMessage);
       _disconnects = widget.connection!.disconnections.listen((_) {
@@ -342,11 +343,12 @@ class _ChessGamePageState extends State<ChessGamePage>
           }}',
         ),
         actions: [
-          IconButton(
-            tooltip: '翻转棋盘',
-            onPressed: () => setState(() => _flipped = !_flipped),
-            icon: const Icon(Icons.flip_camera_android),
-          ),
+          if (!_online)
+            IconButton(
+              tooltip: '翻转棋盘',
+              onPressed: () => setState(() => _flipped = !_flipped),
+              icon: const Icon(Icons.flip_camera_android),
+            ),
         ],
       ),
       body: SafeArea(
@@ -375,7 +377,7 @@ class _ChessGamePageState extends State<ChessGamePage>
                         .legalMovesFrom(_selected!)
                         .map((m) => m.to)
                         .toList(),
-              flipped: _flipped,
+              flipped: _online ? _side == Side.black : _flipped,
             ),
             const SizedBox(height: 16),
             if (_disconnected)
@@ -446,6 +448,13 @@ class _ChessGamePageState extends State<ChessGamePage>
                   child: const Text('重试 AI'),
                 ),
               ),
+            if (_online && session.gameOver)
+              LanRematchCard(
+                request: _replica.rematchRequest,
+                side: _side,
+                enabled: _connected && widget.connection!.started,
+                onSend: _send,
+              ),
             Wrap(
               alignment: WrapAlignment.center,
               spacing: 8,
@@ -453,7 +462,9 @@ class _ChessGamePageState extends State<ChessGamePage>
               children: [
                 OutlinedButton.icon(
                   onPressed:
-                      (_online ? enabled && session.canUndo : session.canUndo)
+                      (_online
+                          ? enabled && _replica.canRequestUndo(_side)
+                          : session.canUndo)
                       ? () {
                           setState(() => _selected = null);
                           if (_online) {
