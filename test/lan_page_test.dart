@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:easyplay/board.dart';
 import 'package:easyplay/lan/lan_page.dart';
 import 'package:easyplay/lan/lan_match_page.dart';
 import 'package:easyplay/game_session.dart';
@@ -11,6 +12,38 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  testWidgets('LAN board fits below the status after viewport resizes', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final connection = _FakeResignedConnection();
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    for (final size in const [
+      Size(1280, 600),
+      Size(900, 380),
+      Size(700, 360),
+      Size(390, 844),
+    ]) {
+      tester.view.physicalSize = size;
+      await tester.pumpWidget(
+        MaterialApp(home: LanMatchPage(connection: connection)),
+      );
+      await tester.pumpAndSettle();
+      final rect = tester.getRect(find.byType(Board));
+      expect(rect.width, greaterThan(0));
+      expect(rect.width, closeTo(rect.height, 0.01));
+      expect(rect.top, greaterThanOrEqualTo(0));
+      expect(rect.left, greaterThanOrEqualTo(0));
+      expect(rect.right, lessThanOrEqualTo(size.width));
+      expect(rect.bottom, lessThanOrEqualTo(size.height));
+      expect(tester.takeException(), isNull);
+    }
+    await tester.pumpWidget(const SizedBox());
+    await connection.dispose();
+  });
+
   testWidgets('guest waits for the host before opening the board', (
     tester,
   ) async {
@@ -84,9 +117,7 @@ class _FakeResignedConnection extends LanClientConnection {
     replica = LanReplica(const GoConfig());
     side = Side.black;
     started = true;
-    replica!.receive(
-      LanMessage(LanMessageType.resign, 1, {'side': 'W'}),
-    );
+    replica!.receive(LanMessage(LanMessageType.resign, 1, {'side': 'W'}));
   }
 
   final _events = StreamController<LanMessage>.broadcast();

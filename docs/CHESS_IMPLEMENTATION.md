@@ -88,6 +88,14 @@ STOCKFISH_TEST_EXECUTABLE=/path/to/stockfish flutter test test/chess/chess_engin
 For a Web-only checkout, `python3 tools/prepare_stockfish.py --web-only` is enough.
 The Android packaging helper prepares the engines automatically. GitHub Pages,
 Flutter checks, and signed release workflows all prepare the pinned assets.
+Android Studio Run/Build and direct Gradle builds also prepare and verify the
+native engine through `prepareStockfish`, before native libraries are merged.
+The first native build requires Python 3 and network access; subsequent builds
+reuse the checksum-verified local binary. Set the Gradle property
+`stockfishPython=/path/to/python3` if Python is not on the IDE's PATH.
+This Android engine supports ARM64 devices; x86/x86_64 emulators do not include
+a compatible engine. To prepare it manually, run
+`python3 tools/prepare_stockfish.py --android-only` from the repository root.
 The release workflow now also handles a version change on main: after analysis,
 tests and signed APK build succeed, it creates the matching tag and release.
 Existing published versions are skipped; existing tags are never moved.

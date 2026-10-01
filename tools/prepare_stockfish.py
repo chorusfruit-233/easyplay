@@ -61,9 +61,11 @@ def prepare_android():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--web-only', action='store_true')
+    platforms = parser.add_mutually_exclusive_group()
+    platforms.add_argument('--web-only', action='store_true')
+    platforms.add_argument('--android-only', action='store_true')
     args = parser.parse_args()
-    for name, expected in WEB_SHA.items():
+    for name, expected in ({} if args.android_only else WEB_SHA).items():
         path = ROOT / 'web/stockfish' / name
         if not path.exists():
             path.parent.mkdir(parents=True, exist_ok=True)

@@ -8,6 +8,7 @@ import 'app_theme.dart';
 import 'settings_page.dart';
 import 'draughts/widgets/draughts_new_game_page.dart';
 import 'chess/widgets/chess_home_page.dart';
+import 'lan/lan_quick_join.dart';
 
 export 'board.dart';
 export 'game_page.dart';
@@ -250,6 +251,7 @@ class HomePage extends StatelessWidget {
                     ),
                   ],
                 ),
+                const LanQuickJoinCard(),
                 const SizedBox(height: 34),
                 Text(
                   '今天，\n来一局好棋。',

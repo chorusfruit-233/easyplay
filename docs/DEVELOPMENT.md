@@ -22,7 +22,7 @@
 - 围棋更多菜单提供“恢复上次对局”和“对局记录”。导入/从列表载入默认本地双人；恢复上次对局同时恢复模式。
 - 测试文件：go_regression_test.dart、go_storage_test.dart、go_widget_regression_test.dart。
 
-仍未完成：逐手 SGF 浏览/分支树编辑/中途摆子复盘。Android 和 Web 均已接入本地 KataGo b6 推理；带 COOP/COEP 响应头的本地静态 Firefox/WASM 已验证，生产部署仍需检查响应头。AI 引擎的 CPU/OpenCL、人类棋风、自定义配置、override 规则及平台边界见 [AI 引擎说明](AI_ENGINES.md)。
+仍未完成：逐手 SGF 浏览/分支树编辑/中途摆子复盘。Android 和 Web 均已接入本地 KataGo b6 推理；带 COOP/COEP 响应头的本地静态 Firefox/WASM 已验证，生产部署仍需检查响应头。AI 引擎的 CPU、人类棋风、自定义配置、override 规则及平台边界见 [AI 引擎说明](AI_ENGINES.md)。
 
 ## 1. 项目定位
 
@@ -42,7 +42,7 @@ EasyPlay 是一个 Flutter 跨平台棋类应用，主要平台是 Android 和 W
 | --- | --- | --- |
 | 首页 | 已实现 | 围棋与跳棋可进入；国际象棋标记未完成 |
 | 围棋对局 | 已实现 | 人机模式和本地双人模式；新局要求确认棋盘与规则，默认 19 路、中国规则、7.5 贴目 |
-| 跳棋对局 | 已实现 | 8 种 Draughts 规则、本地双人、LAN、完整连续吃子、悔棋/认输/和棋、自动保存和 PDN |
+| 跳棋对局 | 已实现 | 8 种 Draughts 规则、本地双人、自研通用 AI 三档难度、LAN、完整连续吃子、悔棋/认输/和棋、自动保存和 PDN；见 [跳棋 AI 说明](DRAUGHTS_AI.md) |
 | 棋盘交互 | 已实现 | 选择棋子、显示合法目标、落子/移动、非法操作拦截 |
 | 悔棋/重开 | 已实现 | 规则层使用快照；人机模式一次悔棋撤回人和电脑各一步 |
 | SGF 棋谱 | 已实现 | 本地保存、恢复、记录列表、导入、导出、变化选择 |
@@ -331,6 +331,12 @@ Web KataGo 在 Worker 中重启搜索进程并重放当前棋局，因此不需�
 2. 等待 Gradle Sync 完成
 3. 选择 Android 模拟器或真机
 4. 运行 `lib/main.dart`
+
+Android Studio、`flutter run` 和直接 Gradle 构建都会通过 `prepareLanWeb` 自动构建并打包联机 Web 客户端，同时校验原生 Stockfish。首次构建需要安装 Python 3，并允许下载固定版本的 Stockfish Web 资源；后续未修改源码时复用生成资源。修改 Dart、Web 或应用资源后会自动重新构建网页，避免手机提供旧版页面。
+
+浏览器打开 Android 房主提供的网页后，首页会通过当前地址的 `/easyplay/probe` 识别房间并显示“快捷加入”。该入口自动使用网页的主机、端口、棋种和跳棋规则，仅需输入房间口令；验证成功后仍等待房主开始。普通静态 Web 部署不显示此入口。
+
+网页资源生成到 `build/app/generated/lanWebAssets/flutter_assets/assets/web/`，不写入 `pubspec.yaml`。`python3 tools/package_lan_android.py --debug` 使用相同的 Gradle 打包流程。若 Python 不在 PATH 中，可在 Gradle 参数中指定 `-PlanWebPython=/path/to/python3`（原生 Stockfish 使用 `-PstockfishPython=...`）。
 
 命令行运行：
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -250,92 +251,121 @@ class _LanMatchPageState extends State<LanMatchPage> {
     return Scaffold(
       appBar: AppBar(title: const Text('联机对弈')),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              '你执${_side == Side.black ? '黑' : '白'} · ${game.goConfig.boardSize} 路 · ${game.goConfig.rules.label}',
-            ),
-            const SizedBox(height: 8),
-            Text(
-              game.goResignedSide != null
-                  ? '终局：${game.goResignedSide!.label}中盘认输'
-                  : score != null
-                  ? '终局：${score.result}'
-                  : game.gameOver
-                  ? '双方标记死子后提交计分'
-                  : _myTurn
-                  ? '轮到你落子'
-                  : '等待对手落子',
-            ),
-            if (_status != null)
-              Text(
-                _status!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            const SizedBox(height: 16),
-            Board(
-              key: ValueKey(_connection.replica!.seq),
-              type: GameType.go,
-              session: game,
-              selected: null,
-              targets: const [],
-              onCell: _onCell,
-              placementMode: _placementMode,
-              onPreviewCell: _previewCell,
-              onCancelPreview: _cancelPreview,
-            ),
-            const SizedBox(height: 16),
-            if (!game.gameOver)
-              Wrap(
-                spacing: 8,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  OutlinedButton(
-                    onPressed: _myTurn
-                        ? () => _submit(LanMessageType.pass)
-                        : null,
-                    child: const Text('停一手'),
+                  Text(
+                    '你执${_side == Side.black ? '黑' : '白'} · ${game.goConfig.boardSize} 路 · ${game.goConfig.rules.label}',
                   ),
-                  OutlinedButton(
-                    onPressed:
-                        !_pending &&
-                            !_recovering &&
-                            _connection.replica!.canRequestUndo(_side)
-                        ? () => _submit(LanMessageType.undoRequest)
-                        : null,
-                    child: const Text('请求悔棋'),
+                  const SizedBox(height: 8),
+                  Text(
+                    game.goResignedSide != null
+                        ? '终局：${game.goResignedSide!.label}中盘认输'
+                        : score != null
+                        ? '终局：${score.result}'
+                        : game.gameOver
+                        ? '双方标记死子后提交计分'
+                        : _myTurn
+                        ? '轮到你落子'
+                        : '等待对手落子',
                   ),
-                  TextButton(
-                    onPressed: !_pending && !_recovering
-                        ? () => _submit(LanMessageType.resign)
-                        : null,
-                    child: const Text('认输'),
-                  ),
+                  if (_status != null)
+                    Text(
+                      _status!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
                 ],
               ),
-            if (game.goScoreConfirmed)
-              LanRematchCard(
-                request: _connection.replica!.rematchRequest,
-                side: _side,
-                enabled: !_pending && !_recovering,
-                onSend: _submit,
+            ),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) => ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    Center(
+                      child: SizedBox.square(
+                        dimension: math.max(
+                          0.0,
+                          math.min(
+                            constraints.maxWidth - 32,
+                            constraints.maxHeight - 32,
+                          ),
+                        ),
+                        child: Board(
+                          key: ValueKey(_connection.replica!.seq),
+                          type: GameType.go,
+                          session: game,
+                          selected: null,
+                          targets: const [],
+                          onCell: _onCell,
+                          placementMode: _placementMode,
+                          onPreviewCell: _previewCell,
+                          onCancelPreview: _cancelPreview,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    if (!game.gameOver)
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          OutlinedButton(
+                            onPressed: _myTurn
+                                ? () => _submit(LanMessageType.pass)
+                                : null,
+                            child: const Text('停一手'),
+                          ),
+                          OutlinedButton(
+                            onPressed:
+                                !_pending &&
+                                    !_recovering &&
+                                    _connection.replica!.canRequestUndo(_side)
+                                ? () => _submit(LanMessageType.undoRequest)
+                                : null,
+                            child: const Text('请求悔棋'),
+                          ),
+                          TextButton(
+                            onPressed: !_pending && !_recovering
+                                ? () => _submit(LanMessageType.resign)
+                                : null,
+                            child: const Text('认输'),
+                          ),
+                        ],
+                      ),
+                    if (game.goScoreConfirmed)
+                      LanRematchCard(
+                        request: _connection.replica!.rematchRequest,
+                        side: _side,
+                        enabled: !_pending && !_recovering,
+                        onSend: _submit,
+                      ),
+                    if (game.gameOver &&
+                        !game.goScoreConfirmed &&
+                        game.goResignedSide == null)
+                      FilledButton(
+                        onPressed:
+                            _pending ||
+                                _recovering ||
+                                _connection.replica!.scoreProposal != null
+                            ? null
+                            : () => _submit(LanMessageType.scoreProposal, {
+                                'deadStones': _dead
+                                    .map((cell) => [cell.row, cell.col])
+                                    .toList(),
+                              }),
+                        child: const Text('提交死子标记'),
+                      ),
+                  ],
+                ),
               ),
-            if (game.gameOver &&
-                !game.goScoreConfirmed &&
-                game.goResignedSide == null)
-              FilledButton(
-                onPressed:
-                    _pending ||
-                        _recovering ||
-                        _connection.replica!.scoreProposal != null
-                    ? null
-                    : () => _submit(LanMessageType.scoreProposal, {
-                        'deadStones': _dead
-                            .map((cell) => [cell.row, cell.col])
-                            .toList(),
-                      }),
-                child: const Text('提交死子标记'),
-              ),
+            ),
           ],
         ),
       ),

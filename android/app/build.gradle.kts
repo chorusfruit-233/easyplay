@@ -18,6 +18,68 @@ if (releaseRequested && listOf("storeFile", "storePassword", "keyAlias", "keyPas
     throw GradleException("Release signing requires android/key.properties with storeFile, storePassword, keyAlias and keyPassword")
 }
 
+// Android Studio invokes Gradle directly, bypassing package_lan_android.py.
+// Verify the pinned executable on every build; the helper downloads it only
+// when missing or invalid. Web artifacts are handled by prepareLanWeb below.
+val prepareStockfish = tasks.register<Exec>("prepareStockfish") {
+    group = "build"
+    description = "Prepare and verify the pinned Stockfish Android executable"
+    workingDir(rootProject.projectDir.parentFile)
+    val defaultPython = if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3"
+    commandLine(
+        providers.gradleProperty("stockfishPython").getOrElse(defaultPython),
+        "tools/prepare_stockfish.py", "--android-only",
+    )
+}
+
+tasks.matching {
+    it.name == "preBuild" || (it.name.startsWith("merge") &&
+        (it.name.endsWith("NativeLibs") || it.name.endsWith("JniLibFolders")))
+}.configureEach {
+    dependsOn(prepareStockfish)
+}
+
+// Generate assets for rootBundle directly, so every Android entry point packs
+// the LAN client without adding a recursive Web bundle to pubspec.yaml.
+val localProperties = Properties().apply {
+    rootProject.file("local.properties").inputStream().use { load(it) }
+}
+val flutterSdk = localProperties.getProperty("flutter.sdk")
+    ?: throw GradleException("flutter.sdk is missing from android/local.properties")
+val lanWebAssets = layout.buildDirectory.dir("generated/lanWebAssets")
+val prepareLanWeb = tasks.register<Exec>("prepareLanWeb") {
+    group = "build"
+    description = "Build and bundle the LAN Web client"
+    val repository = rootProject.projectDir.parentFile
+    workingDir(repository)
+    val windows = System.getProperty("os.name").startsWith("Windows")
+    commandLine(
+        providers.gradleProperty("lanWebPython").getOrElse(if (windows) "python" else "python3"),
+        "tools/prepare_lan_web.py",
+        "--flutter", "$flutterSdk/bin/${if (windows) "flutter.bat" else "flutter"}",
+        "--output", lanWebAssets.get().asFile.absolutePath,
+    )
+    inputs.files(repository.resolve("pubspec.yaml"), repository.resolve("pubspec.lock"))
+    inputs.files(repository.resolve(".dart_tool/package_config.json"))
+    inputs.dir(repository.resolve("lib"))
+    inputs.dir(repository.resolve("web"))
+    inputs.dir(repository.resolve("assets"))
+    inputs.files(
+        repository.resolve("tools/prepare_lan_web.py"),
+        repository.resolve("tools/package_lan_android.py"),
+        repository.resolve("tools/prepare_stockfish.py"),
+    )
+    inputs.property("flutterSdk", flutterSdk)
+    inputs.file("$flutterSdk/bin/cache/flutter_tools.stamp")
+    outputs.dir(lanWebAssets)
+    // Serialize against Flutter's native build before generating Web output.
+    mustRunAfter(tasks.matching { it.name.startsWith("compileFlutterBuild") })
+}
+
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+    dependsOn(prepareLanWeb)
+}
+
 android {
     namespace = "com.easyplay.easyplay"
     // file_picker and flutter_plugin_android_lifecycle currently require API 36.
@@ -25,6 +87,8 @@ android {
     // minSdk remain managed by Flutter below.
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
+
+    sourceSets.getByName("main").assets.srcDir(lanWebAssets.get().asFile)
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -66,8 +130,6 @@ android {
             useLegacyPackaging = true
             keepDebugSymbols += "**/libstockfish.so"
             keepDebugSymbols += "**/libkatago.so"
-            keepDebugSymbols += "**/libkatago-opencl.so"
-            keepDebugSymbols += "**/libkatago-opencl-probe.so"
         }
     }
 }
