@@ -4,10 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-    branches:
-      - main
-    paths:
-      - pubspec.yaml
   workflow_dispatch:
 
 permissions:
