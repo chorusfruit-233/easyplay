@@ -24,10 +24,11 @@ class DraughtsSavedRecord {
 class DraughtsStorage {
   static const _key = 'easyplay.draughts.records.v1';
 
-  static Future<void> _writeQueue = Future<void>.value();
+  static Future<void>? _writeQueue;
 
   static Future<List<DraughtsRecord>> list() async {
-    await _writeQueue;
+    final pending = _writeQueue;
+    if (pending != null) await pending;
     return _readList();
   }
 
@@ -42,11 +43,20 @@ class DraughtsStorage {
     return decoded.map(DraughtsRecord.fromJson).toList();
   }
 
-  static Future<void> save(DraughtsRecord record) {
-    final operation = _writeQueue.then((_) => _save(record));
-    _writeQueue = operation.catchError((Object _) {});
+  static Future<void> _enqueue(Future<void> Function() action) {
+    final operation = (_writeQueue ?? Future<void>.value()).then(
+      (_) => action(),
+    );
+    late final Future<void> queued;
+    queued = operation.catchError((Object _) {}).whenComplete(() {
+      if (identical(_writeQueue, queued)) _writeQueue = null;
+    });
+    _writeQueue = queued;
     return operation;
   }
+
+  static Future<void> save(DraughtsRecord record) =>
+      _enqueue(() => _save(record));
 
   static Future<void> _save(DraughtsRecord record) async {
     final records = await _readList();
@@ -60,6 +70,7 @@ class DraughtsStorage {
       createdAt: record.createdAt,
       result: record.result,
       sessionState: record.sessionState,
+      aiLevel: record.aiLevel,
     );
     final next = [saved, ...records.where((item) => item.id != id)].take(500);
     final prefs = await SharedPreferences.getInstance();
@@ -69,11 +80,7 @@ class DraughtsStorage {
     );
   }
 
-  static Future<void> delete(String id) {
-    final operation = _writeQueue.then((_) => _delete(id));
-    _writeQueue = operation.catchError((Object _) {});
-    return operation;
-  }
+  static Future<void> delete(String id) => _enqueue(() => _delete(id));
 
   static Future<void> _delete(String id) async {
     final records = await _readList();

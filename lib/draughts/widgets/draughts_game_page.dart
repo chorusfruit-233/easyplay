@@ -8,7 +8,10 @@ import '../draughts_record.dart';
 import '../draughts_session.dart';
 import '../draughts_storage.dart';
 import '../draughts_variant.dart';
+import '../draughts_ai.dart';
+import '../draughts_ai_level.dart';
 import 'draughts_board.dart';
+import 'draughts_match_layout.dart';
 
 class DraughtsGamePage extends StatefulWidget {
   const DraughtsGamePage({
@@ -16,25 +19,115 @@ class DraughtsGamePage extends StatefulWidget {
     required this.session,
     this.recordId,
     this.savedAt,
+    this.aiLevel,
+    this.humanSide = Side.white,
   });
   final DraughtsSession session;
   final String? recordId;
   final DateTime? savedAt;
+  final DraughtsAiLevel? aiLevel;
+  final Side humanSide;
 
   @override
   State<DraughtsGamePage> createState() => _DraughtsGamePageState();
 }
 
-class _DraughtsGamePageState extends State<DraughtsGamePage> {
+class _DraughtsGamePageState extends State<DraughtsGamePage>
+    with WidgetsBindingObserver {
   late final DraughtsSession _session = widget.session;
   Cell? _selected;
   List<Cell> _pendingPath = [];
   List<DraughtsMove> _candidates = [];
   String? _message;
+  final DraughtsAi _ai = DraughtsAi();
+  bool _thinking = false;
+  bool _suspended = false;
+  bool _modal = false;
+  int _job = 0;
+  bool get _isAi => widget.aiLevel != null;
+  bool get _canUndo =>
+      _session.moves.length >
+      (_isAi && widget.humanSide != _session.rules.firstMove ? 1 : 0);
   late final String _recordId =
       widget.recordId ??
-      'local-${_session.variant.name}-${DateTime.now().microsecondsSinceEpoch}';
+      '${_isAi ? 'ai' : 'local'}-${_session.variant.name}-${DateTime.now().microsecondsSinceEpoch}';
   late final DateTime _createdAt = widget.savedAt ?? DateTime.now().toUtc();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_isAi) _persist();
+      _driveAi();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _ai.cancel();
+    _job++;
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _suspended = state != AppLifecycleState.resumed;
+    if (_suspended) {
+      setState(_cancelAi);
+    } else {
+      _driveAi();
+    }
+  }
+
+  void _cancelAi() {
+    _job++;
+    _ai.cancel();
+    _thinking = false;
+  }
+
+  Future<void> _driveAi() async {
+    if (!_isAi ||
+        !mounted ||
+        _thinking ||
+        _suspended ||
+        _modal ||
+        _session.gameOver ||
+        _session.turn == widget.humanSide) {
+      return;
+    }
+    final job = ++_job;
+    final revision = _session.revision;
+    setState(() => _thinking = true);
+    try {
+      final result = await _ai.search(_session, level: widget.aiLevel!);
+      if (!mounted ||
+          job != _job ||
+          _suspended ||
+          revision != _session.revision ||
+          _session.gameOver) {
+        return;
+      }
+      if (result != null && _session.applyMove(result.move)) {
+        setState(() {
+          _clearSelection();
+          _message = null;
+          // The player can move while this completed turn is being saved.
+          // Release search ownership now so their reply can start a new job.
+          _thinking = false;
+        });
+        await _persist();
+      }
+    } catch (error) {
+      if (mounted && job == _job) {
+        setState(() => _message = 'AI 思考失败：$error');
+      }
+    } finally {
+      if (mounted && job == _job) setState(() => _thinking = false);
+    }
+  }
 
   List<Cell> get _targets {
     if (_selected == null) return const [];
@@ -62,7 +155,11 @@ class _DraughtsGamePageState extends State<DraughtsGamePage> {
   }
 
   void _onCell(Cell cell) {
-    if (_session.gameOver) return;
+    if (_session.gameOver ||
+        _suspended ||
+        (_isAi && _session.turn != widget.humanSide)) {
+      return;
+    }
     if (_selected == null) {
       if (_session.pieceAt(cell)?.side != _session.turn) return;
       final candidates = _session.legalMovesFrom(cell);
@@ -112,6 +209,7 @@ class _DraughtsGamePageState extends State<DraughtsGamePage> {
           _message = null;
         });
         _persist();
+        _driveAi();
       }
       return;
     }
@@ -129,6 +227,9 @@ class _DraughtsGamePageState extends State<DraughtsGamePage> {
           _session,
           id: _recordId,
           createdAt: _createdAt,
+          kind: _isAi ? DraughtsGameKind.ai : DraughtsGameKind.local,
+          localSide: _isAi ? widget.humanSide : null,
+          aiLevel: widget.aiLevel,
         ),
       );
     } catch (error) {
@@ -137,16 +238,30 @@ class _DraughtsGamePageState extends State<DraughtsGamePage> {
   }
 
   Future<void> _undo() async {
-    if (!_session.undo()) return;
+    if (!_canUndo) return;
+    _cancelAi();
+    if (!_session.undo()) {
+      setState(() {});
+      _driveAi();
+      return;
+    }
+    if (_isAi) {
+      while (_session.turn != widget.humanSide && _session.moves.isNotEmpty) {
+        if (!_session.undo()) break;
+      }
+    }
     setState(() {
       _clearSelection();
       _message = null;
     });
     await _persist();
+    _driveAi();
   }
 
   Future<void> _resign() async {
-    final side = _session.turn;
+    final side = _isAi ? widget.humanSide : _session.turn;
+    _modal = true;
+    setState(_cancelAi);
     final accept = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -164,6 +279,8 @@ class _DraughtsGamePageState extends State<DraughtsGamePage> {
         ],
       ),
     );
+    _modal = false;
+    if (!mounted) return;
     if (accept == true && _session.resign(side)) {
       setState(() {
         _clearSelection();
@@ -171,9 +288,11 @@ class _DraughtsGamePageState extends State<DraughtsGamePage> {
       });
       await _persist();
     }
+    _driveAi();
   }
 
   Future<void> _draw() async {
+    if (_isAi) return;
     final accept = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -191,6 +310,7 @@ class _DraughtsGamePageState extends State<DraughtsGamePage> {
         ],
       ),
     );
+    if (!mounted) return;
     if (accept == true && _session.agreeDraw()) {
       setState(() {
         _clearSelection();
@@ -247,7 +367,8 @@ class _DraughtsGamePageState extends State<DraughtsGamePage> {
         _ => '对局结束',
       }}';
     }
-    return '轮到${_session.turn.label}';
+    if (_thinking) return 'AI 正在思考…';
+    return '轮到${_session.turn.label}${_isAi ? (_session.turn == widget.humanSide ? ' · 你' : ' · AI') : ''}';
   }
 
   @override
@@ -270,102 +391,124 @@ class _DraughtsGamePageState extends State<DraughtsGamePage> {
         ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  children: [
-                    Text(
-                      _status,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${_session.rules.shortDescription} · ${_session.moveCount} 手',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        Text('黑方 ${pieceCounts[Side.black]} 子'),
-                        Text('白方 ${pieceCounts[Side.white]} 子'),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            if (_message != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(_message!, textAlign: TextAlign.center),
-              ),
-            DraughtsBoard(
-              key: ValueKey(_session.revision),
-              session: _session,
-              selected: _selected,
-              targets: _targets,
-              pendingPath: _selected == null
-                  ? const []
-                  : [_selected!, ..._pendingPath],
-              onCell: _onCell,
-            ),
-            const SizedBox(height: 14),
-            Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  onPressed: _session.moves.isNotEmpty ? _undo : null,
-                  icon: const Icon(Icons.undo),
-                  label: const Text('悔棋'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: !_session.gameOver ? _draw : null,
-                  icon: const Icon(Icons.handshake_outlined),
-                  label: const Text('提和'),
-                ),
-                TextButton.icon(
-                  onPressed: !_session.gameOver ? _resign : null,
-                  icon: const Icon(Icons.flag_outlined),
-                  label: const Text('认输'),
-                ),
-                if (_selected != null)
-                  TextButton(
-                    onPressed: () => setState(_clearSelection),
-                    child: const Text('取消选择'),
-                  ),
-              ],
-            ),
-            if (_session.moves.isNotEmpty)
+        child: DraughtsMatchLayout(
+          header: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               Card(
-                child: ListTile(
-                  leading: const Icon(Icons.history),
-                  title: const Text('棋谱'),
-                  subtitle: Text(
-                    _session.moves
-                        .asMap()
-                        .entries
-                        .map(
-                          (entry) =>
-                              '${entry.key + 1}. ${entry.value.path.map((cell) => '${cell.row + 1},${cell.col + 1}').join(' → ')}',
-                        )
-                        .join('   '),
-                  ),
-                  trailing: IconButton(
-                    onPressed: _showPdn,
-                    icon: const Icon(Icons.share_outlined),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    children: [
+                      Text(
+                        _status,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${_session.rules.shortDescription} · ${_session.moveCount} 手',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                      if (_isAi)
+                        Text(
+                          '人机对弈 · ${widget.aiLevel!.label} · 你执${widget.humanSide.label}',
+                        ),
+                      if (_thinking) const LinearProgressIndicator(),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          Text('黑方 ${pieceCounts[Side.black]} 子'),
+                          Text('白方 ${pieceCounts[Side.white]} 子'),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ),
-          ],
+              if (_message != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(_message!, textAlign: TextAlign.center),
+                ),
+            ],
+          ),
+          board: DraughtsBoard(
+            key: ValueKey(_session.revision),
+            session: _session,
+            selected: _selected,
+            targets: _targets,
+            pendingPath: _selected == null
+                ? const []
+                : [_selected!, ..._pendingPath],
+            onCell: _onCell,
+            flipped: _isAi && widget.humanSide == Side.black,
+          ),
+          footer: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 14),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _canUndo ? _undo : null,
+                    icon: const Icon(Icons.undo),
+                    label: const Text('悔棋'),
+                  ),
+                  if (!_isAi)
+                    OutlinedButton.icon(
+                      onPressed: !_session.gameOver ? _draw : null,
+                      icon: const Icon(Icons.handshake_outlined),
+                      label: const Text('提和'),
+                    ),
+                  TextButton.icon(
+                    onPressed: !_session.gameOver ? _resign : null,
+                    icon: const Icon(Icons.flag_outlined),
+                    label: const Text('认输'),
+                  ),
+                  if (_isAi &&
+                      !_thinking &&
+                      !_session.gameOver &&
+                      _session.turn != widget.humanSide)
+                    TextButton(
+                      onPressed: _driveAi,
+                      child: const Text('继续 AI 思考'),
+                    ),
+                  if (_selected != null)
+                    TextButton(
+                      onPressed: () => setState(_clearSelection),
+                      child: const Text('取消选择'),
+                    ),
+                ],
+              ),
+              if (_session.moves.isNotEmpty)
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.history),
+                    title: const Text('棋谱'),
+                    subtitle: Text(
+                      _session.moves
+                          .asMap()
+                          .entries
+                          .map(
+                            (entry) =>
+                                '${entry.key + 1}. ${entry.value.path.map((cell) => '${cell.row + 1},${cell.col + 1}').join(' → ')}',
+                          )
+                          .join('   '),
+                    ),
+                    trailing: IconButton(
+                      onPressed: _showPdn,
+                      icon: const Icon(Icons.share_outlined),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

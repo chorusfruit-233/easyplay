@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../../game_session.dart' show Side;
+import '../../game_session.dart' show Side, SideX;
+import '../draughts_ai_level.dart';
 import '../draughts_record.dart';
 import '../draughts_notation.dart';
 import '../draughts_rules.dart';
@@ -20,14 +21,83 @@ class _DraughtsNewGamePageState extends State<DraughtsNewGamePage> {
   DraughtsVariant _selected = DraughtsVariant.english;
   late Future<List<DraughtsRecord>> _records = DraughtsStorage.list();
 
-  void _start() => Navigator.push(
-    context,
-    MaterialPageRoute<void>(
-      builder: (_) => DraughtsGamePage(
-        session: DraughtsSession(DraughtsRules.forVariant(_selected)),
+  void _reloadRecords() {
+    if (!mounted) return;
+    setState(() {
+      _records = DraughtsStorage.list();
+    });
+  }
+
+  void _start() =>
+      Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => DraughtsGamePage(
+            session: DraughtsSession(DraughtsRules.forVariant(_selected)),
+          ),
+        ),
+      ).then((_) {
+        _reloadRecords();
+      });
+
+  Future<void> _startAi() async {
+    var side = DraughtsRules.forVariant(_selected).firstMove;
+    var level = DraughtsAiLevel.intermediate;
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: const Text('人机对弈'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<Side>(
+                initialValue: side,
+                decoration: const InputDecoration(labelText: '执棋方'),
+                items: [
+                  for (final s in Side.values)
+                    DropdownMenuItem(value: s, child: Text(s.label)),
+                ],
+                onChanged: (value) => update(() => side = value!),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<DraughtsAiLevel>(
+                initialValue: level,
+                decoration: const InputDecoration(labelText: '难度'),
+                items: [
+                  for (final l in DraughtsAiLevel.values)
+                    DropdownMenuItem(value: l, child: Text(l.label)),
+                ],
+                onChanged: (value) => update(() => level = value!),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('开始对局'),
+            ),
+          ],
+        ),
       ),
-    ),
-  );
+    );
+    if (accepted != true || !mounted) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DraughtsGamePage(
+          session: DraughtsSession(DraughtsRules.forVariant(_selected)),
+          aiLevel: level,
+          humanSide: side,
+        ),
+      ),
+    );
+    _reloadRecords();
+  }
 
   void _open(DraughtsRecord record) {
     late final DraughtsSession session;
@@ -68,9 +138,15 @@ class _DraughtsNewGamePageState extends State<DraughtsNewGamePage> {
           session: session,
           recordId: record.id,
           savedAt: record.createdAt,
+          aiLevel: record.kind == DraughtsGameKind.ai
+              ? record.aiLevel ?? DraughtsAiLevel.intermediate
+              : null,
+          humanSide: record.localSide ?? Side.white,
         ),
       ),
-    );
+    ).then((_) {
+      _reloadRecords();
+    });
   }
 
   Future<void> _importPdn() async {
@@ -119,7 +195,7 @@ class _DraughtsNewGamePageState extends State<DraughtsNewGamePage> {
       await DraughtsStorage.save(imported);
       if (!mounted) return;
       _open(imported);
-      setState(() => _records = DraughtsStorage.list());
+      _reloadRecords();
     } catch (error) {
       ScaffoldMessenger.of(
         context,
@@ -176,6 +252,12 @@ class _DraughtsNewGamePageState extends State<DraughtsNewGamePage> {
           label: const Text('本地双人对局'),
         ),
         const SizedBox(height: 8),
+        FilledButton.icon(
+          onPressed: _startAi,
+          icon: const Icon(Icons.smart_toy_outlined),
+          label: const Text('人机对弈'),
+        ),
+        const SizedBox(height: 8),
         OutlinedButton.icon(
           onPressed: () => Navigator.push<void>(
             context,
@@ -217,7 +299,11 @@ class _DraughtsNewGamePageState extends State<DraughtsNewGamePage> {
                       leading: const Icon(Icons.history),
                       title: Text(record.variant.label),
                       subtitle: Text(
-                        '${record.kind == DraughtsGameKind.local ? '本地' : '联机'} · ${record.moves.length} 手 · ${record.createdAt.toLocal()}',
+                        '${switch (record.kind) {
+                          DraughtsGameKind.local => '本地',
+                          DraughtsGameKind.online => '联机',
+                          DraughtsGameKind.ai => '人机 · ${record.aiLevel?.label ?? '中级'}',
+                        }} · ${record.moves.length} 手 · ${record.createdAt.toLocal()}',
                       ),
                       trailing: IconButton(
                         tooltip: '删除',
@@ -226,7 +312,7 @@ class _DraughtsNewGamePageState extends State<DraughtsNewGamePage> {
                           if (record.id != null) {
                             await DraughtsStorage.delete(record.id!);
                           }
-                          setState(() => _records = DraughtsStorage.list());
+                          _reloadRecords();
                         },
                       ),
                       onTap: () => _open(record),

@@ -39,6 +39,20 @@ class DraughtsSession {
   int get moveCount => moves.length;
   DraughtsPiece? pieceAt(Cell cell) => position[cell];
 
+  /// Search owns a separate mutable session while retaining all draw history.
+  /// The immutable board and rules can be shared; live undo/history are not.
+  DraughtsSession fork() {
+    final copy = DraughtsSession(rules, position: position, turn: turn);
+    copy.quietPlies = quietPlies;
+    copy._kingRaceSide = _kingRaceSide;
+    copy._kingRacePlies = _kingRacePlies;
+    copy._repetitions
+      ..clear()
+      ..addAll(_repetitions);
+    copy.result = result;
+    return copy;
+  }
+
   List<DraughtsMove> legalMoves() {
     if (gameOver) return const [];
     if (_cacheRevision == revision && _legalMovesCache != null) {
@@ -141,6 +155,7 @@ class DraughtsSession {
     required List<DraughtsMove> history,
     int quietPlies = 0,
     DraughtsResult? result,
+    bool keepUndo = false,
   }) {
     if (position.size != rules.boardSize) {
       throw ArgumentError('board size does not match variant');
@@ -164,7 +179,7 @@ class DraughtsSession {
     }
     this.quietPlies = quietPlies;
     this.result = result ?? this.result;
-    _undo.clear();
+    if (!keepUndo) _undo.clear();
   }
 
   void _save() => _undo.add(
@@ -282,6 +297,7 @@ class DraughtsSession {
       result: json['result'] == null
           ? null
           : DraughtsResult.fromJson(json['result']),
+      keepUndo: true,
     );
     if (session.turn != turn ||
         json['position'] is! Map ||

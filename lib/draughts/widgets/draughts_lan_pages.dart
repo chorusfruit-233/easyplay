@@ -13,6 +13,7 @@ import '../../lan/lan_scanner.dart';
 import '../../lan/lan_transport.dart';
 import '../draughts.dart';
 import 'draughts_board.dart';
+import 'draughts_match_layout.dart';
 
 class DraughtsLanLobbyPage extends StatelessWidget {
   const DraughtsLanLobbyPage({super.key, required this.variant});
@@ -833,91 +834,101 @@ class _DraughtsLanMatchPageState extends State<DraughtsLanMatchPage> {
     return Scaffold(
       appBar: AppBar(title: Text('${widget.variant.label} · 联机')),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  children: [
-                    Text(status, style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${session.rules.shortDescription} · ${session.moveCount} 手 · 序号 ${_replica.seq}',
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            if (_disconnected)
+        child: DraughtsMatchLayout(
+          header: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
               Card(
-                color: Theme.of(context).colorScheme.errorContainer,
-                child: ListTile(
-                  title: const Text('与房间失去连接'),
-                  trailing: FilledButton(
-                    onPressed: _syncing ? null : _reconnect,
-                    child: Text(_syncing ? '重连中…' : '重新连接'),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Column(
+                    children: [
+                      Text(
+                        status,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${session.rules.shortDescription} · ${session.moveCount} 手 · 序号 ${_replica.seq}',
+                      ),
+                    ],
                   ),
                 ),
               ),
-            if (_message != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Text(_message!, textAlign: TextAlign.center),
+              if (_disconnected)
+                Card(
+                  color: Theme.of(context).colorScheme.errorContainer,
+                  child: ListTile(
+                    title: const Text('与房间失去连接'),
+                    trailing: FilledButton(
+                      onPressed: _syncing ? null : _reconnect,
+                      child: Text(_syncing ? '重连中…' : '重新连接'),
+                    ),
+                  ),
+                ),
+              if (_message != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(_message!, textAlign: TextAlign.center),
+                ),
+            ],
+          ),
+          board: DraughtsBoard(
+            key: ValueKey(_replica.seq),
+            session: session,
+            selected: _selected,
+            targets: _targets,
+            pendingPath: _pendingPath,
+            onCell: _onCell,
+            flipped: side == Side.black,
+          ),
+          footer: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 12),
+              if (session.gameOver && side != null)
+                LanRematchCard(
+                  request: _replica.rematchRequest,
+                  side: side,
+                  enabled: _connected,
+                  onSend: _send,
+                ),
+              if (_negotiating && !session.gameOver)
+                const Text('等待处理协商请求…', textAlign: TextAlign.center),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed:
+                        !_connected ||
+                            _negotiating ||
+                            side == null ||
+                            !_replica.canRequestUndo(side)
+                        ? null
+                        : () => _send(LanMessageType.undoRequest),
+                    icon: const Icon(Icons.undo),
+                    label: const Text('请求悔棋'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: !_connected || _negotiating || session.gameOver
+                        ? null
+                        : () => _send(LanMessageType.drawRequest),
+                    icon: const Icon(Icons.handshake_outlined),
+                    label: const Text('请求和棋'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: !_connected || _negotiating || session.gameOver
+                        ? null
+                        : _resign,
+                    icon: const Icon(Icons.flag_outlined),
+                    label: const Text('认输'),
+                  ),
+                ],
               ),
-            DraughtsBoard(
-              key: ValueKey(_replica.seq),
-              session: session,
-              selected: _selected,
-              targets: _targets,
-              pendingPath: _pendingPath,
-              onCell: _onCell,
-              flipped: side == Side.black,
-            ),
-            const SizedBox(height: 12),
-            if (session.gameOver && side != null)
-              LanRematchCard(
-                request: _replica.rematchRequest,
-                side: side,
-                enabled: _connected,
-                onSend: _send,
-              ),
-            if (_negotiating && !session.gameOver)
-              const Text('等待处理协商请求…', textAlign: TextAlign.center),
-            Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                OutlinedButton.icon(
-                  onPressed:
-                      !_connected ||
-                          _negotiating ||
-                          side == null ||
-                          !_replica.canRequestUndo(side)
-                      ? null
-                      : () => _send(LanMessageType.undoRequest),
-                  icon: const Icon(Icons.undo),
-                  label: const Text('请求悔棋'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: !_connected || _negotiating || session.gameOver
-                      ? null
-                      : () => _send(LanMessageType.drawRequest),
-                  icon: const Icon(Icons.handshake_outlined),
-                  label: const Text('请求和棋'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: !_connected || _negotiating || session.gameOver
-                      ? null
-                      : _resign,
-                  icon: const Icon(Icons.flag_outlined),
-                  label: const Text('认输'),
-                ),
-              ],
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

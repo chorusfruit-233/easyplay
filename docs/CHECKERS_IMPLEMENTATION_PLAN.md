@@ -29,7 +29,7 @@ EasyPlay Checkers / Draughts 一次性实现计划
 - Checkers AI
 - AI 分析
 - 外部引擎
-- WebGPU
+- WASM CPU
 - 排位 / 匹配服务器
 - Internet 中继服务器
 

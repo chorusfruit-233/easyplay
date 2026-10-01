@@ -10,3 +10,5 @@ export 'draughts_rules.dart';
 export 'draughts_session.dart';
 export 'draughts_storage.dart';
 export 'draughts_variant.dart';
+export 'draughts_ai.dart';
+export 'draughts_ai_level.dart';

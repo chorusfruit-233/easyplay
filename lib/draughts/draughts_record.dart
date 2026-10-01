@@ -2,8 +2,9 @@ import '../game_session.dart' show Side;
 import 'draughts_move.dart';
 import 'draughts_session.dart';
 import 'draughts_variant.dart';
+import 'draughts_ai_level.dart';
 
-enum DraughtsGameKind { local, online }
+enum DraughtsGameKind { local, online, ai }
 
 class DraughtsRecord {
   DraughtsRecord({
@@ -15,6 +16,7 @@ class DraughtsRecord {
     this.result,
     this.id,
     this.sessionState,
+    this.aiLevel,
   }) : moves = List.unmodifiable(moves);
 
   final String? id;
@@ -25,6 +27,7 @@ class DraughtsRecord {
   final DateTime createdAt;
   final String? result;
   final Map<String, Object?>? sessionState;
+  final DraughtsAiLevel? aiLevel;
 
   factory DraughtsRecord.fromSession(
     DraughtsSession session, {
@@ -32,6 +35,7 @@ class DraughtsRecord {
     Side? localSide,
     String? id,
     DateTime? createdAt,
+    DraughtsAiLevel? aiLevel,
   }) => DraughtsRecord(
     variant: session.variant,
     moves: session.moves,
@@ -39,6 +43,7 @@ class DraughtsRecord {
     localSide: localSide,
     id: id,
     createdAt: createdAt ?? DateTime.now().toUtc(),
+    aiLevel: aiLevel,
     sessionState: session.toJson(),
     result: session.result?.winner == null
         ? (session.gameOver ? '1/2-1/2' : null)
@@ -54,6 +59,7 @@ class DraughtsRecord {
     'variant': variant.name,
     'kind': kind.name,
     'localSide': localSide?.name,
+    if (aiLevel != null) 'aiLevel': aiLevel!.name,
     'createdAt': createdAt.toIso8601String(),
     'result': result,
     if (sessionState != null) 'session': sessionState,
@@ -89,6 +95,9 @@ class DraughtsRecord {
       variant: variant,
       kind: kind,
       localSide: side,
+      aiLevel: DraughtsAiLevel.values
+          .where((level) => level.name == value['aiLevel'])
+          .firstOrNull,
       createdAt: date,
       result: value['result'] as String?,
       sessionState: value['session'] is Map
