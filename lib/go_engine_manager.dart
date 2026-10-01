@@ -203,7 +203,7 @@ class _GoEngineManagerPageState extends State<GoEngineManagerPage> {
                         const PopupMenuItem(value: 'edit', child: Text('编辑')),
                         const PopupMenuItem(
                           value: 'runtime',
-                          child: Text('运行检测与 OpenCL 调优'),
+                          child: Text('运行检测与日志'),
                         ),
                         const PopupMenuItem(
                           value: 'export',

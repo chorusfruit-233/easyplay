@@ -51,10 +51,6 @@ jobs:
           ! grep -Fq 'serviceWorkerVersion:' build/web/flutter_bootstrap.js
           test -s build/web/katago/katago.js
           test -s build/web/katago/katago.wasm
-          test -s build/web/katago-webgpu/kataeval.js
-          test -s build/web/katago-webgpu/kataeval.wasm
-          test -s build/web/katago-webgpu/kataeval-mt.js
-          test -s build/web/katago-webgpu/kataeval-mt.wasm
           test -s build/web/assets/assets/katago/g170-b6c96-s175395328-d26788732.bin.gz
 
       - name: Configure Pages

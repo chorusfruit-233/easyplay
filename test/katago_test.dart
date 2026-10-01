@@ -87,36 +87,20 @@ void main() {
     },
   );
 
-  test('OpenCL config leaves device selection automatic unless explicitly set', () {
-    final automatic = parseKataGoConfig(
+  test('CPU config strips legacy accelerator settings', () {
+    final values = parseKataGoConfig(
       buildKataGoConfig(
-        'openclDeviceToUse = 7\nopenclUseFP16 = true',
+        'openclDeviceToUse = 7\nopenclUseFP16 = true\nnnCacheSizePowerOfTwo = 18',
         config: const GoConfig(),
         settings: const GoAiSettings(),
-        engine: const GoEngineProfile(
-          id: 'auto-gpu',
-          name: 'Auto GPU',
-          backend: GoEngineBackend.opencl,
-        ),
+        engine: GoEngineProfile.builtIn,
       ),
     );
-    expect(automatic.containsKey('openclDeviceToUse'), false);
-    expect(automatic['openclUseFP16'], 'true');
-
-    final explicit = parseKataGoConfig(
-      buildKataGoConfig(
-        '',
-        config: const GoConfig(),
-        settings: const GoAiSettings(),
-        engine: const GoEngineProfile(
-          id: 'gpu-2',
-          name: 'GPU 2',
-          backend: GoEngineBackend.opencl,
-          openclGpuIdx: 2,
-        ),
-      ),
+    expect(
+      values.keys.any((key) => key.toLowerCase().startsWith('opencl')),
+      false,
     );
-    expect(explicit['openclDeviceToUse'], '2');
+    expect(values['nnCacheSizePowerOfTwo'], '18');
   });
 
   test('AI resignation records the correct winner and SGF result', () {

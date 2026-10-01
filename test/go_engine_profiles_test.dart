@@ -41,23 +41,27 @@ void main() {
     );
   });
 
-  test('serializes engine backend and OpenCL tuning metadata', () {
-    const profile = GoEngineProfile(
-      id: 'opencl',
-      name: 'OpenCL GPU',
-      backend: GoEngineBackend.opencl,
-      openclGpuIdx: 2,
-      openclLibraryName: 'libkatago-opencl.so',
-      openclTuningId: 'model-gpu-2',
-      openclTuningPlan: 'plan-data',
-    );
-    final restored = GoEngineProfile.fromJson(profile.toJson().cast());
-    expect(restored.backend, GoEngineBackend.opencl);
-    expect(restored.openclGpuIdx, 2);
-    expect(restored.openclLibraryName, 'libkatago-opencl.so');
-    expect(restored.openclTuningId, 'model-gpu-2');
-    expect(restored.openclTuningPlan, 'plan-data');
-  });
+  test(
+    'legacy accelerator profiles migrate to CPU and discard device metadata',
+    () {
+      for (final backend in ['opencl', 'tflite']) {
+        final restored = GoEngineProfile.fromJson({
+          'id': 'legacy',
+          'name': 'Legacy',
+          'backend': backend,
+          'openclGpuIdx': 2,
+          'openclTuningPlan': 'old',
+          'searchThreads': 4,
+        });
+        expect(restored.backend, GoEngineBackend.cpu);
+        expect(restored.searchThreads, 4);
+        expect(
+          restored.toJson().keys.any((key) => key.startsWith('opencl')),
+          false,
+        );
+      }
+    },
+  );
 
   test(
     'loads bundled human override ranges and selects matching profile',

@@ -493,9 +493,28 @@ class BoardPainter extends CustomPainter {
     }
     // Analysis hints paint last so the rank badges stay readable on top of
     // stones, which is where a review's suggestions usually sit.
-    for (var i = 0; i < analysisHints.length && i < 9; i++) {
+    final hintCount = min(analysisHints.length, 9);
+    for (var i = 0; i < hintCount; i++) {
       final cell = analysisHints[i];
       if (!insideBoard(cell, n)) continue;
+      // Best-first ranks run green → yellow → red across the visible hints.
+      final rank = hintCount <= 1 ? 0.0 : i / (hintCount - 1);
+      final color = rank <= .5
+          ? Color.lerp(
+              const Color(0xff2e7d32),
+              const Color(0xfff9a825),
+              rank * 2,
+            )!
+          : Color.lerp(
+              const Color(0xfff9a825),
+              const Color(0xffc62828),
+              (rank - .5) * 2,
+            )!;
+      final borderColor = Color.lerp(color, Colors.black, .2)!;
+      final textColor =
+          ThemeData.estimateBrightnessForColor(color) == Brightness.light
+          ? Colors.black
+          : Colors.white;
       final center = _center(cell, step);
       final radius = step * .34;
       final occupied = board[cell.row][cell.col] != null;
@@ -503,14 +522,14 @@ class BoardPainter extends CustomPainter {
         canvas.drawCircle(
           center,
           radius,
-          Paint()..color = const Color(0xdd5b9bd5),
+          Paint()..color = color.withAlpha(221),
         );
       }
       canvas.drawCircle(
         center,
         radius,
         Paint()
-          ..color = const Color(0xff2f6fa8)
+          ..color = borderColor
           ..style = PaintingStyle.stroke
           ..strokeWidth = max(1.5, step * .05),
       );
@@ -519,7 +538,7 @@ class BoardPainter extends CustomPainter {
         '${i + 1}',
         center,
         step * .44,
-        occupied ? const Color(0xff2f6fa8) : Colors.white,
+        occupied ? color : textColor,
         outline: occupied,
         fontFamily: null,
         fontWeight: FontWeight.bold,

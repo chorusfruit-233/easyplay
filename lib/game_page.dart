@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,7 +15,6 @@ import 'go_ai_settings.dart';
 import 'go_models.dart';
 import 'go_engine_profiles.dart';
 import 'go_engine_manager.dart';
-import 'go_engine_runtime.dart';
 import 'katago.dart';
 import 'board.dart';
 import 'go_placement.dart';
@@ -1382,47 +1383,6 @@ class _GamePageState extends State<GamePage> {
                           ),
                         ),
                       ],
-                      if (engines
-                              .firstWhere((e) => e.id == engineProfileId)
-                              .backend ==
-                          GoEngineBackend.opencl)
-                        TextButton.icon(
-                          icon: const Icon(Icons.speed),
-                          label: const Text('检测 GPU / 调优当前配置'),
-                          onPressed: () async {
-                            if (!formKey.currentState!.validate()) return;
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => GoEngineRuntimePage(
-                                  profile: engines.firstWhere(
-                                    (e) => e.id == engineProfileId,
-                                  ),
-                                  config: GoConfig(
-                                    boardSize: size,
-                                    rules: rules,
-                                    komi: double.parse(komiController.text),
-                                    handicap: handicap,
-                                  ),
-                                  settings: GoAiSettings(
-                                    modelId: modelId,
-                                    engineProfileId: engineProfileId,
-                                    rank: rank,
-                                    style: style,
-                                    humanStyleRank: humanRank,
-                                    humanSLProfile:
-                                        humanProfile.text.trim().isEmpty
-                                        ? null
-                                        : humanProfile.text.trim(),
-                                    humanModelId: style == GoAiStyle.human
-                                        ? humanModelId
-                                        : null,
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
                       if (setupError != null)
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
@@ -1454,7 +1414,7 @@ class _GamePageState extends State<GamePage> {
                             setupError = null;
                           });
                           try {
-                            await GoModelLibrary.load(modelId);
+                            await GoModelLibrary.validateAvailable(modelId);
                             final selectedModel = await GoModelLibrary.byId(
                               modelId,
                             );
@@ -1475,7 +1435,7 @@ class _GamePageState extends State<GamePage> {
                             );
                             checkedSettings.validateHumanStyle();
                             if (human != null) {
-                              await GoModelLibrary.load(human.id);
+                              await GoModelLibrary.validateAvailable(human.id);
                             }
                             GoModelCompatibility.validate(
                               model: selectedModel,
@@ -1916,20 +1876,35 @@ class _GamePageState extends State<GamePage> {
     body: LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth > 760;
-        final board = Board(
-          type: widget.type,
-          session: session,
-          selected: selected,
-          targets: targets,
-          analysisHints: _analysisHints,
-          analysisOwnership: _analysisOwnership,
-          onCell: _onCell,
-          placementMode: placementMode,
-          onPreviewCell: _previewGoCell,
-          onCancelPreview: _cancelGoPreview,
-          annotations: widget.type == GameType.go
-              ? _goRecord.current.properties
-              : const {},
+        final padding = wide ? 24.0 : 16.0;
+        final contentWidth = math.min(
+          1120.0,
+          math.max(0.0, constraints.maxWidth - padding * 2),
+        );
+        final boardExtent = math.max(
+          0.0,
+          math.min(
+            wide ? contentWidth - 334 : contentWidth,
+            constraints.maxHeight - padding * 2,
+          ),
+        );
+        final board = SizedBox.square(
+          dimension: boardExtent,
+          child: Board(
+            type: widget.type,
+            session: session,
+            selected: selected,
+            targets: targets,
+            analysisHints: _analysisHints,
+            analysisOwnership: _analysisOwnership,
+            onCell: _onCell,
+            placementMode: placementMode,
+            onPreviewCell: _previewGoCell,
+            onCancelPreview: _cancelGoPreview,
+            annotations: widget.type == GameType.go
+                ? _goRecord.current.properties
+                : const {},
+          ),
         );
         final side = _sidePanel(context);
         // The action bar and the record cards go under the row rather than in
@@ -1955,14 +1930,16 @@ class _GamePageState extends State<GamePage> {
             ? Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(child: board),
+                  Expanded(
+                    child: Align(alignment: Alignment.topCenter, child: board),
+                  ),
                   const SizedBox(width: 24),
                   SizedBox(width: 310, child: side),
                 ],
               )
             : Column(children: [board, const SizedBox(height: 16), side]);
         return SingleChildScrollView(
-          padding: EdgeInsets.all(wide ? 24 : 16),
+          padding: EdgeInsets.all(padding),
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 1120),

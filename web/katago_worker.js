@@ -44,7 +44,6 @@ self.onmessage = async ({ data }) => {
       `assets/assets/katago/${modelName}`,
     );
     const humanModelBytes = await loadModelBytes(data, 'humanModelBase64', null);
-    if (data.backend === 'tflite') throw new Error('静态 Web 不支持 TFLite 模型');
     let configText = data.configText;
     if (typeof configText !== 'string') {
     const configResponse = await fetch(
@@ -70,12 +69,6 @@ self.onmessage = async ({ data }) => {
       chosenMoveTemperatureHalflife: style.halfLife,
     })) {
       configText = setConfigValue(configText, key, value);
-    }
-    // A Web build always runs the bundled EIGEN/WASM backend. Keep the
-    // requested backend in the payload for diagnostics, but do not pretend
-    // that OpenCL or TFLite is available in a static browser deployment.
-    if (data.backend && data.backend !== 'cpu') {
-      configText = setConfigValue(configText, 'logToStderr', true);
     }
     if (data.style === 'human') {
       if (data.humanSLProfile) {

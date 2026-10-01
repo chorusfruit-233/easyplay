@@ -24,19 +24,13 @@ class _GoEngineEditorState extends State<GoEngineEditor> {
   late final _threads = TextEditingController(
     text: '${widget.profile?.searchThreads ?? 2}',
   );
-  late final _gpu = TextEditingController(
-    text: widget.profile?.openclGpuIdx?.toString() ?? '',
-  );
-  late final _library = TextEditingController(
-    text: widget.profile?.openclLibraryName ?? '',
-  );
   late final _cfg = TextEditingController(
     text: widget.profile?.customConfig ?? '',
   );
   late final _overrides = TextEditingController(
     text: widget.profile?.configOverrides ?? '',
   );
-  late GoEngineBackend _backend =
+  late final GoEngineBackend _backend =
       widget.profile?.backend ?? GoEngineBackend.cpu;
   late List<GoEngineOverrideRule> _normal = [...?widget.profile?.overrideRules];
   late List<GoEngineOverrideRule> _human = [
@@ -51,21 +45,21 @@ class _GoEngineEditorState extends State<GoEngineEditor> {
   void initState() {
     super.initState();
     GoModelLibrary.available().then((models) {
-      if (mounted) setState(() => _models = models);
+      if (mounted) {
+        setState(() {
+          _models = models;
+          if (!models.any((m) => m.id == _modelId)) _modelId = null;
+          if (!models.any((m) => m.id == _humanId && m.isHumanModel)) {
+            _humanId = null;
+          }
+        });
+      }
     });
   }
 
   @override
   void dispose() {
-    for (final c in [
-      _name,
-      _time,
-      _threads,
-      _gpu,
-      _library,
-      _cfg,
-      _overrides,
-    ]) {
+    for (final c in [_name, _time, _threads, _cfg, _overrides]) {
       c.dispose();
     }
     super.dispose();
@@ -221,10 +215,6 @@ class _GoEngineEditorState extends State<GoEngineEditor> {
         'backend': _backend.name,
         'maxTimeSeconds': int.parse(_time.text),
         'searchThreads': int.parse(_threads.text),
-        'openclGpuIdx': int.tryParse(_gpu.text.trim()),
-        'openclLibraryName': _library.text.trim().isEmpty
-            ? null
-            : _library.text.trim(),
         'customConfig': _cfg.text,
         'configOverrides': _overrides.text,
         'modelId': _modelId,
@@ -240,9 +230,6 @@ class _GoEngineEditorState extends State<GoEngineEditor> {
           engine: profile,
           humanModel: human,
         );
-      }
-      if (_backend == GoEngineBackend.tflite && human != null) {
-        throw ArgumentError('TFLite 不支持 human model');
       }
       await GoEngineLibrary.save(profile);
       if (mounted) Navigator.pop(context, profile);
@@ -278,8 +265,6 @@ class _GoEngineEditorState extends State<GoEngineEditor> {
     final colors = Theme.of(context).colorScheme;
     final backendDescription = switch (_backend) {
       GoEngineBackend.cpu => '兼容性最好，使用标准 KataGo 模型。',
-      GoEngineBackend.opencl => '使用 GPU / OpenCL 加速，支持标准 KataGo 模型。',
-      GoEngineBackend.tflite => '需要设备端 LiteRT 运行库，当前构建尚未包含。',
     };
 
     return Form(
@@ -331,25 +316,10 @@ class _GoEngineEditorState extends State<GoEngineEditor> {
                   ),
                 ),
               _sectionTitle('运行方式'),
-              _pickerCard(
-                title: _backend.label,
-                subtitle: backendDescription,
-                onTap: _pickBackend,
+              ListTile(
+                title: Text(_backend.label),
+                subtitle: Text(backendDescription),
               ),
-              if (_backend == GoEngineBackend.opencl) ...[
-                _sectionTitle('OpenCL 调优'),
-                _tuningRow('主模型', widget.profile?.openclTuningState),
-                _tuningRow('人类模型', widget.profile?.openclTuningState),
-                const SizedBox(height: 4),
-                Text(
-                  '设备 OpenCL 驱动：${_library.text.trim().isEmpty ? '自动' : _library.text.trim()}'
-                  '　设备：${_gpu.text.trim().isEmpty ? '自动' : _gpu.text.trim()}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-              ],
               _sectionTitle('配置'),
               _pickerCard(
                 title: _cfg.text.trim().isEmpty ? '内置配置' : '自定义配置',
@@ -464,66 +434,6 @@ class _GoEngineEditorState extends State<GoEngineEditor> {
       ),
     ),
   );
-
-  /// Tuning is per network, so the main and human models are listed separately.
-  /// Re-tuning itself is not wired up yet.
-  Widget _tuningRow(String label, GoOpenClTuningState? state) => Padding(
-    padding: const EdgeInsets.only(bottom: 6),
-    child: Row(
-      children: [
-        Expanded(child: Text(label)),
-        Text(
-          state?.label ?? GoOpenClTuningState.unknown.label,
-          style: TextStyle(
-            fontSize: 13,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(width: 8),
-        OutlinedButton.icon(
-          onPressed: _retune,
-          icon: const Icon(Icons.refresh, size: 16),
-          label: const Text('重调'),
-        ),
-      ],
-    ),
-  );
-
-  Future<void> _retune() async {
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('OpenCL 调优尚未接入，暂不能重新调优')));
-  }
-
-  Future<void> _pickBackend() async {
-    final picked = await showModalBottomSheet<GoEngineBackend>(
-      context: context,
-      builder: (sheetContext) => SafeArea(
-        child: RadioGroup<GoEngineBackend>(
-          groupValue: _backend,
-          onChanged: (v) => Navigator.pop(sheetContext, v ?? _backend),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              for (final value in GoEngineBackend.values)
-                RadioListTile<GoEngineBackend>(
-                  value: value,
-                  title: Text(value.label),
-                  subtitle: Text(switch (value) {
-                    GoEngineBackend.cpu => '兼容性最好，使用标准 KataGo 模型。',
-                    GoEngineBackend.opencl =>
-                      '使用 GPU / OpenCL 加速，支持标准 KataGo 模型。',
-                    GoEngineBackend.tflite => '需要设备端 LiteRT 运行库，当前构建尚未包含。',
-                  }),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-    if (picked != null && mounted) setState(() => _backend = picked);
-  }
 
   Future<void> _pickMainModel() async {
     final picked = await showModalBottomSheet<String>(

@@ -3,35 +3,9 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 enum GoEngineBackend {
-  cpu,
-  opencl,
-  tflite;
+  cpu;
 
-  String get label => switch (this) {
-    GoEngineBackend.cpu => 'CPU',
-    GoEngineBackend.opencl => 'OpenCL',
-    GoEngineBackend.tflite => 'TFLite Mobile',
-  };
-}
-
-/// State of the device-specific OpenCL tuning snapshot.
-///
-/// A profile can be saved before tuning has run. Runtime code should only
-/// start an OpenCL engine when the state is [ready].
-enum GoOpenClTuningState {
-  unknown,
-  required,
-  tuning,
-  ready,
-  failed;
-
-  String get label => switch (this) {
-    GoOpenClTuningState.unknown => '未检测',
-    GoOpenClTuningState.required => '需要调优',
-    GoOpenClTuningState.tuning => '调优中',
-    GoOpenClTuningState.ready => '已调优',
-    GoOpenClTuningState.failed => '调优失败',
-  };
+  String get label => 'CPU';
 }
 
 /// A rank-scoped block of KataGo configuration overrides.
@@ -170,12 +144,6 @@ class GoEngineProfile {
   final String? modelId;
   final String? humanModelId;
   final GoEngineBackend backend;
-  final int? openclGpuIdx;
-  final String? openclLibraryName;
-  final String? openclTuningId;
-  final String? openclTuningPlan;
-  final List<String> openclTunedSnapshotKeys;
-  final GoOpenClTuningState openclTuningState;
   final List<GoEngineOverrideRule> overrideRules;
   final List<GoEngineOverrideRule> humanOverrideRules;
 
@@ -189,12 +157,6 @@ class GoEngineProfile {
     this.modelId,
     this.humanModelId,
     this.backend = GoEngineBackend.cpu,
-    this.openclGpuIdx,
-    this.openclLibraryName,
-    this.openclTuningId,
-    this.openclTuningPlan,
-    this.openclTunedSnapshotKeys = const <String>[],
-    this.openclTuningState = GoOpenClTuningState.unknown,
     this.overrideRules = const <GoEngineOverrideRule>[],
     this.humanOverrideRules = const <GoEngineOverrideRule>[],
   });
@@ -213,18 +175,6 @@ class GoEngineProfile {
       'humanModelId': ?humanModelId,
       'backend': backend.name,
     };
-    if (openclGpuIdx != null) result['openclGpuIdx'] = openclGpuIdx!;
-    if (openclLibraryName != null) {
-      result['openclLibraryName'] = openclLibraryName!;
-    }
-    if (openclTuningId != null) result['openclTuningId'] = openclTuningId!;
-    if (openclTuningPlan != null) {
-      result['openclTuningPlan'] = openclTuningPlan!;
-    }
-    if (openclTunedSnapshotKeys.isNotEmpty) {
-      result['openclTunedSnapshotKeys'] = openclTunedSnapshotKeys;
-    }
-    result['openclTuningState'] = openclTuningState.name;
     if (overrideRules.isNotEmpty) {
       result['overrideRules'] = overrideRules
           .map((rule) => rule.toJson())
@@ -252,33 +202,12 @@ class GoEngineProfile {
           (value) => value.name == json['backend'],
           orElse: () => GoEngineBackend.cpu,
         ),
-        openclGpuIdx: json['openclGpuIdx'] as int?,
-        openclLibraryName: json['openclLibraryName'] as String?,
-        openclTuningId: json['openclTuningId'] as String?,
-        openclTuningPlan: json['openclTuningPlan'] as String?,
-        openclTunedSnapshotKeys: _stringList(json['openclTunedSnapshotKeys']),
-        openclTuningState: GoOpenClTuningState.values.firstWhere(
-          (value) => value.name == json['openclTuningState'],
-          orElse: () => GoOpenClTuningState.unknown,
-        ),
         overrideRules: _ruleList(json['overrideRules']),
         humanOverrideRules: _ruleList(json['humanOverrideRules']),
       );
 
-  GoEngineProfile copyWith({
-    String? name,
-    GoOpenClTuningState? tuningState,
-    List<String>? snapshotKeys,
-  }) => GoEngineProfile.fromJson({
-    ...toJson(),
-    'name': ?name,
-    if (tuningState != null) 'openclTuningState': tuningState.name,
-    'openclTunedSnapshotKeys': ?snapshotKeys,
-  });
-
-  static List<String> _stringList(Object? value) => value is List
-      ? value.whereType<String>().toList(growable: false)
-      : const <String>[];
+  GoEngineProfile copyWith({String? name}) =>
+      GoEngineProfile.fromJson({...toJson(), 'name': ?name});
 
   static List<GoEngineOverrideRule> _ruleList(Object? value) => value is List
       ? value
@@ -289,10 +218,6 @@ class GoEngineProfile {
             )
             .toList(growable: false)
       : const <GoEngineOverrideRule>[];
-
-  bool get openclTuningReady =>
-      backend != GoEngineBackend.opencl ||
-      openclTuningState == GoOpenClTuningState.ready;
 
   GoEngineOverrideRule? resolveOverride({
     required int rank,
@@ -416,14 +341,6 @@ class GoEngineLibrary {
     if (profile.searchThreads < 1 || profile.searchThreads > 16) {
       throw ArgumentError('搜索线程数需为1至16');
     }
-    if (profile.openclGpuIdx != null && profile.openclGpuIdx! < 0) {
-      throw ArgumentError('OpenCL GPU 编号不能为负数');
-    }
-    if (profile.backend == GoEngineBackend.opencl &&
-        profile.openclLibraryName != null &&
-        profile.openclLibraryName!.trim().isEmpty) {
-      throw ArgumentError('OpenCL 动态库名称不能为空');
-    }
     validateOverrides(profile.configOverrides);
     validateOverrides(profile.customConfig);
     GoEngineOverrideRule.validateList(profile.overrideRules);
@@ -431,11 +348,5 @@ class GoEngineLibrary {
       profile.humanOverrideRules,
       fieldName: 'humanOverrideRules',
     );
-    if (profile.backend == GoEngineBackend.opencl &&
-        profile.openclTuningState == GoOpenClTuningState.ready &&
-        profile.openclTunedSnapshotKeys.isEmpty &&
-        profile.openclTuningPlan == null) {
-      throw ArgumentError('OpenCL 配置标记为已调优但缺少调优快照');
-    }
   }
 }

@@ -16,10 +16,8 @@ void main() {
       const profile = GoEngineProfile(
         id: 'edited',
         name: 'GPU config',
-        backend: GoEngineBackend.opencl,
+        backend: GoEngineBackend.cpu,
         customConfig: 'nnCacheSizePowerOfTwo=18',
-        openclTuningState: GoOpenClTuningState.ready,
-        openclTunedSnapshotKeys: ['verified'],
         humanOverrideRules: [
           GoEngineOverrideRule(
             id: 'range',
@@ -61,9 +59,7 @@ void main() {
       await tester.tap(find.text('完成'));
       await tester.pumpAndSettle();
 
-      // OpenCL tuning rows are only shown for the OpenCL backend.
-      expect(find.text('OpenCL 调优'), findsOneWidget);
-      expect(find.text('已调优'), findsNWidgets(2));
+      expect(find.text('CPU'), findsWidgets);
       await tester.ensureVisible(find.text('保存'));
       await tester.tap(find.text('保存'));
       await tester.pumpAndSettle();
@@ -75,13 +71,10 @@ void main() {
       expect(saved.humanOverrideRules.single.rankMin, -4);
       expect(saved.humanOverrideRules.single.rankMax, -5);
       expect(saved.humanOverrideRules.single.configText, 'maxVisits=120');
-      expect(saved.openclTunedSnapshotKeys, ['verified']);
     },
   );
 
-  testWidgets('the OpenCL section is hidden for the CPU backend', (
-    tester,
-  ) async {
+  testWidgets('CPU editor has no tuning controls', (tester) async {
     SharedPreferences.setMockInitialValues({});
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;

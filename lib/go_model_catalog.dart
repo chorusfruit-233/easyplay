@@ -156,7 +156,7 @@ class GoModelCatalog {
     GoModelCatalogEntry(
       id: 'b18c384nbt',
       displayName: '旧 b18 模型',
-      description: '更大的卷积网络，需要 OpenCL 才有速度',
+      description: '更大的卷积网络，CPU 运算需要更长时间',
       kind: GoModelKind.standard,
       source: GoModelSource.pinned,
       url: _strongestFallback.url,
@@ -166,7 +166,7 @@ class GoModelCatalog {
     GoModelCatalogEntry(
       id: 'human-b18',
       displayName: '人类棋风 b18 模型',
-      description: '配合 humanSLProfile 使用，需要 OpenCL',
+      description: '配合 humanSLProfile 使用，通过 CPU 运行',
       kind: GoModelKind.human,
       source: GoModelSource.pinned,
       url: humanModel.url,

@@ -57,9 +57,7 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
       kind = selectedKind;
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: kind == GoModelKind.tflite
-            ? ['tflite', 'lite']
-            : ['gz'],
+        allowedExtensions: ['gz'],
         withData: true,
       );
       if (result == null) return;
@@ -249,7 +247,7 @@ class _GoModelManagerPageState extends State<GoModelManagerPage> {
               OutlinedButton.icon(
                 onPressed: _importFile,
                 icon: const Icon(Icons.file_open_outlined),
-                label: const Text('导入标准、人类棋风或 TFLite 模型'),
+                label: const Text('导入标准或人类棋风模型'),
               ),
               OutlinedButton.icon(
                 onPressed: _download,
@@ -400,7 +398,7 @@ class _CatalogSheetState extends State<_CatalogSheet> {
               padding: const EdgeInsets.only(top: 4, bottom: 12),
               child: Text(
                 '内置 b6 适合基础对弈。更强的模型需要下载，'
-                '人类棋风模型需要 OpenCL 运行方式。',
+                '人类棋风模型使用 CPU 运行。',
                 style: TextStyle(fontSize: 12, color: colors.onSurfaceVariant),
               ),
             ),

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:easyplay/go_models.dart';
 import 'package:easyplay/game_session.dart';
 import 'package:easyplay/go_engine_profiles.dart';
 import 'package:easyplay/go_engine_runtime.dart';
@@ -21,6 +23,45 @@ void main() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, null);
   });
+
+  test(
+    'Android large model arguments never load bytes through the channel',
+    () async {
+      final id = List.filled(64, 'a').join();
+      final model = GoModelInfo(
+        id: id,
+        name: 'large human',
+        fileName: 'human.txt.gz',
+        sha256: id,
+        bytes: 131000000,
+        kind: GoModelKind.human,
+      );
+      SharedPreferences.setMockInitialValues({
+        'easyplay.katago_models': [jsonEncode(model.toJson())],
+      });
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            fail('Model bytes must stay native: ${call.method}');
+          });
+      expect(
+        await GoModelLibrary.androidModelArguments(id, prefix: 'humanModel'),
+        {'humanModelId': id, 'humanModelFileName': 'human.txt.gz'},
+      );
+      final calls = <String>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            calls.add(call.method);
+            expect(call.arguments, {'id': id});
+            return 'verified';
+          });
+      await GoModelLibrary.validateAvailable(id);
+      expect(calls, ['validateModel']);
+      await expectLater(
+        GoModelLibrary.androidModelArguments('missing'),
+        throwsStateError,
+      );
+    },
+  );
 
   test(
     'stop interrupts a pending search without waiting in the GTP queue',
@@ -51,117 +92,34 @@ void main() {
     },
   );
 
-  testWidgets(
-    'leaving before tuning start responds cancels the returned task',
-    (tester) async {
-      const profile = GoEngineProfile(
-        id: 'gpu',
-        name: 'GPU',
-        backend: GoEngineBackend.opencl,
-      );
-      final starting = Completer<Map<String, Object?>>();
-      final calls = <MethodCall>[];
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (call) async {
-            calls.add(call);
-            if (call.method == 'backendPreflight') {
-              final args = call.arguments as Map;
-              expect(args.containsKey('openclGpuIdx'), false);
-              expect(args.containsKey('openclLibraryName'), false);
-              return {'runnable': true, 'devices': []};
-            }
-            if (call.method == 'openclTuningStart') return starting.future;
-            if (call.method == 'openclTuningCancel') {
-              expect((call.arguments as Map)['id'], 'late-job');
-              return {'status': 'cancelled'};
-            }
-            return null;
-          });
-      await tester.pumpWidget(
-        const MaterialApp(home: GoEngineRuntimePage(profile: profile)),
-      );
-      await tester.pumpAndSettle();
-      final button = find.text('开始 OpenCL 调优');
-      await tester.ensureVisible(button);
-      await tester.runAsync(() async {
-        await tester.tap(button);
-        for (
-          var i = 0;
-          i < 200 && !calls.any((c) => c.method == 'openclTuningStart');
-          i++
-        ) {
-          await Future<void>.delayed(const Duration(milliseconds: 10));
-        }
-      });
-      expect(calls.any((c) => c.method == 'openclTuningStart'), true);
-      await tester.pumpWidget(const SizedBox());
-      starting.complete({'id': 'late-job', 'status': 'running'});
-      await tester.pumpAndSettle();
-      expect(calls.where((c) => c.method == 'openclTuningCancel').length, 1);
-      expect(calls.any((c) => c.method == 'openclTuningRead'), false);
-      debugDefaultTargetPlatformOverride = null;
-    },
-  );
-
-  testWidgets(
-    'OpenCL UI uses native tuning contract and persists verified cache key',
-    (tester) async {
-      const profile = GoEngineProfile(
-        id: 'gpu',
-        name: 'GPU',
-        backend: GoEngineBackend.opencl,
-      );
-      await GoEngineLibrary.save(profile);
-      final calls = <MethodCall>[];
-      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (call) async {
-            calls.add(call);
-            switch (call.method) {
-              case 'backendPreflight':
-                return {'runnable': true, 'devices': []};
-              case 'openclTuningStart':
-                final args = call.arguments as Map;
-                expect(args['boardSize'], 19);
-                expect(args['model'], isNotEmpty);
-                expect(args['config'], contains('rules = chinese'));
-                expect(args.containsKey('openclGpuIdx'), false);
-                expect(args.containsKey('openclLibraryName'), false);
-                return {'id': 'job', 'tuningId': 'key', 'status': 'running'};
-              case 'openclTuningRead':
-                return {
-                  'id': 'job',
-                  'tuningId': 'key',
-                  'status': 'completed',
-                  'logs': ['GPU tuned'],
-                };
-            }
-            return null;
-          });
-      await tester.pumpWidget(
-        const MaterialApp(home: GoEngineRuntimePage(profile: profile)),
-      );
-      await tester.pumpAndSettle();
-      final button = find.text('开始 OpenCL 调优');
-      await tester.ensureVisible(button);
-      await tester.runAsync(() async {
-        await tester.tap(button);
-        for (
-          var i = 0;
-          i < 200 && !calls.any((c) => c.method == 'openclTuningRead');
-          i++
-        ) {
-          await Future<void>.delayed(const Duration(milliseconds: 10));
-        }
-      });
-      await tester.pumpAndSettle();
-      expect(find.text('调优完成'), findsOneWidget);
-      expect(find.text('GPU tuned'), findsOneWidget);
-      final saved = await GoEngineLibrary.byId(profile.id);
-      expect(saved.openclTunedSnapshotKeys, ['key']);
-      expect(saved.openclTuningState, GoOpenClTuningState.ready);
-      expect(calls.where((c) => c.method == 'openclTuningRead').length, 1);
-      await tester.pumpWidget(const SizedBox());
-      debugDefaultTargetPlatformOverride = null;
-    },
-  );
+  testWidgets('CPU availability and diagnostics never transfer models', (
+    tester,
+  ) async {
+    final calls = <String>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          calls.add(call.method);
+          if (call.method == 'backendPreflight') {
+            expect(call.arguments, {'backend': 'cpu'});
+            return {'runnable': true};
+          }
+          return {
+            'backend': 'cpu',
+            'logs': ['ready'],
+          };
+        });
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: GoEngineRuntimePage(profile: GoEngineProfile.builtIn),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('CPU 引擎可用'), findsOneWidget);
+    await tester.tap(find.text('读取日志'));
+    await tester.pumpAndSettle();
+    expect(calls, ['backendPreflight', 'diagnostics']);
+    expect(find.textContaining('ready'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+    debugDefaultTargetPlatformOverride = null;
+  });
 }

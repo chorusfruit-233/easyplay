@@ -46,42 +46,7 @@ void main() {
     bytes: 1024,
     kind: GoModelKind.human,
   );
-  const tflite = GoModelInfo(
-    id: 'tflite',
-    name: 'tflite',
-    fileName: 'model.tflite',
-    sha256: 'c',
-    bytes: 1024,
-    kind: GoModelKind.tflite,
-  );
-
-  test('checks model/backend compatibility', () {
-    GoModelCompatibility.validate(
-      model: standard,
-      engine: GoEngineProfile.builtIn,
-    );
-    expect(
-      () => GoModelCompatibility.validate(
-        model: standard,
-        engine: const GoEngineProfile(
-          id: 'tflite',
-          name: 'TFLite',
-          backend: GoEngineBackend.tflite,
-        ),
-      ),
-      throwsArgumentError,
-    );
-    GoModelCompatibility.validate(
-      model: tflite,
-      engine: const GoEngineProfile(
-        id: 'tflite',
-        name: 'TFLite',
-        backend: GoEngineBackend.tflite,
-      ),
-    );
-  });
-
-  test('requires a human network and rejects TFLite human style', () {
+  test('CPU supports standard and human models with distinct roles', () {
     GoModelCompatibility.validate(
       model: standard,
       engine: GoEngineProfile.builtIn,
@@ -97,17 +62,22 @@ void main() {
     );
     expect(
       () => GoModelCompatibility.validate(
-        model: tflite,
-        engine: const GoEngineProfile(
-          id: 'tflite',
-          name: 'TFLite',
-          backend: GoEngineBackend.tflite,
-        ),
-        humanModel: human,
+        model: human,
+        engine: GoEngineProfile.builtIn,
       ),
       throwsArgumentError,
     );
   });
+
+  test(
+    'obsolete model metadata is rejected instead of interpreted as standard',
+    () {
+      expect(
+        () => GoModelInfo.fromJson({...standard.toJson(), 'kind': 'tflite'}),
+        throwsFormatException,
+      );
+    },
+  );
 
   test('recognizes human metadata rather than a model name or extension', () {
     expect(

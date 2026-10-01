@@ -1,62 +1,29 @@
-# Android KataGo host
+# Android KataGo CPU bridge
 
-`tools/build_katago_android.sh [cpu|opencl|all]` builds pinned KataGo v1.18.2.
-The default is `all`. OpenCL-Headers v2025.07.22 is pinned at
-`8a97ebc88daa3495d6f57ec10bb515224400186f` (Khronos Group, Apache-2.0;
-the license is already bundled as `assets/katago/COPYING.APACHE`). The generated
-loader uses these header declarations; it dynamically loads the device's driver
-inside the KataGo child process. No private APK ABI is called.
+The APK embeds upstream KataGo's arm64 Eigen GTP executable as `libkatago.so`.
+It executes from `nativeLibraryDir`; models stay in app-private storage.
 
-The `easyplay/katago` MethodChannel uses these methods:
+The `easyplay/katago` MethodChannel supports:
 
-| Method | Arguments | Result |
-| --- | --- | --- |
-| `backendPreflight` | `backend`: cpu/opencl/tflite; optional `openclLibraryName`, `openclGpuIdx`, and full model/config arguments below | Map: backend, available, runnable, library, reason, devices (index/name/vendor/version); with model: tuningId, tuned |
-| `start` | `model`: Uint8List, `config`: String; optional `modelFileName`, `backend` (cpu), `boardSize` (19), `openclGpuIdx` (-1 auto), `openclLibraryName`, `humanModel`: Uint8List, `humanModelFileName`, `humanSLProfile` | `ready` |
-| `command` | `line`: single GTP command | String GTP response without leading `=` |
-| `analyze` | `line`: a `kata-analyze` command; `minMillis`, `maxMillis`, optional `targetVisits` | Map: `reports` (the `info` lines collected), `reason` |
-| `analyzeCancel` | none | `cancelled`; ends a running analysis early, so it runs off the command queue |
-| `stop` | none | `stopped`; invalidates queued work and immediately detaches the old process |
-| `openclTuningStart` | Same model/config/board/GPU/library fields as `start`; optional `force`: bool | Tuning snapshot |
-| `openclTuningRead` | `id`: tuning job ID (omit for latest) | Tuning snapshot |
-| `openclTuningCancel` | `id`: tuning job ID (omit for latest) | Tuning snapshot |
-| `openclTuningReset` | `tuningId`: cache ID or full model/config arguments | Map: tuningId, reset |
-| `diagnostics` | none | Map: backend, running, logs, tuning |
+| Method | Purpose |
+| --- | --- |
+| `backendPreflight` | Check the CPU executable; return availability and reason. |
+| `start` | Start GTP with model ID or bundled bytes, config, board size, optional human model. |
+| `validateModel` | Stream a stored model's SHA-256 and compare it with its ID. |
+| `command` | Send one GTP command and return its response. |
+| `analyze`, `analyzeCancel` | Collect streaming reports and interrupt analysis. |
+| `stop` | Invalidate queued work and detach the process. |
+| `diagnostics` | Return running state and recent logs. |
+| `storeModel`, `loadModel`, `deleteModel` | Manage models; whole-file reads are limited to 8 MB. |
 
-Tuning snapshots contain `id` (task UUID), `tuningId` (cache SHA-256), `status`
-(`queued`, `running`, `completed`, `cancelled`, `failed`), `stage`, `error`,
-and `logs` (latest 160 lines). Polling does not block on tuning or GTP search.
-Preflight is isolated in its own process with an eight second timeout.
+Imported models use SHA-256 IDs. Files are validated and copied by streaming;
+large models never return through Flutter's codec during setup or play. The
+small bundled b6 may be supplied directly. Filenames retain their format.
 
-`kata-analyze` is the one command with no terminating response: KataGo prints `=`
-and then one report line per interval until the controller sends further input.
-`analyze` therefore parks a reader on the pipe, waits out its budget, and only
-then writes a blank line to end the stream, draining the trailing blank line so
-the next command's reply cannot be misread.
+`kata-analyze` has no final response until further input. The controller drains
+reports, sends a blank line to stop analysis, and consumes the trailing blank
+line before the next command.
 
-The same neural-network/OpenCL configuration, model bytes, optional human model bytes, board size,
-GPU and driver library must be used for tuning and startup. Search strength, komi and human rank do not invalidate the tuning cache. The cache also
-includes the Android build fingerprint and a SHA-256 of the OpenCL executable
-itself, so replacing the engine invalidates caches produced by the old one. A successful tuning
-marker contains checksums for the generated cache files; changed or missing
-cache files require tuning again. Both main and human networks are tuned.
-
-OpenCL startup raises `KATAGO_TUNING_REQUIRED` until a verified cache exists.
-TFLite raises `KATAGO_UNSUPPORTED`: the pinned upstream KataGo release has no
-LiteRT backend, and the reference APK's shared-library ABI is not published.
-All native failures stay in child processes. Generic channel failures use
-`KATAGO`, and calls after host disposal use `KATAGO_CLOSED`.
-
-Device verification: Adreno 830 on Android API 36 enumerated successfully,
-completed b6 9x9 tuning and a GTP `genmove B` returned `F5` (exit code 0).
-Adreno's rejection of a union of valid device-type flags is handled by retrying
-device enumeration with `CL_DEVICE_TYPE_ALL`; KataGo filters the resulting types.
-
-The official `b18c384nbt-humanv0.bin.gz` human model was also tested on the same
-device with the CPU backend, b6 main model, a 9x9 board,
-`humanSLProfile=rank_5k`, `humanSLChosenMoveProp=1.0`, `maxVisits=1` and
-`maxTime=1`. KataGo loaded the human SL net, generated `F6`, and exited with
-code 0. The downloaded model was 99,066,230 bytes, SHA-256
-`637746e44f0efe00ad1245a50aa9bbf0716efe364c43965ead97bd6835d84ab5`.
-This verifies the native CPU human-model path; OpenCL plus the human model
-still requires its own tuning run on the selected device.
+Native failures occur in the child process. Bridge errors use `KATAGO`; calls
+after disposal use `KATAGO_CLOSED`. CPU human-style inference has been verified
+with b6 plus the official b18 human network on Android API 36.

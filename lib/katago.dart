@@ -200,7 +200,6 @@ class KataGoAndroidRuntime {
     await _enqueue(() async {
       if (generation != _generation) throw StateError('引擎启动已取消');
       if (_started) return;
-      final model = await GoModelLibrary.load(settings.modelId);
       final engine = await GoEngineLibrary.byId(settings.engineProfileId);
       await validateKataGoSelection(settings, engine);
 
@@ -208,33 +207,26 @@ class KataGoAndroidRuntime {
         id: settings.modelId,
         backend: engine.backend,
       );
-      Uint8List? humanModel;
       if (settings.style == GoAiStyle.human && settings.humanModelId != null) {
         await GoModelLibrary.validateForEngine(
           id: settings.humanModelId!,
           backend: engine.backend,
           humanModel: true,
         );
-        humanModel = await GoModelLibrary.load(settings.humanModelId!);
       }
       try {
         final configText = await _configText(config, settings, engine);
         final arguments = <String, Object?>{
-          'model': model,
-          'modelFileName': (await GoModelLibrary.byId(
-            settings.modelId,
-          )).fileName,
-          'humanModel': ?humanModel,
-          if (humanModel != null)
-            'humanModelFileName': (await GoModelLibrary.info(
+          ...await GoModelLibrary.androidModelArguments(settings.modelId),
+          if (settings.style == GoAiStyle.human &&
+              settings.humanModelId != null)
+            ...await GoModelLibrary.androidModelArguments(
               settings.humanModelId!,
-            )).fileName,
+              prefix: 'humanModel',
+            ),
 
           'backend': engine.backend.name,
           'boardSize': config.boardSize,
-          if (engine.openclGpuIdx != null) 'openclGpuIdx': engine.openclGpuIdx,
-          if (engine.openclLibraryName != null)
-            'openclLibraryName': engine.openclLibraryName,
           'config': configText,
         };
         if (generation != _generation) throw StateError('引擎启动已取消');
@@ -356,9 +348,6 @@ class KataGoWebRuntime {
   }) async {
     final engine = await GoEngineLibrary.byId(settings.engineProfileId);
     await validateKataGoSelection(settings, engine);
-    if (engine.backend == GoEngineBackend.tflite) {
-      throw UnsupportedError('静态 Web 不支持 TFLite，请选择 CPU/WASM 和标准模型');
-    }
     final mainModelId = settings.modelId;
     await GoModelLibrary.validateForEngine(
       id: mainModelId,
@@ -408,9 +397,6 @@ class KataGoWebRuntime {
   }) async {
     final engine = await GoEngineLibrary.byId(settings.engineProfileId);
     await validateKataGoSelection(settings, engine);
-    if (engine.backend == GoEngineBackend.tflite) {
-      throw UnsupportedError('静态 Web 不支持 TFLite');
-    }
     final mainModelId = settings.modelId;
     await GoModelLibrary.validateForEngine(
       id: mainModelId,

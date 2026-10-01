@@ -9,21 +9,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'go_model_storage.dart';
 import 'go_engine_profiles.dart';
 
-enum GoModelKind { standard, human, tflite }
+enum GoModelKind { standard, human }
 
 /// Validate the compressed stream and KataGo header, including human metadata.
 /// Native KataGo additionally validates every tensor when the engine starts.
 GoModelKind inspectGoModel(Uint8List bytes) {
   if (bytes.length < 16) throw const FormatException('模型文件不完整');
-  if (ascii.decode(bytes.sublist(4, 8), allowInvalid: true) == 'TFL3') {
-    final offset = ByteData.sublistView(bytes).getUint32(0, Endian.little);
-    if (offset < 8 || offset >= bytes.length - 4) {
-      throw const FormatException('TFLite 根表损坏');
-    }
-    return GoModelKind.tflite;
-  }
   if (bytes[0] != 0x1f || bytes[1] != 0x8b) {
-    throw const FormatException('模型不是 gzip 或 TFLite 文件');
+    throw const FormatException('模型不是 gzip 文件');
   }
   final output = OutputMemoryStream();
   if (!const GZipDecoder().decodeStream(
@@ -86,7 +79,6 @@ extension GoModelKindX on GoModelKind {
   String get label => switch (this) {
     GoModelKind.standard => '标准网络',
     GoModelKind.human => '人类棋风网络',
-    GoModelKind.tflite => 'TFLite 网络',
   };
 }
 
@@ -112,19 +104,9 @@ class GoModelInfo {
   bool get isHumanModel => kind == GoModelKind.human;
 
   /// Whether this network format can be loaded by the selected KataGo backend.
-  bool supportsBackend(GoEngineBackend backend) => switch (kind) {
-    GoModelKind.standard =>
-      backend == GoEngineBackend.cpu || backend == GoEngineBackend.opencl,
-    GoModelKind.human =>
-      backend == GoEngineBackend.cpu || backend == GoEngineBackend.opencl,
-    GoModelKind.tflite => backend == GoEngineBackend.tflite,
-  };
+  bool supportsBackend(GoEngineBackend backend) => true;
 
-  String get compatibilityDescription => switch (kind) {
-    GoModelKind.standard => 'CPU 或 OpenCL',
-    GoModelKind.human => 'CPU 或 OpenCL（不能用于 TFLite）',
-    GoModelKind.tflite => 'TFLite Mobile',
-  };
+  String get compatibilityDescription => 'CPU';
 
   Map<String, Object> toJson() => {
     'id': id,
@@ -143,7 +125,9 @@ class GoModelInfo {
     bytes: json['bytes']! as int,
     kind: GoModelKind.values.firstWhere(
       (value) => value.name == json['kind'],
-      orElse: () => GoModelKind.standard,
+      orElse: () => json['kind'] == null
+          ? GoModelKind.standard
+          : throw const FormatException('不支持的模型类型'),
     ),
   );
 }
@@ -169,14 +153,6 @@ class GoModelCompatibility {
     if (humanModel == null) return;
     if (!humanModel.isHumanModel) {
       throw ArgumentError('human model 必须标记为人类棋风网络');
-    }
-    if (engine.backend == GoEngineBackend.tflite) {
-      throw ArgumentError('TFLite Mobile 暂不支持 human model');
-    }
-    if (!humanModel.supportsBackend(engine.backend)) {
-      throw ArgumentError(
-        'human model“${humanModel.name}”不能运行在 ${engine.backend.label}',
-      );
     }
   }
 }
@@ -268,6 +244,33 @@ class GoModelLibrary {
     return bytes;
   }
 
+  /// Imported Android models stay on disk; only the small bundled model crosses
+  /// the platform channel. The native host validates file hashes by streaming.
+  static Future<Map<String, Object?>> androidModelArguments(
+    String id, {
+    String prefix = 'model',
+  }) async {
+    final model = await byId(id);
+    return {
+      if (id == bundledId) prefix: await load(id) else '${prefix}Id': id,
+      '${prefix}FileName': model.fileName,
+    };
+  }
+
+  /// Validate before entering play without copying large Android model files.
+  static Future<void> validateAvailable(String id) async {
+    await byId(id);
+    if (!kIsWeb &&
+        defaultTargetPlatform == TargetPlatform.android &&
+        id != bundledId) {
+      await const MethodChannel(
+        'easyplay/katago',
+      ).invokeMethod<void>('validateModel', {'id': id});
+    } else {
+      await load(id);
+    }
+  }
+
   static Future<GoModelInfo> info(String id) async {
     final model = (await available())
         .where((entry) => entry.id == id)
@@ -285,12 +288,6 @@ class GoModelLibrary {
     if (humanModel && model.kind != GoModelKind.human) {
       throw StateError('所选模型不是人类棋风网络');
     }
-    if (backend == GoEngineBackend.tflite && model.kind != GoModelKind.tflite) {
-      throw StateError('TFLite 后端必须使用 TFLite 模型');
-    }
-    if (backend != GoEngineBackend.tflite && model.kind == GoModelKind.tflite) {
-      throw StateError('TFLite 模型只能使用 TFLite 后端');
-    }
   }
 
   static Future<GoModelInfo> install({
@@ -307,25 +304,12 @@ class GoModelLibrary {
     final cleanFileName = fileName.trim();
     if (cleanName.isEmpty) throw ArgumentError('请填写模型名称');
     final lowerFileName = cleanFileName.toLowerCase();
-    final validExtension = kind == GoModelKind.tflite
-        ? lowerFileName.endsWith('.tflite') || lowerFileName.endsWith('.lite')
-        : lowerFileName.endsWith('.bin.gz') ||
-              lowerFileName.endsWith('.txt.gz');
-    if (!validExtension) {
-      throw ArgumentError(
-        kind == GoModelKind.tflite
-            ? 'TFLite 模型应为 .tflite 或 .lite 文件'
-            : 'KataGo 模型应为 .bin.gz 或 .txt.gz 文件',
-      );
+    if (!lowerFileName.endsWith('.bin.gz') &&
+        !lowerFileName.endsWith('.txt.gz')) {
+      throw ArgumentError('KataGo 模型应为 .bin.gz 或 .txt.gz 文件');
     }
-    if (bytes.length < 1024 ||
-        (kind != GoModelKind.tflite &&
-            (bytes[0] != 0x1f || bytes[1] != 0x8b))) {
-      throw ArgumentError(
-        kind == GoModelKind.tflite
-            ? '文件不是有效的 TFLite 模型'
-            : '文件不是有效的 gzip KataGo 模型',
-      );
+    if (bytes.length < 1024 || bytes[0] != 0x1f || bytes[1] != 0x8b) {
+      throw ArgumentError('文件不是有效的 gzip KataGo 模型');
     }
     final checksum = sha256.convert(bytes).toString();
     if (expectedSha256 != null &&
@@ -334,8 +318,7 @@ class GoModelLibrary {
       throw StateError('模型 SHA-256 校验失败');
     }
     final detectedKind = await compute(inspectGoModel, bytes);
-    if ((kind == GoModelKind.human && detectedKind != GoModelKind.human) ||
-        (kind == GoModelKind.tflite) != (detectedKind == GoModelKind.tflite)) {
+    if (kind == GoModelKind.human && detectedKind != GoModelKind.human) {
       throw ArgumentError('模型内容与所选类型不符：实际为 ${detectedKind.label}');
     }
     final info = GoModelInfo(
