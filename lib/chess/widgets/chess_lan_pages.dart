@@ -1,3 +1,4 @@
+import '../../lan/rtc_lobby_page.dart';
 import 'dart:async';
 import 'dart:math';
 
@@ -23,6 +24,7 @@ class ChessLanLobbyPage extends StatelessWidget {
       children: [
         Text('标准国际象棋 · 规则版本 $chessRulesVersion'),
         const SizedBox(height: 16),
+        RtcLobbyEntry(game: 'chess'),
         if (lanCanHost)
           Card(
             child: ListTile(

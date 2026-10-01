@@ -1,6 +1,7 @@
 # EasyPlay Web ↔ Web WebRTC 联机实施计划
 
-> 状态：设计计划，尚未实施。基于 2026-10-01 的 `main` 仓库结构和公开平台文档。  
+> 状态：Phase 0 与 Phase 1 无服务器 MVP 代码及本地回归已完成；正式 Pages/跨设备验收待部署，Cloudflare 阶段按用户确认延后。基于 2026-10-01 的 `main` 仓库结构和公开平台文档。
+> 实施与使用说明：[WEBRTC_MULTIPLAYER.md](WEBRTC_MULTIPLAYER.md)。
 > 部署约束：**不购买 VPS，保留现有 GitHub Pages**。首个可用版本不依赖自有后端；自动信令和可靠跨网连接作为后续增强。  
 > 范围：围棋、国际象棋、全部现有八种 Draughts/Checkers 变体，双人 Web ↔ Web 对局。**不替换、不破坏 Android 房主的现有 LAN/WebSocket 方案**。
 
@@ -62,7 +63,7 @@ GitHub Pages (只提供静态 Web)
       浏览器 A 内存中的权威对局
 ```
 
-- 公共 STUN 可先配置 `stun:stun.cloudflare.com:3478`，且 STUN 服务不可用时 UI 应有明确失败提示。
+- 公共 STUN 默认采用国内候选 `stun:stun.miwifi.com:3478` 与 `stun:stun.hitv.com:3478`；可切换国际服务或自定义多地址。部分服务超时不丢弃已取得的映射候选，全部不可用时明确提示切换服务。
 - 采用 non-trickle 手工信令：`setLocalDescription()` 后等待 `iceGatheringState == complete`，再导出最终 `localDescription`；提供超时/取消，不无限等待。
 - Offer/Answer 容器需带 `formatVersion`、`sessionId`、`createdAt`、`game`、`variant/rulesVersion`（适用时）、`description.type` 和 `description.sdp`；校验大小、版本、过期时间与字段类型。
 - 手动邀请内容可能包含连接候选和网络元数据；UI 告知只与对手私下分享，不自动发表或记录到日志。它不是短房间码，也不保证首次连接成功。
@@ -200,19 +201,20 @@ test/lan/
 
 ### Phase 0 — 先抽房间核心，不改变旧行为
 
-- [ ] 引入 `RoomCoordinator` / `MessageTransport`，把监听 socket 的部分与权威协议分开。
-- [ ] 保持 Android LAN 建房/加入、Web LAN 加入、协议版本和现有 UI 功能。
-- [ ] 利用 fake transport 跑三类游戏双端：开房、握手、落子、非法步拒绝、悔棋/提和/计分/再来一局、断线同步。
+- [x] 引入 `RoomCoordinator` / `MessageTransport`，把监听 socket 的部分与权威协议分开。
+- [x] 保持 Android LAN 建房/加入、Web LAN 加入、协议版本和现有 UI 功能。
+- [x] 利用 fake transport 跑三类游戏双端：开房、握手、落子、非法步拒绝、悔棋/提和/计分/再来一局、断线同步。
 - **验收：** 旧 LAN 全量测试、`dart analyze lib test` 和 `flutter test` 通过；旧联机行为没有回归。
 
 ### Phase 1 — GitHub Pages 手动信令 WebRTC MVP（无服务成本）
 
-- [ ] `rtc_manual_signaling.dart` 完整导出/导入 non-trickle Offer/Answer；候选搜集完成/超时/取消。
-- [ ] 建立可靠有序 DataChannel + 传输分片/重组/背压。
-- [ ] Web Host 建立 Authority + 本地 Replica；Web Guest 经 DataChannel 加入。
-- [ ] 三游戏复用现有联机交互、房主先手、规则/配置校验。
-- [ ] 两个不同浏览器标签页完成完整对局；跨机器同 LAN 和可直连的跨网环境再测一次。
-- [ ] UI 有真实连接状态、失败/取消与重新开始；无 TURN 时明确提示可能无法跨网。
+- [x] `rtc_manual_signaling.dart` 完整导出/导入 non-trickle Offer/Answer；候选搜集完成/超时/取消。
+- [x] 建立可靠有序 DataChannel + 传输分片/重组/背压。
+- [x] Web Host 建立 Authority + 本地 Replica；Web Guest 经 DataChannel 加入。
+- [x] 三游戏复用现有联机交互、房主先手、规则/配置校验。
+- [x] Chromium / Firefox 真实双标签页通道通过握手、落子、大包同步及重协商；Chromium 另验证计分、重赛和实际 Flutter 创建/加入页面。
+- [ ] 跨机器同 LAN、可直连的跨网环境和正式 GitHub Pages 地址仍需发布后验收。
+- [x] UI 有真实连接状态、失败/取消与重新开始；无 TURN 时明确提示可能无法跨网。
 - **验收：** 不创建任何 Worker/Realtime 账号，不购买 VPS，在 GitHub Pages 的正式 `/easyplay/` 路径上完成 Web ↔ Web 对局；Android LAN 不受影响。
 
 ### Phase 2 — 自动信令（仍无 VPS）
@@ -247,7 +249,7 @@ test/lan/
 - Phase 0 是内部重构，不改变线上协议时保持 `lanProtocolVersion`；需要改变消息语义时再升版本。
 - GitHub Pages 工作流继续发布静态 `build/web`；Cloudflare Worker 作为独立部署任务，部署失败不应阻断原本的静态站点发布。
 - 新服务密钥仅在 Cloudflare Secrets / GitHub Actions Secrets（若自动部署确有需要）中管理；仓库只存变量名与脱敏配置示例。
-- 计划通过评审后再实施。本文档提交本身**不代表 WebRTC、Worker 或 TURN 已启用**。
+- 计划通过评审后再实施。WebRTC 手动信令已在本轮实现；Worker 与 TURN 尚未启用。正式 Pages 验收需在部署后进行。
 
 ## 10. 官方参考
 

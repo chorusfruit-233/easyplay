@@ -1,3 +1,4 @@
+import 'rtc_lobby_page.dart';
 import 'dart:async';
 import 'dart:math';
 
@@ -26,6 +27,7 @@ class LanLobbyPage extends StatelessWidget {
           style: Theme.of(context).textTheme.bodyLarge,
         ),
         const SizedBox(height: 20),
+        RtcLobbyEntry(game: 'go'),
         if (lanCanHost)
           Card(
             child: ListTile(

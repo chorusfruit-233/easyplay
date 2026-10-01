@@ -2,12 +2,13 @@
 
 EasyPlay 是一个面向 Android 和 Web 的 Flutter 棋类应用，目标支持围棋、国际象棋和跳棋。
 
-当前版本已经包含围棋完整对局流程、KataGo 人机模式、不可用时的本地双人回退、响应式首页、对局页、悔棋和棋谱入口；国际象棋与跳棋入口仍标记为未完成。
+当前支持围棋、标准国际象棋及八种 Draughts / Checkers 规则，包含本地双人、AI 和 Android LAN 对弈。浏览器还支持无服务器 WebRTC 手动邀请直连，由房主验证走子；暂未启用自动信令或 TURN。
 
 完整的项目结构、规则边界、构建方式、Gradle 注意事项、测试约定和后续需求模板见：
 
 - [开发文档](docs/DEVELOPMENT.md)
 - [AI 引擎与模型使用说明](docs/AI_ENGINES.md)
+- [浏览器 WebRTC 联机说明](docs/WEBRTC_MULTIPLAYER.md)
 
 快速运行：
 

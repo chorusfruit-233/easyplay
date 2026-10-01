@@ -1,3 +1,4 @@
+import '../../lan/rtc_lobby_page.dart';
 import 'dart:async';
 import 'dart:math';
 
@@ -30,6 +31,7 @@ class DraughtsLanLobbyPage extends StatelessWidget {
           '${variant.label} · ${DraughtsRules.forVariant(variant).shortDescription}',
         ),
         const SizedBox(height: 16),
+        RtcLobbyEntry(game: 'draughts', variant: variant),
         if (lanCanHost)
           Card(
             child: ListTile(

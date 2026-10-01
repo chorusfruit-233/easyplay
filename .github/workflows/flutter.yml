@@ -39,5 +39,9 @@ jobs:
           npm install --no-save --package-lock=false playwright@1.58.2
           npx playwright install --with-deps chromium
           node tools/test_stockfish_web.cjs
+      - name: WebRTC production transport browser smoke
+        run: |
+          flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/lan/rtc_browser_smoke.dart --output build/rtc-smoke
+          node tools/test_rtc_web.cjs
       - run: flutter build web --no-wasm-dry-run
       - run: python3 tools/package_lan_android.py --debug

@@ -14,7 +14,8 @@ import 'draughts_lan_game.dart';
 import 'lan_game.dart';
 import 'lan_ports.dart';
 import 'lan_protocol.dart';
-import 'lan_rematch.dart';
+import 'message_transport.dart';
+import 'room_coordinator.dart';
 
 class LanHostServer {
   // Preserve the existing named Go constructor parameter for callers.
@@ -41,38 +42,30 @@ class LanHostServer {
   LanAuthority get authority => _authority!;
   final String token;
   HttpServer? _server;
-  bool _started = false;
-  final _clients = <_LanPeer>[];
-  final _authFailures = <String, List<DateTime>>{};
-  final _playerCounts = StreamController<int>.broadcast();
-  Timer? _undoTimer;
+  late final coordinator = RoomCoordinator(
+    authority: _authority,
+    draughtsAuthority: draughtsAuthority,
+    chessAuthority: chessAuthority,
+    token: token,
+  );
   InternetAddress? get address => _server?.address;
   int? get port => _server?.port;
-  int get playerCount => _clients.where((peer) => peer.side != null).length;
-  bool get started => _started;
+  int get playerCount => coordinator.playerCount;
+  bool get started => coordinator.started;
   bool get isDraughts => draughtsAuthority != null;
-  int get seq => chessAuthority?.seq ?? draughtsAuthority?.seq ?? authority.seq;
+  int get seq => coordinator.seq;
   int get boardSize => chessAuthority != null
       ? 8
       : draughtsAuthority?.session.rules.boardSize ??
             authority.session.goConfig.boardSize;
-  bool get gameOver =>
-      chessAuthority?.session.gameOver ??
-      draughtsAuthority?.session.gameOver ??
-      authority.session.gameOver;
-  LanRematchRequest? get _rematchRequest => chessAuthority != null
-      ? chessAuthority!.rematchRequest
-      : draughtsAuthority != null
-      ? draughtsAuthority!.rematchRequest
-      : authority.rematchRequest;
-  Stream<int> get playerCounts => _playerCounts.stream;
-
-  void startMatch() {
-    if (_started) return;
-    if (playerCount != 2) throw StateError('对手尚未加入');
-    _started = true;
-    _broadcast(LanMessage(LanMessageType.matchStart, seq));
-  }
+  bool get gameOver => coordinator.gameOver;
+  Stream<int> get playerCounts => coordinator.playerCounts;
+  void startMatch() => coordinator.startMatch();
+  LanMessage sync(LanMessage request) => coordinator.sync(request);
+  LanMessage submit(Side side, LanMessage request) =>
+      coordinator.submit(side, request);
+  bool acceptsHello(Map<String, Object?> body) =>
+      coordinator.acceptsHello(body);
 
   Future<void> start({
     String host = '0.0.0.0',
@@ -122,7 +115,7 @@ class LanHostServer {
         'players': playerCount,
         'phase': gameOver
             ? 'finished'
-            : _started
+            : started
             ? 'playing'
             : 'waiting',
       });
@@ -139,9 +132,10 @@ class LanHostServer {
         final remoteAddress =
             request.connectionInfo?.remoteAddress.address ?? 'unknown';
         final socket = await WebSocketTransformer.upgrade(request);
-        final peer = _LanPeer(this, socket, remoteAddress);
-        _clients.add(peer);
-        peer.listen();
+        coordinator.attach(
+          SocketMessageTransport(socket),
+          identity: remoteAddress,
+        );
       } catch (_) {
         request.response
           ..statusCode = HttpStatus.badRequest
@@ -187,104 +181,10 @@ class LanHostServer {
     await request.response.close();
   }
 
-  void _remove(_LanPeer peer) {
-    if (_clients.remove(peer) && peer.side != null && !_playerCounts.isClosed) {
-      _playerCounts.add(playerCount);
-    }
-  }
-
-  bool _tooManyFailures(String address) {
-    final recent = _authFailures.putIfAbsent(address, () => []);
-    recent.removeWhere(
-      (at) => DateTime.now().difference(at) > const Duration(minutes: 1),
-    );
-    return recent.length >= 5;
-  }
-
-  void _recordAuthFailure(String address) =>
-      _authFailures.putIfAbsent(address, () => []).add(DateTime.now());
-
-  void _broadcast(LanMessage event) {
-    if (event.type == LanMessageType.undoRequest) {
-      _undoTimer?.cancel();
-      _undoTimer = Timer(const Duration(seconds: 30), () {
-        final expired = chessAuthority != null
-            ? chessAuthority!.expireUndo(event.seq)
-            : draughtsAuthority != null
-            ? draughtsAuthority!.expireUndo(event.seq)
-            : authority.expireUndo(event.seq);
-        if (expired != null) _broadcast(expired);
-      });
-    } else if (event.type == LanMessageType.drawRequest) {
-      _undoTimer?.cancel();
-      _undoTimer = Timer(const Duration(seconds: 30), () {
-        final expired =
-            chessAuthority?.expireDraw(event.seq) ??
-            draughtsAuthority?.expireDraw(event.seq);
-        if (expired != null) _broadcast(expired);
-      });
-    } else if (event.type == LanMessageType.rematchRequest) {
-      _undoTimer?.cancel();
-      _undoTimer = Timer(const Duration(seconds: 30), () {
-        final pending = _rematchRequest;
-        if (pending == null || pending.seq != event.seq) return;
-        final expired = submit(
-          pending.side.opponent,
-          LanMessage(LanMessageType.rematchReject, seq + 1, {
-            'side': LanMessage.sideCode(pending.side.opponent),
-            'requestSeq': pending.seq,
-          }),
-        );
-        if (expired.type != LanMessageType.rejected) _broadcast(expired);
-      });
-    } else if (event.type == LanMessageType.rematchAccept ||
-        event.type == LanMessageType.rematchReject ||
-        event.type == LanMessageType.undoAccept ||
-        event.type == LanMessageType.undoReject ||
-        event.type == LanMessageType.drawAccept ||
-        event.type == LanMessageType.drawReject) {
-      _undoTimer?.cancel();
-    }
-    final encoded = event.encode();
-    for (final peer in List.of(_clients)) {
-      if (peer.side != null) peer.socket.add(encoded);
-    }
-  }
-
-  LanMessage sync(LanMessage request) =>
-      chessAuthority?.sync(request) ??
-      draughtsAuthority?.sync(request) ??
-      authority.sync(request);
-
-  LanMessage submit(Side side, LanMessage request) =>
-      chessAuthority?.submit(side, request) ??
-      draughtsAuthority?.submit(side, request) ??
-      authority.submit(side, request);
-
-  bool acceptsHello(Map<String, Object?> body) {
-    if (chessAuthority != null) {
-      return body['game'] == 'chess' &&
-          body['rulesVersion'] == chessRulesVersion;
-    }
-    if (isDraughts) {
-      return body['game'] == 'draughts' &&
-          body['variant'] == draughtsAuthority!.variant.name &&
-          body['rulesVersion'] == draughtsRulesVersion;
-    }
-    return (body['game'] == null || body['game'] == 'go') &&
-        _sameConfig(LanMessage.parseConfig(body), authority.session.goConfig);
-  }
-
   Future<void> close() async {
-    _undoTimer?.cancel();
-    for (final peer in List.of(_clients)) {
-      await peer.close();
-    }
-    _clients.clear();
+    await coordinator.close();
     await _server?.close(force: true);
     _server = null;
-    await _playerCounts.close();
-    chessAuthority?.dispose();
   }
 }
 
@@ -301,176 +201,38 @@ ContentType _contentType(String path) => switch (path.split('.').last) {
   _ => ContentType.binary,
 };
 
-class _LanPeer {
-  _LanPeer(this.server, this.socket, this.remoteAddress);
-  final LanHostServer server;
-  final WebSocket socket;
-  final String remoteAddress;
-  Side? side;
-  StreamSubscription<Object?>? _subscription;
-  Timer? _heartbeat;
-  DateTime _lastPong = DateTime.now();
-
-  void listen() {
+class SocketMessageTransport implements MessageTransport {
+  SocketMessageTransport(this.socket) {
     _subscription = socket.listen(
-      (raw) => _receive(raw),
-      onDone: () {
-        _heartbeat?.cancel();
-        server._remove(this);
+      (raw) {
+        try {
+          if (raw is String) _messages.add(LanMessage.decode(raw));
+        } catch (error) {
+          _messages.addError(error);
+        }
       },
-      onError: (_) {
-        _heartbeat?.cancel();
-        server._remove(this);
-      },
-      cancelOnError: true,
+      onDone: () => _disconnections.add(null),
+      onError: (_) => _disconnections.add(null),
     );
   }
-
-  void _receive(Object? raw) {
-    if (raw is! String) return;
-    try {
-      final message = LanMessage.decode(raw);
-      if (side == null) {
-        if (server._tooManyFailures(remoteAddress)) {
-          socket.add(
-            LanMessage(LanMessageType.rejected, server.seq, {
-              'reason': '口令尝试过多，请稍后重试',
-            }).encode(),
-          );
-          return;
-        }
-        String? reason;
-        if (message.type != LanMessageType.hello) {
-          reason = '联机协议版本不一致';
-        } else if (message.body['token'] != server.token) {
-          reason = '口令错误';
-          server._recordAuthFailure(remoteAddress);
-        } else if (!server.acceptsHello(message.body)) {
-          reason = '棋盘规则不一致';
-        }
-        if (reason != null) {
-          socket.add(
-            LanMessage(LanMessageType.rejected, server.seq, {
-              'reason': reason,
-            }).encode(),
-          );
-          return;
-        }
-        if (server._clients.where((peer) => peer.side != null).length >= 2) {
-          socket.add(
-            LanMessage(LanMessageType.rejected, server.seq, {
-              'reason': '房间已满',
-            }).encode(),
-          );
-          return;
-        }
-        final requested = message.body['resumeSide'];
-        final firstSide = server.chessAuthority != null
-            ? Side.white
-            : server.draughtsAuthority?.session.rules.firstMove ?? Side.black;
-        side = requested == null
-            ? (server._clients.any((peer) => peer.side == firstSide)
-                  ? firstSide.opponent
-                  : firstSide)
-            : LanMessage.parseSide(requested);
-        if (server._clients.any((peer) => peer != this && peer.side == side)) {
-          socket.add(
-            LanMessage(LanMessageType.rejected, server.seq, {
-              'reason': '原座位仍被占用',
-            }).encode(),
-          );
-          side = null;
-          return;
-        }
-        server._playerCounts.add(server.playerCount);
-        _lastPong = DateTime.now();
-        _heartbeat = Timer.periodic(const Duration(seconds: 5), (_) {
-          if (DateTime.now().difference(_lastPong) >
-              const Duration(seconds: 15)) {
-            socket.close();
-          } else {
-            socket.add(
-              LanMessage(LanMessageType.ping, server.seq, {
-                'nonce': DateTime.now().microsecondsSinceEpoch.toString(),
-              }).encode(),
-            );
-          }
-        });
-        socket.add(
-          LanMessage(LanMessageType.helloAck, server.seq, {
-            'assignedSide': LanMessage.sideCode(side!),
-            'started': server.started,
-          }).encode(),
-        );
-        socket.add(
-          server
-              .sync(
-                LanMessage(LanMessageType.stateRequest, server.seq, {
-                  'lastSeq': 0,
-                }),
-              )
-              .encode(),
-        );
-        return;
-      }
-      if (message.type == LanMessageType.stateRequest) {
-        socket.add(server.sync(message).encode());
-        return;
-      }
-      if (message.type == LanMessageType.pong) {
-        _lastPong = DateTime.now();
-        return;
-      }
-      if (message.type == LanMessageType.ping) {
-        socket.add(
-          LanMessage(LanMessageType.pong, server.seq, {
-            'nonce': message.body['nonce'],
-          }).encode(),
-        );
-        return;
-      }
-      if (!server.started) {
-        socket.add(
-          LanMessage(LanMessageType.rejected, server.seq, {
-            'reason': '等待房主开始对局',
-          }).encode(),
-        );
-        return;
-      }
-      final result = server.submit(side!, message);
-      if (result.type == LanMessageType.rejected) {
-        socket.add(result.encode());
-      } else {
-        server._broadcast(result);
-      }
-    } on FormatException catch (error) {
-      socket.add(
-        LanMessage(LanMessageType.rejected, server.seq, {
-          'reason': error.message,
-        }).encode(),
-      );
-    } catch (_) {
-      socket.add(
-        LanMessage(LanMessageType.rejected, server.seq, {
-          'reason': '无效的联机请求',
-        }).encode(),
-      );
-    }
-  }
-
+  final WebSocket socket;
+  late final StreamSubscription<Object?> _subscription;
+  final _messages = StreamController<LanMessage>.broadcast();
+  final _disconnections = StreamController<void>.broadcast();
+  @override
+  Stream<LanMessage> get messages => _messages.stream;
+  @override
+  Stream<void> get disconnections => _disconnections.stream;
+  @override
+  void send(LanMessage message) => socket.add(message.encode());
+  @override
   Future<void> close() async {
-    _heartbeat?.cancel();
-    await _subscription?.cancel();
+    await _subscription.cancel();
     await socket.close();
-    server._remove(this);
+    await _messages.close();
+    await _disconnections.close();
   }
 }
-
-bool _sameConfig(GoConfig left, GoConfig right) =>
-    left.boardSize == right.boardSize &&
-    left.rules == right.rules &&
-    left.komi == right.komi &&
-    left.handicap == right.handicap;
 
 class LanClientConnection {
   LanClientConnection(this.config) : draughtsVariant = null, isChess = false;
