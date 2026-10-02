@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import '../game_session.dart' show Side;
 import 'draughts_ai_level.dart';
 import 'draughts_move.dart';
@@ -16,6 +18,9 @@ class DraughtsAiResult {
 /// small batches on both native and Web, allowing cancellation and UI updates.
 /// All transitions, draw counters and capture paths belong to DraughtsSession.
 class DraughtsAi {
+  DraughtsAi({Random? random}) : _random = random ?? Random();
+
+  final Random _random;
   int _generation = 0;
   void cancel() => _generation++;
 
@@ -36,10 +41,21 @@ class DraughtsAi {
       maxNodes: maxNodes ?? level.nodes,
       maxDepth: maxDepth ?? level.depth,
       timeLimit: timeLimit ?? Duration(milliseconds: level.milliseconds),
+      captureExtension: level == DraughtsAiLevel.beginner ? 0 : 6,
     );
     await Future<void>.delayed(Duration.zero);
     final result = await search.run();
-    return generation == _generation ? result : null;
+    if (generation != _generation) return null;
+    // Entry-level practice deliberately overlooks tactics. Random moves come
+    // from the rule-filtered list, including mandatory complete capture paths.
+    if (level == DraughtsAiLevel.beginner && _random.nextDouble() < 0.75) {
+      return DraughtsAiResult(
+        moves[_random.nextInt(moves.length)],
+        result.depth,
+        result.nodes,
+      );
+    }
+    return result;
   }
 }
 
@@ -52,6 +68,7 @@ class _Search {
     required this.maxNodes,
     required this.maxDepth,
     required this.timeLimit,
+    required this.captureExtension,
   });
 
   final DraughtsSession session;
@@ -59,6 +76,7 @@ class _Search {
   final int maxNodes;
   final int maxDepth;
   final Duration timeLimit;
+  final int captureExtension;
   final Stopwatch clock = Stopwatch();
   int nodes = 0;
   static const win = 100000;
@@ -94,7 +112,13 @@ class _Search {
           session.applyMove(move);
           late final int value;
           try {
-            value = -await _negamax(depth - 1, -win * 2, -score, 1, 6);
+            value = -await _negamax(
+              depth - 1,
+              -win * 2,
+              -score,
+              1,
+              captureExtension,
+            );
           } finally {
             session.undo();
           }
@@ -127,8 +151,8 @@ class _Search {
       return result.winner == session.turn ? win - ply : -win + ply;
     }
     final moves = _ordered();
-    // Mandatory captures must be resolved before evaluating a quiet leaf;
-    // no stand-pat score is allowed when the player is obliged to capture.
+    // Stronger levels resolve mandatory captures before scoring a quiet leaf.
+    // Beginner uses no extension so it can overlook the opponent's tactics.
     final extend = depth <= 0 && moves.first.isCapture && captureExtension > 0;
     if (depth <= 0 && !extend) return _evaluate();
     var best = -win * 2;

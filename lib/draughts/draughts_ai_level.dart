@@ -1,5 +1,5 @@
 enum DraughtsAiLevel {
-  beginner('初级', 3, 600, 250),
+  beginner('初级', 1, 120, 100),
   intermediate('中级', 5, 4000, 800),
   advanced('高级', 8, 16000, 1800);
 

@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:easyplay/draughts/draughts.dart';
 import 'package:easyplay/game_session.dart' show Cell, Side;
@@ -11,6 +13,88 @@ DraughtsPosition board(Map<Cell, DraughtsPiece> pieces) {
 }
 
 void main() {
+  test('beginner overlooks an immediate loss that intermediate avoids', () async {
+    final session = DraughtsSession(
+      DraughtsRules.forVariant(DraughtsVariant.english),
+      position: board({
+        const Cell(2, 3): const DraughtsPiece(Side.black),
+        const Cell(4, 5): const DraughtsPiece(Side.white),
+      }),
+    );
+    // Exercise the non-random branch: a one-ply beginner cannot resolve the
+    // opponent's capture, even when it has enough time for the whole iteration.
+    final beginner = await DraughtsAi(random: _SearchOnlyRandom()).search(
+      session,
+      level: DraughtsAiLevel.beginner,
+      timeLimit: const Duration(seconds: 5),
+    );
+    expect(beginner!.depth, 1);
+    expect(beginner.nodes, lessThanOrEqualTo(DraughtsAiLevel.beginner.nodes));
+    expect(beginner.move.to, const Cell(3, 4));
+    final intermediate = await DraughtsAi().search(
+      session,
+      timeLimit: const Duration(seconds: 5),
+    );
+    expect(intermediate!.move.to, const Cell(3, 2));
+    final continuation = session.fork()..applyMove(beginner.move);
+    continuation.applyMove(continuation.legalMoves().single);
+    expect(continuation.result!.winner, Side.white);
+    expect(session.moves, isEmpty);
+  });
+
+  test(
+    'beginner randomizes legal choices instead of always optimizing',
+    () async {
+      final session = DraughtsSession(
+        DraughtsRules.forVariant(DraughtsVariant.english),
+      );
+      final before = session.toJson();
+      final ai = DraughtsAi(random: Random(42));
+      final chosen = <DraughtsMove>{};
+      for (var i = 0; i < 30; i++) {
+        final result = await ai.search(
+          session,
+          level: DraughtsAiLevel.beginner,
+          timeLimit: const Duration(seconds: 5),
+        );
+        expect(session.legalMoves(), contains(result!.move));
+        chosen.add(result.move);
+      }
+      expect(chosen.length, greaterThan(3));
+      expect(session.toJson(), before);
+    },
+  );
+
+  test(
+    'beginner random choices retain maximum complete capture paths',
+    () async {
+      final session = DraughtsSession(
+        DraughtsRules.forVariant(DraughtsVariant.brazilian),
+        position: board({
+          const Cell(0, 1): const DraughtsPiece(Side.black),
+          const Cell(2, 7): const DraughtsPiece(Side.black),
+          const Cell(1, 2): const DraughtsPiece(Side.white),
+          const Cell(3, 4): const DraughtsPiece(Side.white),
+          const Cell(3, 6): const DraughtsPiece(Side.white),
+          const Cell(5, 6): const DraughtsPiece(Side.white),
+        }),
+        turn: Side.black,
+      );
+      for (var seed = 0; seed < 8; seed++) {
+        final result = await DraughtsAi(
+          random: Random(seed),
+        ).search(session, level: DraughtsAiLevel.beginner);
+        expect(session.legalMoves(), contains(result!.move));
+        expect(result.move.captures.length, 3);
+        expect(result.move.path.length, 4);
+        final fork = session.fork();
+        expect(fork.applyMove(result.move), isTrue);
+        expect(fork.moveCount, 1);
+      }
+      expect(session.moves, isEmpty);
+    },
+  );
+
   for (final variant in DraughtsVariant.values) {
     test(
       'AI returns legal moves without changing $variant live state',
@@ -27,6 +111,19 @@ void main() {
         );
         expect(session.legalMoves(), contains(result!.move));
         expect(result.nodes, lessThanOrEqualTo(120));
+        expect(session.toJson(), before);
+        expect(session.revision, revision);
+        final beginner = await DraughtsAi(random: Random(42)).search(
+          session,
+          level: DraughtsAiLevel.beginner,
+          timeLimit: const Duration(seconds: 5),
+        );
+        expect(session.legalMoves(), contains(beginner!.move));
+        expect(beginner.depth, lessThanOrEqualTo(1));
+        expect(
+          beginner.nodes,
+          lessThanOrEqualTo(DraughtsAiLevel.beginner.nodes),
+        );
         expect(session.toJson(), before);
         expect(session.revision, revision);
         expect(session.undo(), isTrue);
@@ -98,6 +195,9 @@ void main() {
     final latest = ai.search(session, maxNodes: 30);
     expect(await old, isNull);
     expect(await latest, isNotNull);
+    final beginner = ai.search(session, level: DraughtsAiLevel.beginner);
+    ai.cancel();
+    expect(await beginner, isNull);
   });
 
   test('finished games produce no AI move', () async {
@@ -139,4 +239,13 @@ void main() {
     expect(fork.quietPlies, session.quietPlies);
     expect(fork.position, same(session.position));
   });
+}
+
+class _SearchOnlyRandom implements Random {
+  @override
+  double nextDouble() => 0.99;
+  @override
+  int nextInt(int max) => throw StateError('Search branch must not randomize');
+  @override
+  bool nextBool() => throw StateError('Not used');
 }
