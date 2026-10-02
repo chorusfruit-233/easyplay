@@ -59,18 +59,21 @@ void main() {
     await tester.pumpWidget(const EasyPlayApp());
     await tester.tap(find.byTooltip('设置'));
     await tester.pumpAndSettle();
-    expect(find.text('外观显示'), findsOneWidget);
-    expect(find.text('系统'), findsOneWidget);
-    expect(find.text('浅色'), findsOneWidget);
-    expect(find.text('深色'), findsOneWidget);
+    await tester.tap(find.text('主题设置'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('跟随系统'), findsOneWidget);
+    expect(find.byTooltip('浅色'), findsOneWidget);
+    expect(find.byTooltip('深色'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(ChoiceChip, '深色'));
+    await tester.tap(find.byTooltip('深色'));
     await tester.pumpAndSettle();
     expect(
       Theme.of(tester.element(find.byType(Scaffold).first)).brightness,
       Brightness.dark,
     );
 
+    await tester.pageBack();
+    await tester.pumpAndSettle();
     await tester.tap(find.text('关于 EasyPlay'));
     await tester.pumpAndSettle();
     expect(find.text('KataGo 神经网络模型'), findsOneWidget);

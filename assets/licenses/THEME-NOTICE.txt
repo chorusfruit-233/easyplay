@@ -1,0 +1,20 @@
+EasyPlay theme settings
+
+The Flutter theme page adapts the layout, preset colors and selection behavior
+of KernelSU's Material theme settings. Miuix is not included.
+KernelSU: https://github.com/tiann/KernelSU
+Reference commit: 08a3b087e49227c8a6731c5f1114998b5e25255b
+KernelSU contributors, GNU GPL version 3.
+Adaptation: EasyPlay contributors, 2026, GNU GPL version 3.
+The GPL license is included in GPL-3.0.txt.
+
+Material Color Utilities
+Copyright Google LLC, 2021-2026. Apache License, Version 2.0.
+https://github.com/material-foundation/material-color-utilities
+Pinned source commit: 5b3618b16fdc3825e21d5679bafd144662088ea1
+The Java and TypeScript algorithms retain upstream copyright headers.
+Java packages were relocated to com.easyplay.easyplay.materialcolor and optional
+Error Prone annotations removed. Calculation behavior is unchanged.
+Unused source modules are omitted. EasyPlay bridges expose 2021 and 2025 schemes.
+Source and Web bundle build notes: docs/THEMES.md.
+The Apache license is included in MATERIAL-COLORS-LICENSE.txt.

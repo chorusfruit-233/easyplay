@@ -599,3 +599,7 @@ Android debug APK 已成功生成
 ```
 
 Android 构建过程中的 Java 25 restricted-method warning 不影响上述 APK 生成结果。
+
+## 主题设置
+
+独立主题页复现 KernelSU 的 Material 配色设置，包括 15 个强调色、四种明暗模式、九种色彩风格、2021/2025 色彩标准和界面缩放；不提供 Miuix。主题状态、偏好迁移、官方算法来源和验证命令见 [主题说明](THEMES.md)。

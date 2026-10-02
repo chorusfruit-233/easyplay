@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:dynamic_color/dynamic_color.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'game_session.dart';
 import 'game_page.dart';
 import 'go_section_page.dart';
 import 'app_theme.dart';
+import 'theme_controller.dart';
+import 'theme_settings_page.dart';
 import 'settings_page.dart';
 import 'draughts/widgets/draughts_new_game_page.dart';
 import 'chess/widgets/chess_home_page.dart';
@@ -16,127 +16,58 @@ export 'game_page.dart';
 void main() => runApp(const EasyPlayApp());
 
 class EasyPlayApp extends StatefulWidget {
-  const EasyPlayApp({super.key});
+  const EasyPlayApp({super.key, this.themeController});
+  final ThemeController? themeController;
   @override
   State<EasyPlayApp> createState() => _EasyPlayAppState();
 }
 
-class _EasyPlayAppState extends State<EasyPlayApp> {
-  AppAppearance _appearance = AppAppearance.system;
-  Color? _monetSeed;
-  Color? _keyColorOverride;
-  DynamicSchemeVariant _paletteStyle = DynamicSchemeVariant.tonalSpot;
-  bool _amoled = false;
-
-  // Indigo is one of KernelSU's key-colour presets. Generate Material tonal
-  // roles from the same seed in both brightness modes.
-
+class _EasyPlayAppState extends State<EasyPlayApp> with WidgetsBindingObserver {
+  late final _theme = widget.themeController ?? ThemeController();
   @override
   void initState() {
     super.initState();
-    DynamicColorPlugin.getCorePalette().then((palette) {
-      if (!mounted || palette == null) return;
-      setState(() => _monetSeed = Color(palette.primary.get(40)));
-    });
-    SharedPreferences.getInstance().then((prefs) {
-      final value = prefs.getString('appearance');
-      final savedColor = prefs.getInt('theme_key_color');
-      final savedStyle = prefs.getString('theme_palette_style');
-      if (!mounted) return;
-      setState(() {
-        _appearance = value == 'monet' || value == 'amoled'
-            ? AppAppearance.system
-            : AppAppearance.values.firstWhere(
-                (item) => item.name == value,
-                orElse: () => AppAppearance.system,
-              );
-        _amoled = prefs.getBool('theme_amoled') ?? value == 'amoled';
-        _keyColorOverride = savedColor == null || savedColor == 0
-            ? null
-            : Color(savedColor);
-        _paletteStyle = DynamicSchemeVariant.values.firstWhere(
-          (item) => item.name == savedStyle,
-          orElse: () => DynamicSchemeVariant.tonalSpot,
-        );
-      });
-    });
-  }
-
-  Future<void> _setAppearance(AppAppearance value) async {
-    setState(() => _appearance = value);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('appearance', value.name);
-  }
-
-  Future<void> _setThemeColor(Color? color) async {
-    setState(() => _keyColorOverride = color);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('theme_key_color', color?.toARGB32() ?? 0);
-  }
-
-  Future<void> _setPaletteStyle(DynamicSchemeVariant value) async {
-    setState(() => _paletteStyle = value);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('theme_palette_style', value.name);
-  }
-
-  Future<void> _setAmoled(bool value) async {
-    setState(() => _amoled = value);
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('theme_amoled', value);
+    WidgetsBinding.instance.addObserver(this);
+    _theme.load();
   }
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'EasyPlay',
-    debugShowCheckedModeBanner: false,
-    themeMode: switch (_appearance) {
-      AppAppearance.system => ThemeMode.system,
-      AppAppearance.light => ThemeMode.light,
-      AppAppearance.dark => ThemeMode.dark,
-    },
-    theme: AppTheme.light(
-      seed: _keyColorOverride ?? _monetSeed ?? AppTheme.defaultSeed,
-      paletteStyle: _paletteStyle,
-    ),
-    darkTheme: AppTheme.dark(
-      seed: _keyColorOverride ?? _monetSeed ?? AppTheme.defaultSeed,
-      paletteStyle: _paletteStyle,
-      amoled: _amoled,
-    ),
-    home: Shell(
-      appearance: _appearance,
-      onAppearanceChanged: _setAppearance,
-      keyColor: _keyColorOverride,
-      paletteStyle: _paletteStyle,
-      amoled: _amoled,
-      onThemeColorChanged: _setThemeColor,
-      onPaletteStyleChanged: _setPaletteStyle,
-      onAmoledChanged: _setAmoled,
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _theme.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _theme.updateSystemColors();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: _theme,
+    builder: (context, _) => MaterialApp(
+      title: 'EasyPlay',
+      debugShowCheckedModeBanner: false,
+      themeMode: _theme.mode,
+      theme: AppTheme.fromScheme(
+        _theme.scheme(dark: false, color: _theme.keyColor),
+      ),
+      darkTheme: AppTheme.fromScheme(
+        _theme.scheme(dark: true, color: _theme.keyColor),
+      ),
+      builder: (context, child) => AnnotatedRegion(
+        value: AppTheme.systemBars(Theme.of(context).colorScheme),
+        child: AppPageScale(scale: _theme.pageScale, child: child!),
+      ),
+      home: Shell(theme: _theme),
     ),
   );
 }
 
 class Shell extends StatefulWidget {
-  final AppAppearance appearance;
-  final ValueChanged<AppAppearance> onAppearanceChanged;
-  final Color? keyColor;
-  final DynamicSchemeVariant paletteStyle;
-  final bool amoled;
-  final ValueChanged<Color?> onThemeColorChanged;
-  final ValueChanged<DynamicSchemeVariant> onPaletteStyleChanged;
-  final ValueChanged<bool> onAmoledChanged;
-  const Shell({
-    super.key,
-    required this.appearance,
-    required this.onAppearanceChanged,
-    required this.keyColor,
-    required this.paletteStyle,
-    required this.amoled,
-    required this.onThemeColorChanged,
-    required this.onPaletteStyleChanged,
-    required this.onAmoledChanged,
-  });
+  final ThemeController theme;
+  const Shell({super.key, required this.theme});
   @override
   State<Shell> createState() => _ShellState();
 }
@@ -179,18 +110,7 @@ class _ShellState extends State<Shell> {
         selected: selected,
         onSettings: () => Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => SettingsPage(
-              appearance: widget.appearance,
-              onAppearanceChanged: widget.onAppearanceChanged,
-              keyColor: widget.keyColor,
-              paletteStyle: widget.paletteStyle,
-              amoled: widget.amoled,
-              onThemeColorChanged: widget.onThemeColorChanged,
-              onPaletteStyleChanged: widget.onPaletteStyleChanged,
-              onAmoledChanged: widget.onAmoledChanged,
-            ),
-          ),
+          MaterialPageRoute(builder: (_) => SettingsPage(theme: widget.theme)),
         ),
       ),
     ),

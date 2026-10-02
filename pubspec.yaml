@@ -68,6 +68,8 @@ flutter:
 
   assets:
     - assets/licenses/GPL-3.0.txt
+    - assets/licenses/THEME-NOTICE.txt
+    - assets/licenses/MATERIAL-COLORS-LICENSE.txt
     - assets/licenses/STOCKFISH-NOTICE.txt
     - assets/katago/g170-b6c96-s175395328-d26788732.bin.gz
     - assets/katago/MODEL-LICENSE.txt

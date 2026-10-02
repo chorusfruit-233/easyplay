@@ -9,6 +9,11 @@ class _LicenseEntry {
 
 const _licenseEntries = <_LicenseEntry>[
   _LicenseEntry('EasyPlay（本项目）', 'assets/licenses/GPL-3.0.txt'),
+  _LicenseEntry('主题设置来源与修改说明', 'assets/licenses/THEME-NOTICE.txt'),
+  _LicenseEntry(
+    'Material Color Utilities · Apache-2.0',
+    'assets/licenses/MATERIAL-COLORS-LICENSE.txt',
+  ),
   _LicenseEntry('Stockfish 19 · GPL-3.0', 'assets/licenses/GPL-3.0.txt'),
   _LicenseEntry('Stockfish 19 源码与构建说明', 'assets/licenses/STOCKFISH-NOTICE.txt'),
   _LicenseEntry('KataGo', 'assets/katago/KATAGO-LICENSE.txt'),

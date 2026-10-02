@@ -34,6 +34,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Material color Android/Web parity
+        run: |
+          npm install --no-save --package-lock=false esbuild@0.25.12
+          node tools/build_material_colors.cjs
+          git diff --exit-code -- web/material_colors.js
+          node tools/test_material_colors.cjs
       - name: Stockfish browser Worker smoke
         run: |
           npm install --no-save --package-lock=false playwright@1.58.2
@@ -43,5 +49,9 @@ jobs:
         run: |
           flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/lan/rtc_browser_smoke.dart --output build/rtc-smoke
           node tools/test_rtc_web.cjs
+      - name: Theme browser smoke
+        run: |
+          flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/theme_browser_smoke.dart --output build/theme-smoke
+          node tools/test_theme_web.cjs
       - run: flutter build web --no-wasm-dry-run
       - run: python3 tools/package_lan_android.py --debug
