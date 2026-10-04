@@ -1,5 +1,7 @@
 # AI 引擎与模型
 
+五子棋使用自研本地 Dart 搜索，无外部引擎或模型；自由、标准和连珠禁手均使用同一规则引擎检查 AI 着法。三档难度、搜索预算和取消行为见 [五子棋说明](GOMOKU.md)。以下章节说明 KataGo 围棋引擎。
+
 ## 支持范围
 
 围棋仅使用本地 KataGo CPU：Android 为 arm64 Eigen 程序，Web 为 Eigen/WASM Worker。Web 需要 COOP/COEP 响应头与 `SharedArrayBuffer`；GitHub Pages 使用跨源隔离 service worker。其他平台尚未接入原生围棋引擎。

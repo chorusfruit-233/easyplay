@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'lan_ports.dart';
+import 'lan_protocol.dart';
 
 class LanEndpoint {
   const LanEndpoint({
@@ -150,6 +151,10 @@ Future<LanEndpoint?> _probe(String host, int port, Duration timeout) async {
     }
     final json = jsonDecode(body);
     if (json is! Map || json['app'] != 'easyplay') return null;
+    if (json['game'] == 'gomoku') {
+      if (json['version'] != lanProtocolVersion) return null;
+      LanMessage.validateGomokuConfig(Map<String, Object?>.from(json));
+    }
     return LanEndpoint(
       host: host,
       port: port,

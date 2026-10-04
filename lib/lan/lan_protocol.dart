@@ -5,6 +5,8 @@ import '../chess/chess_uci.dart' show parseUciMove;
 
 import '../draughts/draughts_session.dart' show draughtsRulesVersion;
 import '../game_session.dart';
+import '../gomoku/gomoku_session.dart'
+    show GomokuVariant, gomokuBoardSize, gomokuRulesVersion;
 
 const lanProtocolVersion = 3;
 const lanMaxEvents = 20000;
@@ -130,6 +132,29 @@ class LanMessage {
     );
   }
 
+  static Map<String, Object?> gomokuConfigToWire(GomokuVariant variant) => {
+    'boardSize': gomokuBoardSize,
+    'rulesVersion': gomokuRulesVersion,
+    'variant': variant.name,
+  };
+
+  static GomokuVariant parseGomokuVariant(Map<String, Object?> body) {
+    if (body['rulesVersion'] is! int ||
+        body['rulesVersion'] != gomokuRulesVersion ||
+        body['boardSize'] is! int ||
+        body['boardSize'] != gomokuBoardSize) {
+      throw const FormatException('五子棋规则版本或棋盘大小不兼容');
+    }
+    final variant = GomokuVariant.values
+        .where((value) => value.name == body['variant'])
+        .firstOrNull;
+    if (variant == null) throw const FormatException('五子棋规则不支持或缺失');
+    return variant;
+  }
+
+  static void validateGomokuConfig(Map<String, Object?> body) =>
+      parseGomokuVariant(body);
+
   void _validate() {
     final data = body;
     void integer(String key) {
@@ -161,6 +186,8 @@ class LanMessage {
           if (data['rulesVersion'] != chessRulesVersion) {
             throw const FormatException('国际象棋规则版本不兼容');
           }
+        } else if (game == 'gomoku') {
+          validateGomokuConfig(data);
         } else if (game == 'draughts') {
           if (data['variant'] is! String || data['rulesVersion'] is! int) {
             throw const FormatException('跳棋规则握手无效');
@@ -187,6 +214,8 @@ class LanMessage {
           if (data['rulesVersion'] != chessRulesVersion) {
             throw const FormatException('国际象棋规则版本不兼容');
           }
+        } else if (data['game'] == 'gomoku') {
+          validateGomokuConfig(data);
         } else if (draughts) {
           if (data['variant'] is! String ||
               data['rulesVersion'] is! int ||

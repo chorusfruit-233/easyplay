@@ -3,6 +3,7 @@ import 'dart:async';
 import '../game_session.dart';
 import '../chess/chess_session.dart' show chessRulesVersion;
 import '../draughts/draughts_session.dart' show draughtsRulesVersion;
+import 'gomoku_lan_game.dart';
 import 'chess_lan_game.dart';
 import 'draughts_lan_game.dart';
 import 'lan_game.dart';
@@ -16,6 +17,7 @@ class RoomCoordinator {
     LanAuthority? authority,
     this.draughtsAuthority,
     this.chessAuthority,
+    this.gomokuAuthority,
     required this.token,
   })
     // Preserve the named constructor parameter used by LAN callers.
@@ -25,6 +27,7 @@ class RoomCoordinator {
           _authority,
           draughtsAuthority,
           chessAuthority,
+          gomokuAuthority,
         ].where((a) => a != null).length !=
         1) {
       throw ArgumentError('provide exactly one game authority');
@@ -34,6 +37,7 @@ class RoomCoordinator {
   LanAuthority get authority => _authority!;
   final DraughtsAuthority? draughtsAuthority;
   final ChessAuthority? chessAuthority;
+  final GomokuLanAuthority? gomokuAuthority;
   final String token;
   bool _started = false;
   bool _closed = false;
@@ -45,8 +49,13 @@ class RoomCoordinator {
   bool get isDraughts => draughtsAuthority != null;
   int get playerCount => _clients.where((peer) => peer.side != null).length;
   Stream<int> get playerCounts => _playerCounts.stream;
-  int get seq => chessAuthority?.seq ?? draughtsAuthority?.seq ?? authority.seq;
+  int get seq =>
+      gomokuAuthority?.seq ??
+      chessAuthority?.seq ??
+      draughtsAuthority?.seq ??
+      authority.seq;
   bool get gameOver =>
+      gomokuAuthority?.session.gameOver ??
       chessAuthority?.session.gameOver ??
       draughtsAuthority?.session.gameOver ??
       authority.session.gameOver;
@@ -54,6 +63,7 @@ class RoomCoordinator {
       ? Side.white
       : draughtsAuthority?.session.rules.firstMove ?? Side.black;
   LanRematchRequest? get _rematchRequest =>
+      gomokuAuthority?.rematchRequest ??
       chessAuthority?.rematchRequest ??
       draughtsAuthority?.rematchRequest ??
       _authority?.rematchRequest;
@@ -101,7 +111,9 @@ class RoomCoordinator {
     if (event.type == LanMessageType.undoRequest) {
       _undoTimer?.cancel();
       _undoTimer = Timer(const Duration(seconds: 30), () {
-        final expired = chessAuthority != null
+        final expired = gomokuAuthority != null
+            ? gomokuAuthority!.expireUndo(event.seq)
+            : chessAuthority != null
             ? chessAuthority!.expireUndo(event.seq)
             : draughtsAuthority != null
             ? draughtsAuthority!.expireUndo(event.seq)
@@ -144,16 +156,26 @@ class RoomCoordinator {
   }
 
   LanMessage sync(LanMessage request) =>
+      gomokuAuthority?.sync(request) ??
       chessAuthority?.sync(request) ??
       draughtsAuthority?.sync(request) ??
       authority.sync(request);
 
   LanMessage submit(Side side, LanMessage request) =>
+      gomokuAuthority?.submit(side, request) ??
       chessAuthority?.submit(side, request) ??
       draughtsAuthority?.submit(side, request) ??
       authority.submit(side, request);
 
   bool acceptsHello(Map<String, Object?> body) {
+    if (gomokuAuthority != null) {
+      if (body['game'] != 'gomoku') return false;
+      try {
+        return LanMessage.parseGomokuVariant(body) == gomokuAuthority!.variant;
+      } on FormatException {
+        return false;
+      }
+    }
     if (chessAuthority != null) {
       return body['game'] == 'chess' &&
           body['rulesVersion'] == chessRulesVersion;
@@ -272,9 +294,7 @@ class _RoomPeer {
           return;
         }
         final requested = message.body['resumeSide'];
-        final firstSide = server.chessAuthority != null
-            ? Side.white
-            : server.draughtsAuthority?.session.rules.firstMove ?? Side.black;
+        final firstSide = server.firstSide;
         if (fixedSide != null &&
             requested != null &&
             LanMessage.parseSide(requested) != fixedSide) {

@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import '../game_session.dart';
+import '../gomoku/gomoku_session.dart' show GomokuVariant;
 import '../draughts/draughts_variant.dart';
 import '../draughts/draughts_session.dart' show draughtsRulesVersion;
 import '../chess/chess_session.dart' show chessRulesVersion;
@@ -13,6 +14,7 @@ class RtcInvitation {
     required this.token,
     required this.game,
     this.variant,
+    this.gomokuVariant = GomokuVariant.freestyle,
     this.goConfig = const GoConfig(),
     required this.type,
     required this.sdp,
@@ -20,6 +22,7 @@ class RtcInvitation {
   }) : createdAt = createdAt ?? DateTime.now().toUtc();
   final String sessionId, token, game, type, sdp;
   final DraughtsVariant? variant;
+  final GomokuVariant gomokuVariant;
   final GoConfig goConfig;
   final DateTime createdAt;
   static const maxBytes = 256 * 1024;
@@ -27,6 +30,7 @@ class RtcInvitation {
     'game': game,
     if (game == 'go') ...LanMessage.configToWire(goConfig),
     if (game == 'chess') 'rulesVersion': chessRulesVersion,
+    if (game == 'gomoku') ...LanMessage.gomokuConfigToWire(gomokuVariant),
     if (game == 'draughts') ...{
       'variant': variant!.name,
       'rulesVersion': draughtsRulesVersion,
@@ -52,6 +56,7 @@ class RtcInvitation {
     token: token,
     game: game,
     variant: variant,
+    gomokuVariant: gomokuVariant,
     goConfig: goConfig,
     type: 'answer',
     sdp: sdp,
@@ -97,9 +102,12 @@ class RtcInvitation {
       throw const FormatException('邀请描述无效');
     }
     final game = data['game'];
-    if (!['go', 'chess', 'draughts'].contains(game)) {
+    if (!['go', 'chess', 'draughts', 'gomoku'].contains(game)) {
       throw const FormatException('不支持的棋种');
     }
+    final gomokuVariant = game == 'gomoku'
+        ? LanMessage.parseGomokuVariant(Map<String, Object?>.from(data))
+        : GomokuVariant.freestyle;
     DraughtsVariant? variant;
     if (game == 'draughts') {
       for (final item in DraughtsVariant.values) {
@@ -121,6 +129,7 @@ class RtcInvitation {
       token: data['token'] as String,
       game: game as String,
       variant: variant,
+      gomokuVariant: gomokuVariant,
       goConfig: game == 'go'
           ? LanMessage.parseConfig(Map<String, Object?>.from(data))
           : const GoConfig(),
@@ -143,12 +152,14 @@ class RtcInvitation {
     String game,
     String sdp, {
     DraughtsVariant? variant,
+    GomokuVariant gomokuVariant = GomokuVariant.freestyle,
     GoConfig config = const GoConfig(),
   }) => RtcInvitation(
     sessionId: rtcSecret(),
     token: rtcSecret(),
     game: game,
     variant: variant,
+    gomokuVariant: gomokuVariant,
     goConfig: config,
     type: 'offer',
     sdp: sdp,

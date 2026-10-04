@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:easyplay/main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:easyplay/go_placement.dart';
+import 'package:easyplay/gomoku/gomoku_variant.dart';
+import 'package:easyplay/gomoku/widgets/gomoku_lan_pages.dart';
 
 void main() {
   const kataGo = MethodChannel('easyplay/katago');
@@ -22,6 +24,7 @@ void main() {
     expect(find.text('围棋'), findsOneWidget);
     expect(find.text('国际象棋'), findsOneWidget);
     expect(find.text('跳棋'), findsOneWidget);
+    expect(find.text('五子棋'), findsOneWidget);
     expect(find.text('未完成'), findsNothing);
     expect(find.text('每日题目'), findsNothing);
     expect(find.text('积分'), findsNothing);
@@ -80,6 +83,34 @@ void main() {
     await tester.tap(find.text('KataGo'));
     await tester.pumpAndSettle();
     expect(find.textContaining('KataGo'), findsWidgets);
+  });
+
+  testWidgets('Gomoku opens local, AI and network entries from home', (
+    tester,
+  ) async {
+    await tester.pumpWidget(const EasyPlayApp());
+    await tester.ensureVisible(find.text('五子棋'));
+    await tester.tap(find.text('五子棋'));
+    await tester.pumpAndSettle();
+    expect(find.text('GOMOKU'), findsOneWidget);
+    expect(find.text('本地双人'), findsOneWidget);
+    expect(find.text('人机对弈'), findsOneWidget);
+    await tester.tap(find.byType(DropdownButtonFormField<GomokuVariant>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('连珠禁手').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('联机对弈'));
+    await tester.tap(find.text('联机对弈'));
+    await tester.pumpAndSettle();
+    expect(find.text('五子棋联机'), findsOneWidget);
+    expect(
+      tester
+          .widget<GomokuLanLobbyPage>(find.byType(GomokuLanLobbyPage))
+          .variant,
+      GomokuVariant.renju,
+    );
+    expect(find.text('创建房间'), findsOneWidget);
+    expect(find.text('加入房间'), findsOneWidget);
   });
 
   testWidgets('placement mode settings persist a selection', (tester) async {

@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:easyplay/lan/rtc_lobby_page.dart';
 import 'package:easyplay/draughts/draughts_variant.dart';
+import 'package:easyplay/gomoku/gomoku_variant.dart';
 import 'package:easyplay/lan/lan_protocol.dart';
 import 'package:easyplay/lan/rtc_manual_signaling.dart';
 import 'package:easyplay/lan/rtc_room.dart';
@@ -19,15 +20,24 @@ RtcRoom? _room;
 Future<void>? _joining;
 int _padding = 0;
 Future<void> tick() => Future<void>.delayed(const Duration(milliseconds: 30));
+GomokuVariant gomokuVariantFor(String game) => game == 'gomoku-standard'
+    ? GomokuVariant.standard
+    : game == 'gomoku-renju'
+    ? GomokuVariant.renju
+    : GomokuVariant.freestyle;
+
 Future<String> offer(String game) async {
   await _room?.close();
   final variant = DraughtsVariant.values
       .where((v) => v.name == game)
       .firstOrNull;
   final invite = RtcInvitation.offer(
-    variant == null ? game : 'draughts',
+    variant == null
+        ? (game.startsWith('gomoku') ? 'gomoku' : game)
+        : 'draughts',
     'v=0',
     variant: variant,
+    gomokuVariant: gomokuVariantFor(game),
   );
   final room = _room = RtcRoom.host(invite);
   await room.prepareHost();
@@ -38,6 +48,7 @@ Future<String> offer(String game) async {
     token: invite.token,
     game: invite.game,
     variant: invite.variant,
+    gomokuVariant: invite.gomokuVariant,
     goConfig: invite.goConfig,
     type: 'offer',
     sdp: sdp,
@@ -57,6 +68,7 @@ Future<String> resumeOffer() async {
     token: old.token,
     game: old.game,
     variant: old.variant,
+    gomokuVariant: old.gomokuVariant,
     goConfig: old.goConfig,
     type: 'offer',
     sdp: sdp,
@@ -195,6 +207,9 @@ String state() {
         client.draughtsReplica?.session.position.signature(
           client.draughtsReplica!.session.turn,
         ) ??
+        (client.gomokuReplica == null
+            ? null
+            : jsonEncode(client.gomokuReplica!.session.toJson())) ??
         client.replica?.sgf,
   });
 }
@@ -243,13 +258,18 @@ void main() {
                   .firstOrNull;
               runApp(
                 MaterialApp(
+                  key: ValueKey(name),
                   home: RtcLobbyPage(
-                    game: variant == null ? name : 'draughts',
+                    game: variant == null
+                        ? (name.startsWith('gomoku') ? 'gomoku' : name)
+                        : 'draughts',
                     variant: variant,
+                    gomokuVariant: gomokuVariantFor(name),
                     iceServers: [],
                   ),
                 ),
               );
+              await WidgetsBinding.instance.endOfFrame;
               return true.toJS;
             }().toJS).toJS,
             'stunProbe': ((JSString urls) => stunProbe(

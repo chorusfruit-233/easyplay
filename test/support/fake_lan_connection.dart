@@ -3,14 +3,28 @@ import 'dart:async';
 import 'package:easyplay/chess/chess.dart';
 import 'package:easyplay/draughts/draughts.dart';
 import 'package:easyplay/game_session.dart' show GoConfig;
+import 'package:easyplay/gomoku/gomoku_variant.dart';
 import 'package:easyplay/lan/chess_lan_game.dart';
 import 'package:easyplay/lan/draughts_lan_game.dart';
+import 'package:easyplay/lan/gomoku_lan_game.dart';
 import 'package:easyplay/lan/lan_game.dart';
 import 'package:easyplay/lan/lan_protocol.dart';
 import 'package:easyplay/lan/lan_transport.dart';
 
 /// Runs the real authority/replica rules while keeping widget tests off sockets.
 class FakeLanConnection extends LanClientConnection {
+  FakeLanConnection.gomoku(
+    Side localSide, {
+    GomokuVariant variant = GomokuVariant.freestyle,
+  }) : authority = LanHostServer(
+         gomokuAuthority: GomokuLanAuthority(variant: variant),
+         token: 'test',
+       ),
+       super.gomoku(variant: variant) {
+    gomokuReplica = GomokuLanReplica(variant: variant);
+    side = localSide;
+    started = true;
+  }
   FakeLanConnection.chess(Side localSide)
     : authority = LanHostServer(
         chessAuthority: ChessAuthority(),
@@ -69,6 +83,7 @@ class FakeLanConnection extends LanClientConnection {
     if (event.type != LanMessageType.rejected) {
       final accepted =
           chessReplica?.receive(event) ??
+          gomokuReplica?.receive(event) ??
           draughtsReplica?.receive(event) ??
           replica!.receive(event);
       if (!accepted) throw StateError('Replica rejected ${event.type}');

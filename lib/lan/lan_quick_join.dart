@@ -8,18 +8,27 @@ import '../chess/widgets/chess_lan_pages.dart';
 import '../draughts/draughts_variant.dart';
 import '../draughts/widgets/draughts_lan_pages.dart';
 import '../game_session.dart';
+import '../gomoku/widgets/gomoku_lan_pages.dart';
+import '../gomoku/gomoku_variant.dart';
 import 'lan_page.dart';
 import 'lan_protocol.dart';
 import 'lan_transport.dart';
 
 class LanWebRoom {
-  const LanWebRoom(this.origin, this.game, this.variant);
+  const LanWebRoom(
+    this.origin,
+    this.game,
+    this.variant, {
+    this.gomokuVariant = GomokuVariant.freestyle,
+  });
   final Uri origin;
   final String game;
   final DraughtsVariant? variant;
+  final GomokuVariant gomokuVariant;
 
   String get label => switch (game) {
     'chess' => '国际象棋',
+    'gomoku' => '五子棋 · ${gomokuVariant.label}',
     'draughts' => '跳棋 · ${variant!.label}',
     _ => '围棋',
   };
@@ -41,7 +50,10 @@ class LanWebRoom {
         return null;
       }
       final game = data['game'];
-      if (!['go', 'chess', 'draughts'].contains(game)) return null;
+      if (!['go', 'chess', 'draughts', 'gomoku'].contains(game)) return null;
+      final gomokuVariant = game == 'gomoku'
+          ? LanMessage.parseGomokuVariant(Map<String, Object?>.from(data))
+          : GomokuVariant.freestyle;
       DraughtsVariant? variant;
       if (game == 'draughts') {
         for (final item in DraughtsVariant.values) {
@@ -49,7 +61,12 @@ class LanWebRoom {
         }
         if (variant == null) return null;
       }
-      return LanWebRoom(origin, game as String, variant);
+      return LanWebRoom(
+        origin,
+        game as String,
+        variant,
+        gomokuVariant: gomokuVariant,
+      );
     } catch (_) {
       // Ordinary Web deployments do not have a LAN host endpoint.
       return null;
@@ -125,6 +142,7 @@ class _LanQuickJoinPageState extends State<LanQuickJoinPage> {
     final room = widget.room;
     final connection = switch (room.game) {
       'chess' => LanClientConnection.chess(),
+      'gomoku' => LanClientConnection.gomoku(variant: room.gomokuVariant),
       'draughts' => LanClientConnection.draughts(room.variant!),
       _ => LanClientConnection(const GoConfig()),
     };
@@ -150,6 +168,7 @@ class _LanQuickJoinPageState extends State<LanQuickJoinPage> {
         MaterialPageRoute(
           builder: (_) => switch (room.game) {
             'chess' => ChessLanWaitingPage(connection: connection),
+            'gomoku' => GomokuLanWaitingPage(connection: connection),
             'draughts' => DraughtsLanWaitingPage(
               connection: connection,
               variant: room.variant!,

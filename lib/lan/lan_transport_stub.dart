@@ -1,3 +1,5 @@
+import '../gomoku/gomoku_session.dart' show GomokuVariant, gomokuBoardSize;
+import 'gomoku_lan_game.dart';
 import 'chess_lan_game.dart';
 import '../game_session.dart';
 import '../draughts/draughts_variant.dart';
@@ -11,6 +13,7 @@ class LanHostServer {
     LanAuthority? authority,
     this.draughtsAuthority,
     this.chessAuthority,
+    this.gomokuAuthority,
     required this.token,
   })
     // ignore: prefer_initializing_formals
@@ -19,17 +22,32 @@ class LanHostServer {
   LanAuthority get authority => _authority!;
   final DraughtsAuthority? draughtsAuthority;
   final ChessAuthority? chessAuthority;
+  final GomokuLanAuthority? gomokuAuthority;
   final String token;
-  int get seq => chessAuthority?.seq ?? draughtsAuthority?.seq ?? authority.seq;
+  bool get isGomoku => gomokuAuthority != null;
+  int get boardSize => isGomoku
+      ? gomokuBoardSize
+      : chessAuthority != null
+      ? 8
+      : draughtsAuthority?.session.rules.boardSize ??
+            authority.session.goConfig.boardSize;
+  int get seq =>
+      gomokuAuthority?.seq ??
+      chessAuthority?.seq ??
+      draughtsAuthority?.seq ??
+      authority.seq;
   bool get gameOver =>
+      gomokuAuthority?.session.gameOver ??
       chessAuthority?.session.gameOver ??
       draughtsAuthority?.session.gameOver ??
       authority.session.gameOver;
   LanMessage submit(Side side, LanMessage request) =>
+      gomokuAuthority?.submit(side, request) ??
       chessAuthority?.submit(side, request) ??
       draughtsAuthority?.submit(side, request) ??
       authority.submit(side, request);
   LanMessage sync(LanMessage request) =>
+      gomokuAuthority?.sync(request) ??
       chessAuthority?.sync(request) ??
       draughtsAuthority?.sync(request) ??
       authority.sync(request);
@@ -46,24 +64,46 @@ class LanHostServer {
 }
 
 class LanClientConnection {
-  LanClientConnection(this.config) : draughtsVariant = null, isChess = false;
+  LanClientConnection(this.config)
+    : draughtsVariant = null,
+      isChess = false,
+      isGomoku = false,
+      gomokuVariant = null;
   LanClientConnection.draughts(DraughtsVariant variant)
     : config = const GoConfig(),
       draughtsVariant = variant,
-      isChess = false;
+      isChess = false,
+      isGomoku = false,
+      gomokuVariant = null;
   LanClientConnection.chess()
     : config = const GoConfig(),
       draughtsVariant = null,
-      isChess = true;
+      isChess = true,
+      isGomoku = false,
+      gomokuVariant = null;
+  LanClientConnection.gomoku({GomokuVariant variant = GomokuVariant.freestyle})
+    : config = const GoConfig(),
+      draughtsVariant = null,
+      isChess = false,
+      isGomoku = true,
+      gomokuVariant = variant;
   final bool isChess;
+  final bool isGomoku;
+  final GomokuVariant? gomokuVariant;
   final GoConfig config;
   final DraughtsVariant? draughtsVariant;
   LanReplica? replica;
   DraughtsLanReplica? draughtsReplica;
   ChessLanReplica? chessReplica;
+  GomokuLanReplica? gomokuReplica;
   Side? side;
   bool started = false;
-  int get seq => chessReplica?.seq ?? draughtsReplica?.seq ?? replica?.seq ?? 0;
+  int get seq =>
+      gomokuReplica?.seq ??
+      chessReplica?.seq ??
+      draughtsReplica?.seq ??
+      replica?.seq ??
+      0;
   Stream<LanMessage> get messages => const Stream.empty();
   Stream<void> get disconnections => const Stream.empty();
   Future<void> reconnect() async =>

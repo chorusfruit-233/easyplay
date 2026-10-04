@@ -7,6 +7,8 @@ import '../chess/widgets/chess_game_page.dart';
 import '../draughts/draughts_variant.dart';
 import '../draughts/widgets/draughts_lan_pages.dart';
 import '../game_session.dart';
+import '../gomoku/widgets/gomoku_lan_pages.dart';
+import '../gomoku/gomoku_variant.dart';
 import 'lan_match_page.dart';
 import 'lan_protocol.dart';
 import 'rtc_manual_signaling.dart';
@@ -15,9 +17,15 @@ import 'rtc_room.dart';
 import 'rtc_transport.dart';
 
 class RtcLobbyEntry extends StatelessWidget {
-  const RtcLobbyEntry({super.key, required this.game, this.variant});
+  const RtcLobbyEntry({
+    super.key,
+    required this.game,
+    this.variant,
+    this.gomokuVariant = GomokuVariant.freestyle,
+  });
   final String game;
   final DraughtsVariant? variant;
+  final GomokuVariant gomokuVariant;
   @override
   Widget build(BuildContext context) => rtcSupported
       ? Card(
@@ -29,7 +37,11 @@ class RtcLobbyEntry extends StatelessWidget {
             onTap: () => Navigator.push<void>(
               context,
               MaterialPageRoute(
-                builder: (_) => RtcLobbyPage(game: game, variant: variant),
+                builder: (_) => RtcLobbyPage(
+                  game: game,
+                  variant: variant,
+                  gomokuVariant: gomokuVariant,
+                ),
               ),
             ),
           ),
@@ -42,11 +54,13 @@ class RtcLobbyPage extends StatefulWidget {
     super.key,
     required this.game,
     this.variant,
+    this.gomokuVariant = GomokuVariant.freestyle,
     this.resumeRoom,
     this.iceServers,
   });
   final String game;
   final DraughtsVariant? variant;
+  final GomokuVariant gomokuVariant;
   final RtcRoom? resumeRoom;
   final List<Map<String, Object?>>? iceServers;
   @override
@@ -140,6 +154,7 @@ class _RtcLobbyPageState extends State<RtcLobbyPage> {
             widget.game,
             'v=0',
             variant: widget.variant,
+            gomokuVariant: widget.gomokuVariant,
             config: config,
           );
       final room = _room ?? RtcRoom.host(placeholder);
@@ -154,6 +169,7 @@ class _RtcLobbyPageState extends State<RtcLobbyPage> {
         token: placeholder.token,
         game: placeholder.game,
         variant: placeholder.variant,
+        gomokuVariant: placeholder.gomokuVariant,
         goConfig: placeholder.goConfig,
         type: 'offer',
         sdp: sdp,
@@ -203,7 +219,10 @@ class _RtcLobbyPageState extends State<RtcLobbyPage> {
     final generation = ++_generation;
     try {
       final incoming = RtcInvitation.decode(_input.text.trim());
-      if (incoming.game != widget.game || incoming.variant != widget.variant) {
+      if (incoming.game != widget.game ||
+          incoming.variant != widget.variant ||
+          (widget.game == 'gomoku' &&
+              incoming.gomokuVariant != widget.gomokuVariant)) {
         throw const FormatException('邀请的棋种或规则与当前入口不一致');
       }
       if (incoming.type == 'answer') {
@@ -265,6 +284,7 @@ class _RtcLobbyPageState extends State<RtcLobbyPage> {
               builder: (_) => RtcLobbyPage(
                 game: widget.game,
                 variant: widget.variant,
+                gomokuVariant: widget.gomokuVariant,
                 resumeRoom: room,
                 iceServers: _iceServers,
               ),
@@ -304,6 +324,7 @@ class _RtcLobbyPageState extends State<RtcLobbyPage> {
       MaterialPageRoute(
         builder: (_) => switch (widget.game) {
           'chess' => ChessGamePage.online(connection: room.client),
+          'gomoku' => GomokuLanMatchPage(connection: room.client),
           'draughts' => DraughtsLanMatchPage(
             connection: room.client,
             variant: widget.variant!,
@@ -339,6 +360,8 @@ class _RtcLobbyPageState extends State<RtcLobbyPage> {
         const Text(
           '与好友私下交换完整邀请和回应。信息含网络连接候选，请勿公开发布。需要双方保持页面打开；部分网络无法直连，目前未启用 TURN。',
         ),
+        if (widget.game == 'gomoku')
+          Text('15×15 · ${widget.gomokuVariant.label}'),
         if (widget.iceServers == null)
           ExpansionTile(
             title: const Text('连接选项'),

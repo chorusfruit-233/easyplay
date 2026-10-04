@@ -2,7 +2,7 @@
 
 ## 当前范围
 
-无服务器手动信令 MVP 支持围棋、标准国际象棋和八种跳棋规则。房主浏览器持有权威状态，双方界面都使用已提交事件更新副本。原 Android LAN/WebSocket、首页快捷加入和协议版本 3 保留。尚未启用 Cloudflare 自动信令或 TURN。
+无服务器手动信令 MVP 支持围棋、标准国际象棋、八种跳棋规则和 15×15 五子棋（自由、标准、连珠禁手）。五子棋邀请携带规则，双方必须一致；详细判定和开局范围见 [五子棋说明](GOMOKU.md)。房主浏览器持有权威状态，双方界面都使用已提交事件更新副本。原 Android LAN/WebSocket、首页快捷加入和协议版本 3 保留。尚未启用 Cloudflare 自动信令或 TURN。
 
 ## 使用步骤
 
@@ -49,7 +49,7 @@ node tools/test_rtc_web.cjs
 python3 tools/package_lan_android.py --debug
 ```
 
-独立 smoke 目标不进入正式应用；它使用生产 Dart RTC/房间控制器，在 `/easyplay/` 路径和 COOP/COEP 下运行真实双端 DataChannel。CI 运行相同测试，检查三棋种、八种跳棋、状态同步和重赛。另需人工验证正式部署及真实跨设备连接。
+独立 smoke 目标不进入正式应用；它使用生产 Dart RTC/房间控制器，在 `/easyplay/` 路径和 COOP/COEP 下运行真实双端 DataChannel。CI 运行相同测试，检查四棋种、八种跳棋、状态同步和重赛。另需人工验证正式部署及真实跨设备连接。
 
 额外 Firefox 检查（已安装 Selenium / Firefox 时）：`python3 tools/test_rtc_firefox.py`。本轮 Chromium 与 Firefox 的同机真实通道测试已通过；Safari/iOS、跨设备与正式 Pages 发布后的测试仍待人工验收。
 

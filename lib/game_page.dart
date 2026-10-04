@@ -24,21 +24,25 @@ extension GameTypeX on GameType {
     GameType.go => '围棋',
     GameType.chess => '国际象棋',
     GameType.checkers => '跳棋',
+    GameType.gomoku => '五子棋',
   };
   String get english => switch (this) {
     GameType.go => 'GO',
     GameType.chess => 'CHESS',
     GameType.checkers => 'CHECKERS',
+    GameType.gomoku => 'GOMOKU',
   };
   String get description => switch (this) {
     GameType.go => '在方寸之间，寻找全局的平衡',
     GameType.chess => '经典战略，驾驭每一步',
     GameType.checkers => '轻快对弈，跳出你的节奏',
+    GameType.gomoku => '连成五子，攻守之间见胜负',
   };
   IconData get icon => switch (this) {
     GameType.go => Icons.blur_on,
     GameType.chess => Icons.castle,
     GameType.checkers => Icons.grid_4x4,
+    GameType.gomoku => Icons.grain,
   };
 }
 

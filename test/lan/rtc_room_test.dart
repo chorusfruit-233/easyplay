@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:easyplay/game_session.dart';
 import 'package:easyplay/draughts/draughts_variant.dart';
+import 'package:easyplay/gomoku/gomoku_variant.dart';
 import 'package:easyplay/lan/lan_protocol.dart';
 import 'package:easyplay/lan/message_transport.dart';
 import 'package:easyplay/lan/rtc_manual_signaling.dart';
@@ -12,6 +13,9 @@ void main() {
   for (final game in [
     'go',
     'chess',
+    'gomoku',
+    'gomoku-standard',
+    'gomoku-renju',
     ...DraughtsVariant.values.map((v) => v.name),
   ]) {
     test(
@@ -21,9 +25,16 @@ void main() {
             .where((v) => v.name == game)
             .firstOrNull;
         final invite = RtcInvitation.offer(
-          variant == null ? game : 'draughts',
+          variant == null
+              ? (game.startsWith('gomoku') ? 'gomoku' : game)
+              : 'draughts',
           'v=0\r\n',
           variant: variant,
+          gomokuVariant: game == 'gomoku-standard'
+              ? GomokuVariant.standard
+              : game == 'gomoku-renju'
+              ? GomokuVariant.renju
+              : GomokuVariant.freestyle,
         );
         final room = RtcRoom.host(invite);
         final guest = RtcMatchClient(invite);
@@ -39,6 +50,10 @@ void main() {
           final host = room.client;
           expect(host.side, room.coordinator!.firstSide);
           expect(guest.side, host.side!.opponent);
+          if (game.startsWith('gomoku')) {
+            expect(host.gomokuVariant, invite.gomokuVariant);
+            expect(guest.gomokuReplica!.session.variant, invite.gomokuVariant);
+          }
           expect(host.started, isFalse);
           final before = host.messages.firstWhere(
             (m) => m.type == LanMessageType.rejected,
@@ -53,7 +68,7 @@ void main() {
           await drain();
           expect(host.started && guest.started, isTrue);
           final Map<String, Object?> move;
-          if (game == 'go') {
+          if (game == 'go' || game.startsWith('gomoku')) {
             move = {
               'cell': [3, 3],
             };
@@ -136,6 +151,13 @@ void main() {
               }),
             );
             await drain();
+          } else if (game.startsWith('gomoku')) {
+            host.send(
+              LanMessage(LanMessageType.resign, 4, {
+                'side': LanMessage.sideCode(host.side!),
+              }),
+            );
+            await drain();
           } else {
             host.send(
               LanMessage(LanMessageType.drawRequest, 4, {
@@ -167,6 +189,10 @@ void main() {
           );
           await drain();
           expect(room.coordinator!.gameOver, isFalse);
+          if (game.startsWith('gomoku')) {
+            expect(host.gomokuReplica!.session.variant, invite.gomokuVariant);
+            expect(guest.gomokuReplica!.session.variant, invite.gomokuVariant);
+          }
           expect(host.seq, guest.seq);
         } finally {
           await guest.close();
@@ -175,6 +201,42 @@ void main() {
       },
     );
   }
+  test(
+    'Gomoku RTC handshake rejects a different rule without consuming a seat',
+    () async {
+      final invite = RtcInvitation.offer(
+        'gomoku',
+        'v=0\r\n',
+        gomokuVariant: GomokuVariant.renju,
+      );
+      final room = RtcRoom.host(invite);
+      final guest = RtcMatchClient(
+        RtcInvitation(
+          sessionId: invite.sessionId,
+          token: invite.token,
+          game: 'gomoku',
+          gomokuVariant: GomokuVariant.standard,
+          type: 'offer',
+          sdp: invite.sdp,
+        ),
+      );
+      try {
+        await room.prepareHost();
+        final (server, peer) = MemoryTransport.pair();
+        await room.attachPeer(server);
+        await expectLater(guest.bind(peer), throwsStateError);
+        expect(room.coordinator!.playerCount, 1);
+        expect(room.client.gomokuReplica!.session.variant, GomokuVariant.renju);
+        expect(
+          room.coordinator!.gomokuAuthority!.session.variant,
+          GomokuVariant.renju,
+        );
+      } finally {
+        await guest.close();
+        await room.close();
+      }
+    },
+  );
   test(
     'RTC guest cannot claim host seat, reuse host token or add a third player',
     () async {

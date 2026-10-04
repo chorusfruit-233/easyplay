@@ -44,7 +44,8 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
 
     const action = (page, name) => page.evaluate(n => easyplayRtcSmoke.action(n).then(JSON.parse), name);
     const state = page => page.evaluate(() => JSON.parse(easyplayRtcSmoke.state()));
-    for (const game of ['go','chess','english','international','brazilian','russian','pool','italian','spanish','turkish']) {
+    const transportGames = process.env.RTC_UI_ONLY === '1' ? [] : ['go','chess','gomoku','gomoku-standard','gomoku-renju','english','international','brazilian','russian','pool','italian','spanish','turkish'];
+    for (const game of transportGames) {
       const invitation = await host.evaluate(g => easyplayRtcSmoke.offer(g), game);
       const response = await guest.evaluate(text => easyplayRtcSmoke.answer(text), invitation);
       await host.evaluate(text => easyplayRtcSmoke.accept(text), response);
@@ -87,20 +88,61 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
     }
     // Actual Flutter lobby: copy/paste non-trickle messages and manual start.
     await Promise.all(contexts.map(c => c.grantPermissions(['clipboard-read','clipboard-write'])));
-    await Promise.all([host,guest].map(p => p.evaluate(() => easyplayRtcSmoke.lobby('chess'))));
-    await host.getByRole('button', {name: '创建邀请', exact: true}).click();
-    await host.getByRole('button', {name: '复制邀请信息', exact: true}).click();
-    const uiInvite = await host.evaluate(() => navigator.clipboard.readText());
-    await guest.getByRole('textbox', {name: '粘贴邀请或回应信息'}).fill(uiInvite);
-    await guest.getByRole('button', {name: '导入', exact: true}).click();
-    await guest.getByRole('button', {name: '复制回应信息', exact: true}).click();
-    const uiResponse = await guest.evaluate(() => navigator.clipboard.readText());
-    await host.getByRole('textbox', {name: '粘贴邀请或回应信息'}).fill(uiResponse);
-    await host.getByRole('button', {name: '导入', exact: true}).click();
-    await guest.getByText('已加入，等待房主开始对局', {exact: true}).waitFor();
-    await host.getByRole('button', {name: '开始对局', exact: true}).click();
-    await Promise.all([host,guest].map(p => p.getByRole('button', {name: '悔棋', exact: true}).waitFor()));
-    console.log('Flutter RTC lobby: create, invite, answer, authenticated wait and manual start passed');
+    const fillInvitation = async (page, text) => {
+      const field = page.getByRole('textbox', {name: '粘贴邀请或回应信息'});
+      // Flutter establishes its text input connection after focus. Wait for
+      // that frame before sending input, then let the controller receive it.
+      await field.click();
+      await page.evaluate(() => new Promise(requestAnimationFrame).then(() => new Promise(requestAnimationFrame)));
+      await field.fill(text);
+      await page.evaluate(() => new Promise(requestAnimationFrame).then(() => new Promise(requestAnimationFrame)));
+      assert.ok((await field.inputValue()) === text, 'Flutter text input connection did not retain the invitation');
+    };
+    for (const game of ['chess', 'gomoku', 'gomoku-standard', 'gomoku-renju']) {
+      const isGomoku = game.startsWith('gomoku');
+      const wireGame = isGomoku ? 'gomoku' : game;
+      const wireVariant = game === 'gomoku-standard' ? 'standard' : game === 'gomoku-renju' ? 'renju' : 'freestyle';
+      const label = {freestyle: '自由五子棋', standard: '标准五子棋', renju: '连珠禁手'}[wireVariant];
+      const boardLabel = `${label}棋盘，15 行 15 列`;
+      try {
+        await Promise.all([host,guest].map(p => p.evaluate(g => easyplayRtcSmoke.lobby(g), game)));
+        await host.getByRole('button', {name: '创建邀请', exact: true}).click();
+        await host.evaluate(() => navigator.clipboard.writeText(''));
+        await host.getByRole('button', {name: '复制邀请信息', exact: true}).click();
+        await host.waitForFunction(g => navigator.clipboard.readText().then(text => {
+          try { const data = JSON.parse(text); return data.game === g.game && (!g.variant || data.variant === g.variant) && data.description?.type === 'offer'; } catch { return false; }
+        }), {game: wireGame, variant: isGomoku ? wireVariant : null});
+        const uiInvite = await host.evaluate(() => navigator.clipboard.readText());
+        await fillInvitation(guest, uiInvite);
+        await guest.getByRole('button', {name: '导入', exact: true}).click();
+        await guest.evaluate(() => navigator.clipboard.writeText(''));
+        await guest.getByRole('button', {name: '复制回应信息', exact: true}).click();
+        await guest.waitForFunction(g => navigator.clipboard.readText().then(text => {
+          try { const data = JSON.parse(text); return data.game === g.game && (!g.variant || data.variant === g.variant) && data.description?.type === 'answer'; } catch { return false; }
+        }), {game: wireGame, variant: isGomoku ? wireVariant : null});
+        const uiResponse = await guest.evaluate(() => navigator.clipboard.readText());
+        await fillInvitation(host, uiResponse);
+        await host.getByRole('button', {name: '导入', exact: true}).click();
+        await guest.getByText('已加入，等待房主开始对局', {exact: true}).waitFor();
+        if (isGomoku) {
+          assert.equal(await guest.getByText(boardLabel, {exact: true}).count(), 0);
+        }
+        await host.getByRole('button', {name: '开始对局', exact: true}).click();
+        await Promise.all([host,guest].map(p => p.getByRole('button', {name: isGomoku ? '请求悔棋' : '悔棋', exact: true}).waitFor()));
+        if (isGomoku) {
+          await Promise.all([host,guest].map(p => p.getByText(boardLabel, {exact: true}).waitFor()));
+          await Promise.all([host,guest].map(p => p.getByText(`15×15 · ${label} · 0 手`, {exact: false}).first().waitFor()));
+        }
+        console.log(`Flutter RTC ${game} lobby: create, invite, answer, authenticated wait and manual start passed`);
+      } catch (error) {
+        for (const [name, page] of [['host', host], ['guest', guest]]) {
+          const status = await page.locator('flt-semantics').evaluateAll(nodes => nodes.filter(n => !n.querySelector('flt-semantics')).map(n => n.getAttribute('aria-label') || n.textContent || '').filter(text => text.length < 300 && /FormatException|StateError|失败|已加入|等待|连接|人数/.test(text)));
+          console.error(`${game} ${name}: ${JSON.stringify(status)}`);
+          await page.screenshot({path: `/tmp/easyplay-rtc-${game}-${name}.png`});
+        }
+        throw error;
+      }
+    }
     await Promise.all(contexts.map(c => c.close()));
   } finally {
     await browser?.close();

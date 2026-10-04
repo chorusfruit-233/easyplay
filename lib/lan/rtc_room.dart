@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import '../game_session.dart' show SideX;
+import '../gomoku/gomoku_variant.dart';
 
+import 'gomoku_lan_game.dart';
 import 'chess_lan_game.dart';
 import 'draughts_lan_game.dart';
 import 'lan_game.dart';
@@ -16,7 +18,9 @@ import 'rtc_transport.dart';
 /// Adapts RTC to the existing match widgets without owning any AI engine.
 class RtcMatchClient extends LanClientConnection {
   RtcMatchClient(this.invitation) : super(invitation.goConfig) {
-    if (isChess) {
+    if (isGomoku) {
+      gomokuReplica = GomokuLanReplica(variant: invitation.gomokuVariant);
+    } else if (isChess) {
       chessReplica = ChessLanReplica();
     } else if (draughtsVariant != null) {
       draughtsReplica = DraughtsLanReplica(draughtsVariant!);
@@ -25,6 +29,11 @@ class RtcMatchClient extends LanClientConnection {
     }
   }
   final RtcInvitation invitation;
+  @override
+  bool get isGomoku => invitation.game == 'gomoku';
+  @override
+  GomokuVariant? get gomokuVariant =>
+      isGomoku ? invitation.gomokuVariant : null;
   @override
   bool get isChess => invitation.game == 'chess';
   @override
@@ -79,6 +88,7 @@ class RtcMatchClient extends LanClientConnection {
           } else if (message.type == LanMessageType.stateSync ||
               LanMessage.eventTypes.contains(message.type)) {
             final accepted =
+                gomokuReplica?.receive(message) ??
                 chessReplica?.receive(message) ??
                 draughtsReplica?.receive(message) ??
                 replica!.receive(message);
@@ -194,6 +204,9 @@ class RtcRoom {
           ? LanAuthority(invitation.goConfig)
           : null,
       chessAuthority: invitation.game == 'chess' ? ChessAuthority() : null,
+      gomokuAuthority: invitation.game == 'gomoku'
+          ? GomokuLanAuthority(variant: invitation.gomokuVariant)
+          : null,
       draughtsAuthority: invitation.game == 'draughts'
           ? DraughtsAuthority(invitation.variant!)
           : null,

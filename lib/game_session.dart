@@ -1,4 +1,4 @@
-enum GameType { go, chess, checkers }
+enum GameType { go, chess, checkers, gomoku }
 
 enum Side { black, white }
 
@@ -153,7 +153,7 @@ class _Snapshot {
   );
 }
 
-/// Go rules and mutable state. Chess and Draughts own independent sessions.
+/// Go rules and mutable state. Other games own independent sessions.
 class GameSession {
   final GameType type;
   GoConfig _goConfig;
@@ -186,6 +186,9 @@ class GameSession {
     }
     if (type == GameType.checkers) {
       throw UnsupportedError('Use DraughtsSession for Checkers / Draughts');
+    }
+    if (type == GameType.gomoku) {
+      throw UnsupportedError('Use GomokuSession for Gomoku');
     }
     reset();
   }

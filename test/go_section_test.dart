@@ -183,6 +183,7 @@ void main() {
 
   testWidgets('the continue card enters the same section', (tester) async {
     await tester.pumpWidget(const EasyPlayApp());
+    await tester.ensureVisible(find.text('开始'));
     await tester.tap(find.text('开始'));
     await tester.pumpAndSettle();
 

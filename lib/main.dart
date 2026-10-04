@@ -8,6 +8,8 @@ import 'theme_settings_page.dart';
 import 'settings_page.dart';
 import 'draughts/widgets/draughts_new_game_page.dart';
 import 'chess/widgets/chess_home_page.dart';
+import 'gomoku/widgets/gomoku_home_page.dart';
+import 'gomoku/widgets/gomoku_lan_pages.dart';
 import 'lan/lan_quick_join.dart';
 
 export 'board.dart';
@@ -78,6 +80,17 @@ class _ShellState extends State<Shell> {
   // Every entry into Go goes through the section shell, so the board and the
   // library always share the same bottom bar.
   void _openGame(GameType game) {
+    if (game == GameType.gomoku) {
+      Navigator.push<void>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => GomokuHomePage(
+            lanBuilder: (_, variant) => GomokuLanLobbyPage(variant: variant),
+          ),
+        ),
+      );
+      return;
+    }
     if (game == GameType.chess) {
       Navigator.push<void>(
         context,
