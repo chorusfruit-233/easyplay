@@ -1,3 +1,4 @@
+import 'xiangqi/widgets/xiangqi_home_page.dart';
 import 'package:flutter/material.dart';
 import 'game_session.dart';
 import 'game_page.dart';
@@ -80,6 +81,13 @@ class _ShellState extends State<Shell> {
   // Every entry into Go goes through the section shell, so the board and the
   // library always share the same bottom bar.
   void _openGame(GameType game) {
+    if (game == GameType.xiangqi) {
+      Navigator.push<void>(
+        context,
+        MaterialPageRoute(builder: (_) => const XiangqiHomePage()),
+      );
+      return;
+    }
     if (game == GameType.gomoku) {
       Navigator.push<void>(
         context,

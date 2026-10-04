@@ -116,7 +116,9 @@ Future<String> action(String name) async {
       room.coordinator!.startMatch();
     case 'move':
       final Map<String, Object?> move;
-      if (client.isChess) {
+      if (client.isXiangqi) {
+        move = {'game': 'xiangqi', 'move': 'h2e2'};
+      } else if (client.isChess) {
         move = {'move': 'e2e4'};
       } else if (client.draughtsVariant != null) {
         move = {
@@ -203,6 +205,7 @@ String state() {
     'side': client.side?.name,
     'padding': _padding,
     'signature':
+        client.xiangqiReplica?.session.fen ??
         client.chessReplica?.session.fen ??
         client.draughtsReplica?.session.position.signature(
           client.draughtsReplica!.session.turn,

@@ -1,3 +1,5 @@
+import '../xiangqi/xiangqi_session.dart'
+    show xiangqiRulesVersion, xiangqiRuleProfile;
 import 'dart:convert';
 
 import '../game_session.dart';
@@ -29,6 +31,10 @@ class RtcInvitation {
   Map<String, Object?> get configuration => {
     'game': game,
     if (game == 'go') ...LanMessage.configToWire(goConfig),
+    if (game == 'xiangqi') ...{
+      'rulesVersion': xiangqiRulesVersion,
+      'ruleProfile': xiangqiRuleProfile,
+    },
     if (game == 'chess') 'rulesVersion': chessRulesVersion,
     if (game == 'gomoku') ...LanMessage.gomokuConfigToWire(gomokuVariant),
     if (game == 'draughts') ...{
@@ -102,8 +108,11 @@ class RtcInvitation {
       throw const FormatException('邀请描述无效');
     }
     final game = data['game'];
-    if (!['go', 'chess', 'draughts', 'gomoku'].contains(game)) {
+    if (!['go', 'chess', 'draughts', 'gomoku', 'xiangqi'].contains(game)) {
       throw const FormatException('不支持的棋种');
+    }
+    if (game == 'xiangqi') {
+      LanMessage.validateXiangqiConfig(Map<String, Object?>.from(data));
     }
     final gomokuVariant = game == 'gomoku'
         ? LanMessage.parseGomokuVariant(Map<String, Object?>.from(data))

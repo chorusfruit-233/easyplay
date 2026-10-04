@@ -70,3 +70,8 @@ app.*.map.json
 
 # Checksum-pinned Web WASM is fetched by prepare_stockfish.py
 /web/stockfish/*.wasm
+
+# Official Pikafish native executable and separately licensed NNUE weights
+/android/app/src/main/jniLibs/arm64-v8a/libpikafish.so
+/assets/pikafish/*.nnue
+/web/pikafish/*.nnue

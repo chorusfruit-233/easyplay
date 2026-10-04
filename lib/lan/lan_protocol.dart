@@ -1,3 +1,4 @@
+import '../xiangqi/xiangqi.dart';
 import 'dart:convert';
 
 import '../chess/chess_session.dart' show chessRulesVersion;
@@ -132,6 +133,13 @@ class LanMessage {
     );
   }
 
+  static void validateXiangqiConfig(Map<String, Object?> body) {
+    if (body['rulesVersion'] != xiangqiRulesVersion ||
+        body['ruleProfile'] != xiangqiRuleProfile) {
+      throw const FormatException('中国象棋规则版本或配置不兼容');
+    }
+  }
+
   static Map<String, Object?> gomokuConfigToWire(GomokuVariant variant) => {
     'boardSize': gomokuBoardSize,
     'rulesVersion': gomokuRulesVersion,
@@ -182,6 +190,8 @@ class LanMessage {
         final game = data['game'] ?? 'go';
         if (game == 'go') {
           parseConfig(data);
+        } else if (game == 'xiangqi') {
+          validateXiangqiConfig(data);
         } else if (game == 'chess') {
           if (data['rulesVersion'] != chessRulesVersion) {
             throw const FormatException('国际象棋规则版本不兼容');
@@ -210,7 +220,9 @@ class LanMessage {
       case LanMessageType.stateSync:
         integer('roomVersion');
         final draughts = data['game'] == 'draughts';
-        if (data['game'] == 'chess') {
+        if (data['game'] == 'xiangqi') {
+          validateXiangqiConfig(data);
+        } else if (data['game'] == 'chess') {
           if (data['rulesVersion'] != chessRulesVersion) {
             throw const FormatException('国际象棋规则版本不兼容');
           }
@@ -245,7 +257,13 @@ class LanMessage {
       case LanMessageType.move:
         parseSide(data['side']);
         if (data['move'] is String) {
-          parseUciMove(data['move'] as String);
+          if (data['game'] == 'xiangqi') {
+            parseXiangqiUciMove(data['move'] as String);
+          } else if (data['game'] == null || data['game'] == 'chess') {
+            parseUciMove(data['move'] as String);
+          } else {
+            throw const FormatException('着法棋种不匹配');
+          }
         } else if (data['path'] is List) {
           final path = data['path']! as List;
           if (path.length < 2 || path.length > 100) {
@@ -274,7 +292,13 @@ class LanMessage {
         parseSide(data['side']);
         if (data['move'] != null) {
           if (data['move'] is! String) throw const FormatException('无效的声明着法');
-          parseUciMove(data['move'] as String);
+          if (data['game'] == 'xiangqi') {
+            parseXiangqiUciMove(data['move'] as String);
+          } else if (data['game'] == null || data['game'] == 'chess') {
+            parseUciMove(data['move'] as String);
+          } else {
+            throw const FormatException('着法棋种不匹配');
+          }
         }
       case LanMessageType.drawRequest:
       case LanMessageType.drawAccept:

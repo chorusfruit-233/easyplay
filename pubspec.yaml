@@ -67,6 +67,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/pikafish/
     - assets/licenses/GPL-3.0.txt
     - assets/licenses/THEME-NOTICE.txt
     - assets/licenses/MATERIAL-COLORS-LICENSE.txt

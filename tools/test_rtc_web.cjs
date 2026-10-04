@@ -44,7 +44,7 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
 
     const action = (page, name) => page.evaluate(n => easyplayRtcSmoke.action(n).then(JSON.parse), name);
     const state = page => page.evaluate(() => JSON.parse(easyplayRtcSmoke.state()));
-    const transportGames = process.env.RTC_UI_ONLY === '1' ? [] : ['go','chess','gomoku','gomoku-standard','gomoku-renju','english','international','brazilian','russian','pool','italian','spanish','turkish'];
+    const transportGames = process.env.RTC_UI_ONLY === '1' ? [] : ['go','chess','xiangqi','gomoku','gomoku-standard','gomoku-renju','english','international','brazilian','russian','pool','italian','spanish','turkish'];
     for (const game of transportGames) {
       const invitation = await host.evaluate(g => easyplayRtcSmoke.offer(g), game);
       const response = await guest.evaluate(text => easyplayRtcSmoke.answer(text), invitation);
@@ -98,7 +98,7 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
       await page.evaluate(() => new Promise(requestAnimationFrame).then(() => new Promise(requestAnimationFrame)));
       assert.ok((await field.inputValue()) === text, 'Flutter text input connection did not retain the invitation');
     };
-    for (const game of ['chess', 'gomoku', 'gomoku-standard', 'gomoku-renju']) {
+    for (const game of ['chess', 'xiangqi', 'gomoku', 'gomoku-standard', 'gomoku-renju']) {
       const isGomoku = game.startsWith('gomoku');
       const wireGame = isGomoku ? 'gomoku' : game;
       const wireVariant = game === 'gomoku-standard' ? 'standard' : game === 'gomoku-renju' ? 'renju' : 'freestyle';

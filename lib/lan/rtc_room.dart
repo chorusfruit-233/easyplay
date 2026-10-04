@@ -1,3 +1,4 @@
+import 'xiangqi_lan_game.dart';
 import 'dart:async';
 
 import '../game_session.dart' show SideX;
@@ -18,7 +19,9 @@ import 'rtc_transport.dart';
 /// Adapts RTC to the existing match widgets without owning any AI engine.
 class RtcMatchClient extends LanClientConnection {
   RtcMatchClient(this.invitation) : super(invitation.goConfig) {
-    if (isGomoku) {
+    if (isXiangqi) {
+      xiangqiReplica = XiangqiLanReplica();
+    } else if (isGomoku) {
       gomokuReplica = GomokuLanReplica(variant: invitation.gomokuVariant);
     } else if (isChess) {
       chessReplica = ChessLanReplica();
@@ -34,6 +37,8 @@ class RtcMatchClient extends LanClientConnection {
   @override
   GomokuVariant? get gomokuVariant =>
       isGomoku ? invitation.gomokuVariant : null;
+  @override
+  bool get isXiangqi => invitation.game == 'xiangqi';
   @override
   bool get isChess => invitation.game == 'chess';
   @override
@@ -88,6 +93,7 @@ class RtcMatchClient extends LanClientConnection {
           } else if (message.type == LanMessageType.stateSync ||
               LanMessage.eventTypes.contains(message.type)) {
             final accepted =
+                xiangqiReplica?.receive(message) ??
                 gomokuReplica?.receive(message) ??
                 chessReplica?.receive(message) ??
                 draughtsReplica?.receive(message) ??
@@ -191,6 +197,7 @@ class RtcMatchClient extends LanClientConnection {
     await _disconnects?.cancel();
     await _transport?.close();
     _transport = null;
+    xiangqiReplica?.dispose();
     chessReplica?.dispose();
     await _events.close();
     await _lost.close();
@@ -202,6 +209,9 @@ class RtcRoom {
     coordinator = RoomCoordinator(
       authority: invitation.game == 'go'
           ? LanAuthority(invitation.goConfig)
+          : null,
+      xiangqiAuthority: invitation.game == 'xiangqi'
+          ? XiangqiAuthority()
           : null,
       chessAuthority: invitation.game == 'chess' ? ChessAuthority() : null,
       gomokuAuthority: invitation.game == 'gomoku'

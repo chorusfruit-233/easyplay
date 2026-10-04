@@ -1,0 +1,18 @@
+Pikafish-2026-09-06
+Source: https://github.com/official-pikafish/Pikafish
+Commit: 4c17cee11f888ae1d48a9494f2e2239f019f0a1f
+Program: GPL-3.0-or-later (COPYING.txt and AUTHORS).
+Android executable and NNUE: official release Pikafish.2026-09-06.7z.
+NNUE: separately licensed; commercial use requires permission. See NNUE-License.md.
+EasyPlay distributes this model for free, noncommercial play.
+
+Web: exact source above, Emscripten 4.0.23, one cooperative Asyncify Worker.
+No SharedArrayBuffer or external AI service is required.
+Build modifications and instructions: tools/build_pikafish_web.py and docs/XIANGQI.md
+in EasyPlay's source repository https://github.com/chorusfruit-233/easyplay.
+Download addresses and all distributed hashes: tools/prepare_pikafish.py.
+The Web scheduling patches replace stdio/thread scheduling, preserving upstream search.
+
+EasyPlay's fixed Asian repetition profile is version 1. Session rules, move history
+and final results are owned by EasyPlay, not by the AI engine. This profile does
+not claim compatibility with every tournament's repetition regulations.

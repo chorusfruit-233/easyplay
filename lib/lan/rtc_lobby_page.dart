@@ -1,3 +1,4 @@
+import '../xiangqi/widgets/xiangqi_game_page.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -323,6 +324,7 @@ class _RtcLobbyPageState extends State<RtcLobbyPage> {
       context,
       MaterialPageRoute(
         builder: (_) => switch (widget.game) {
+          'xiangqi' => XiangqiGamePage.online(connection: room.client),
           'chess' => ChessGamePage.online(connection: room.client),
           'gomoku' => GomokuLanMatchPage(connection: room.client),
           'draughts' => DraughtsLanMatchPage(

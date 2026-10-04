@@ -11,6 +11,7 @@ import java.util.concurrent.Executors
 class MainActivity : FlutterActivity() {
     private val colorExecutor = Executors.newSingleThreadExecutor()
     private lateinit var kataGo: AndroidKataGoGtp
+    private lateinit var pikafish: AndroidPikafish
     private lateinit var stockfish: AndroidStockfish
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -39,6 +40,9 @@ class MainActivity : FlutterActivity() {
                     result.error("color_scheme", error.message, null)
                 }
             }
+        pikafish = AndroidPikafish(applicationContext)
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, "easyplay/pikafish/output").setStreamHandler(pikafish)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "easyplay/pikafish").setMethodCallHandler { call, result -> pikafish.execute(call, result) }
         stockfish = AndroidStockfish(File(applicationInfo.nativeLibraryDir))
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, "easyplay/stockfish/output")
             .setStreamHandler(stockfish)
@@ -66,6 +70,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         colorExecutor.shutdownNow()
+        if (::pikafish.isInitialized) pikafish.close()
         if (::stockfish.isInitialized) stockfish.close()
         if (::kataGo.isInitialized) kataGo.close()
         super.onDestroy()

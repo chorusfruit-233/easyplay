@@ -155,6 +155,7 @@ class _ChessLanState {
     final data = event.body;
     switch (event.type) {
       case LanMessageType.move:
+        if (data['game'] != null && data['game'] != 'chess') return '棋种不一致';
         if (session.gameOver) return '对局已经结束';
         if (undoRequest != null || drawRequest != null) return '请先处理待确认请求';
         if (session.turn != side) return '尚未轮到你落子';

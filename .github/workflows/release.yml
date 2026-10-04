@@ -48,6 +48,13 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Verify Pikafish assets
+        if: steps.version.outputs.publish == 'true'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y 7zip
+          python3 tools/prepare_pikafish.py
+
       - name: Verify Stockfish assets
         if: steps.version.outputs.publish == 'true'
         run: python3 tools/prepare_stockfish.py

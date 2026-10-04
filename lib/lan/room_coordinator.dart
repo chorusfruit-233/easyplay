@@ -1,3 +1,6 @@
+import 'xiangqi_lan_game.dart';
+import '../xiangqi/xiangqi_session.dart'
+    show xiangqiRulesVersion, xiangqiRuleProfile;
 import 'dart:async';
 
 import '../game_session.dart';
@@ -17,6 +20,7 @@ class RoomCoordinator {
     LanAuthority? authority,
     this.draughtsAuthority,
     this.chessAuthority,
+    this.xiangqiAuthority,
     this.gomokuAuthority,
     required this.token,
   })
@@ -27,6 +31,7 @@ class RoomCoordinator {
           _authority,
           draughtsAuthority,
           chessAuthority,
+          xiangqiAuthority,
           gomokuAuthority,
         ].where((a) => a != null).length !=
         1) {
@@ -37,6 +42,7 @@ class RoomCoordinator {
   LanAuthority get authority => _authority!;
   final DraughtsAuthority? draughtsAuthority;
   final ChessAuthority? chessAuthority;
+  final XiangqiAuthority? xiangqiAuthority;
   final GomokuLanAuthority? gomokuAuthority;
   final String token;
   bool _started = false;
@@ -51,19 +57,22 @@ class RoomCoordinator {
   Stream<int> get playerCounts => _playerCounts.stream;
   int get seq =>
       gomokuAuthority?.seq ??
+      xiangqiAuthority?.seq ??
       chessAuthority?.seq ??
       draughtsAuthority?.seq ??
       authority.seq;
   bool get gameOver =>
       gomokuAuthority?.session.gameOver ??
+      xiangqiAuthority?.session.gameOver ??
       chessAuthority?.session.gameOver ??
       draughtsAuthority?.session.gameOver ??
       authority.session.gameOver;
-  Side get firstSide => chessAuthority != null
+  Side get firstSide => xiangqiAuthority != null || chessAuthority != null
       ? Side.white
       : draughtsAuthority?.session.rules.firstMove ?? Side.black;
   LanRematchRequest? get _rematchRequest =>
       gomokuAuthority?.rematchRequest ??
+      xiangqiAuthority?.rematchRequest ??
       chessAuthority?.rematchRequest ??
       draughtsAuthority?.rematchRequest ??
       _authority?.rematchRequest;
@@ -111,7 +120,9 @@ class RoomCoordinator {
     if (event.type == LanMessageType.undoRequest) {
       _undoTimer?.cancel();
       _undoTimer = Timer(const Duration(seconds: 30), () {
-        final expired = gomokuAuthority != null
+        final expired = xiangqiAuthority != null
+            ? xiangqiAuthority!.expireUndo(event.seq)
+            : gomokuAuthority != null
             ? gomokuAuthority!.expireUndo(event.seq)
             : chessAuthority != null
             ? chessAuthority!.expireUndo(event.seq)
@@ -124,6 +135,7 @@ class RoomCoordinator {
       _undoTimer?.cancel();
       _undoTimer = Timer(const Duration(seconds: 30), () {
         final expired =
+            xiangqiAuthority?.expireDraw(event.seq) ??
             chessAuthority?.expireDraw(event.seq) ??
             draughtsAuthority?.expireDraw(event.seq);
         if (expired != null) _broadcast(expired);
@@ -157,12 +169,14 @@ class RoomCoordinator {
 
   LanMessage sync(LanMessage request) =>
       gomokuAuthority?.sync(request) ??
+      xiangqiAuthority?.sync(request) ??
       chessAuthority?.sync(request) ??
       draughtsAuthority?.sync(request) ??
       authority.sync(request);
 
   LanMessage submit(Side side, LanMessage request) =>
       gomokuAuthority?.submit(side, request) ??
+      xiangqiAuthority?.submit(side, request) ??
       chessAuthority?.submit(side, request) ??
       draughtsAuthority?.submit(side, request) ??
       authority.submit(side, request);
@@ -175,6 +189,11 @@ class RoomCoordinator {
       } on FormatException {
         return false;
       }
+    }
+    if (xiangqiAuthority != null) {
+      return body['game'] == 'xiangqi' &&
+          body['rulesVersion'] == xiangqiRulesVersion &&
+          body['ruleProfile'] == xiangqiRuleProfile;
     }
     if (chessAuthority != null) {
       return body['game'] == 'chess' &&
@@ -198,6 +217,7 @@ class RoomCoordinator {
     }
     _clients.clear();
     await _playerCounts.close();
+    xiangqiAuthority?.dispose();
     chessAuthority?.dispose();
   }
 }

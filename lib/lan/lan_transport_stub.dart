@@ -1,3 +1,4 @@
+import 'xiangqi_lan_game.dart';
 import '../gomoku/gomoku_session.dart' show GomokuVariant, gomokuBoardSize;
 import 'gomoku_lan_game.dart';
 import 'chess_lan_game.dart';
@@ -13,6 +14,7 @@ class LanHostServer {
     LanAuthority? authority,
     this.draughtsAuthority,
     this.chessAuthority,
+    this.xiangqiAuthority,
     this.gomokuAuthority,
     required this.token,
   })
@@ -22,10 +24,13 @@ class LanHostServer {
   LanAuthority get authority => _authority!;
   final DraughtsAuthority? draughtsAuthority;
   final ChessAuthority? chessAuthority;
+  final XiangqiAuthority? xiangqiAuthority;
   final GomokuLanAuthority? gomokuAuthority;
   final String token;
   bool get isGomoku => gomokuAuthority != null;
-  int get boardSize => isGomoku
+  int get boardSize => xiangqiAuthority != null
+      ? 9
+      : isGomoku
       ? gomokuBoardSize
       : chessAuthority != null
       ? 8
@@ -33,21 +38,25 @@ class LanHostServer {
             authority.session.goConfig.boardSize;
   int get seq =>
       gomokuAuthority?.seq ??
+      xiangqiAuthority?.seq ??
       chessAuthority?.seq ??
       draughtsAuthority?.seq ??
       authority.seq;
   bool get gameOver =>
       gomokuAuthority?.session.gameOver ??
+      xiangqiAuthority?.session.gameOver ??
       chessAuthority?.session.gameOver ??
       draughtsAuthority?.session.gameOver ??
       authority.session.gameOver;
   LanMessage submit(Side side, LanMessage request) =>
       gomokuAuthority?.submit(side, request) ??
+      xiangqiAuthority?.submit(side, request) ??
       chessAuthority?.submit(side, request) ??
       draughtsAuthority?.submit(side, request) ??
       authority.submit(side, request);
   LanMessage sync(LanMessage request) =>
       gomokuAuthority?.sync(request) ??
+      xiangqiAuthority?.sync(request) ??
       chessAuthority?.sync(request) ??
       draughtsAuthority?.sync(request) ??
       authority.sync(request);
@@ -66,27 +75,39 @@ class LanHostServer {
 class LanClientConnection {
   LanClientConnection(this.config)
     : draughtsVariant = null,
+      isXiangqi = false,
       isChess = false,
       isGomoku = false,
       gomokuVariant = null;
   LanClientConnection.draughts(DraughtsVariant variant)
     : config = const GoConfig(),
       draughtsVariant = variant,
+      isXiangqi = false,
       isChess = false,
       isGomoku = false,
       gomokuVariant = null;
   LanClientConnection.chess()
     : config = const GoConfig(),
       draughtsVariant = null,
+      isXiangqi = false,
       isChess = true,
       isGomoku = false,
       gomokuVariant = null;
   LanClientConnection.gomoku({GomokuVariant variant = GomokuVariant.freestyle})
     : config = const GoConfig(),
       draughtsVariant = null,
+      isXiangqi = false,
       isChess = false,
       isGomoku = true,
       gomokuVariant = variant;
+  LanClientConnection.xiangqi()
+    : config = const GoConfig(),
+      draughtsVariant = null,
+      isXiangqi = true,
+      isChess = false,
+      isGomoku = false,
+      gomokuVariant = null;
+  final bool isXiangqi;
   final bool isChess;
   final bool isGomoku;
   final GomokuVariant? gomokuVariant;
@@ -94,12 +115,14 @@ class LanClientConnection {
   final DraughtsVariant? draughtsVariant;
   LanReplica? replica;
   DraughtsLanReplica? draughtsReplica;
+  XiangqiLanReplica? xiangqiReplica;
   ChessLanReplica? chessReplica;
   GomokuLanReplica? gomokuReplica;
   Side? side;
   bool started = false;
   int get seq =>
       gomokuReplica?.seq ??
+      xiangqiReplica?.seq ??
       chessReplica?.seq ??
       draughtsReplica?.seq ??
       replica?.seq ??

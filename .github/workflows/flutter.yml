@@ -18,6 +18,12 @@ jobs:
           flutter-version: '3.44.0'
           channel: stable
           cache: true
+      - name: Verify Pikafish assets
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y 7zip
+          python3 tools/prepare_pikafish.py
+
       - name: Verify Stockfish assets
         run: python3 tools/prepare_stockfish.py
 
@@ -30,6 +36,13 @@ jobs:
           printf '#!/bin/sh\nexec qemu-aarch64 "%s"\n' "$PWD/android/app/src/main/jniLibs/arm64-v8a/libstockfish.so" > "$RUNNER_TEMP/stockfish-test"
           chmod +x "$RUNNER_TEMP/stockfish-test"
           echo "STOCKFISH_TEST_EXECUTABLE=$RUNNER_TEMP/stockfish-test" >> "$GITHUB_ENV"
+      - name: Native Pikafish smoke setup
+        run: |
+          printf '#!/bin/sh\nexec qemu-aarch64 "%s"\n' "$PWD/android/app/src/main/jniLibs/arm64-v8a/libpikafish.so" > "$RUNNER_TEMP/pikafish-test"
+          chmod +x "$RUNNER_TEMP/pikafish-test"
+          echo "PIKAFISH_TEST_EXECUTABLE=$RUNNER_TEMP/pikafish-test" >> "$GITHUB_ENV"
+      - name: Pinned Asian rule reference cases
+        run: python3 tools/test_pikafish_rules.py
       - run: flutter test
       - uses: actions/setup-node@v4
         with:
@@ -45,6 +58,7 @@ jobs:
           npm install --no-save --package-lock=false playwright@1.58.2
           npx playwright install --with-deps chromium
           node tools/test_stockfish_web.cjs
+          node tools/test_pikafish_web.cjs
       - name: WebRTC production transport browser smoke
         run: |
           flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/lan/rtc_browser_smoke.dart --output build/rtc-smoke

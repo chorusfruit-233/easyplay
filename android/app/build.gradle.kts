@@ -32,11 +32,17 @@ val prepareStockfish = tasks.register<Exec>("prepareStockfish") {
     )
 }
 
+val preparePikafish = tasks.register<Exec>("preparePikafish") {
+    group = "build"
+    workingDir(rootProject.projectDir.parentFile)
+    commandLine(providers.gradleProperty("stockfishPython").getOrElse(if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3"), "tools/prepare_pikafish.py", "--android-only")
+}
+
 tasks.matching {
     it.name == "preBuild" || (it.name.startsWith("merge") &&
         (it.name.endsWith("NativeLibs") || it.name.endsWith("JniLibFolders")))
 }.configureEach {
-    dependsOn(prepareStockfish)
+    dependsOn(prepareStockfish, preparePikafish)
 }
 
 // Generate assets for rootBundle directly, so every Android entry point packs
@@ -129,6 +135,7 @@ android {
         jniLibs {
             useLegacyPackaging = true
             keepDebugSymbols += "**/libstockfish.so"
+            keepDebugSymbols += "**/libpikafish.so"
             keepDebugSymbols += "**/libkatago.so"
         }
     }

@@ -79,6 +79,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('关于 EasyPlay'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('KataGo 神经网络模型'), 150);
     expect(find.text('KataGo 神经网络模型'), findsOneWidget);
     await tester.tap(find.text('KataGo'));
     await tester.pumpAndSettle();

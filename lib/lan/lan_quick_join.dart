@@ -1,3 +1,4 @@
+import '../xiangqi/widgets/xiangqi_lan_pages.dart';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -28,6 +29,7 @@ class LanWebRoom {
 
   String get label => switch (game) {
     'chess' => '国际象棋',
+    'xiangqi' => '中国象棋',
     'gomoku' => '五子棋 · ${gomokuVariant.label}',
     'draughts' => '跳棋 · ${variant!.label}',
     _ => '围棋',
@@ -50,7 +52,12 @@ class LanWebRoom {
         return null;
       }
       final game = data['game'];
-      if (!['go', 'chess', 'draughts', 'gomoku'].contains(game)) return null;
+      if (!['go', 'chess', 'draughts', 'gomoku', 'xiangqi'].contains(game)) {
+        return null;
+      }
+      if (game == 'xiangqi') {
+        LanMessage.validateXiangqiConfig(Map<String, Object?>.from(data));
+      }
       final gomokuVariant = game == 'gomoku'
           ? LanMessage.parseGomokuVariant(Map<String, Object?>.from(data))
           : GomokuVariant.freestyle;
@@ -142,6 +149,7 @@ class _LanQuickJoinPageState extends State<LanQuickJoinPage> {
     final room = widget.room;
     final connection = switch (room.game) {
       'chess' => LanClientConnection.chess(),
+      'xiangqi' => LanClientConnection.xiangqi(),
       'gomoku' => LanClientConnection.gomoku(variant: room.gomokuVariant),
       'draughts' => LanClientConnection.draughts(room.variant!),
       _ => LanClientConnection(const GoConfig()),
@@ -167,6 +175,7 @@ class _LanQuickJoinPageState extends State<LanQuickJoinPage> {
         context,
         MaterialPageRoute(
           builder: (_) => switch (room.game) {
+            'xiangqi' => XiangqiLanWaitingPage(connection: connection),
             'chess' => ChessLanWaitingPage(connection: connection),
             'gomoku' => GomokuLanWaitingPage(connection: connection),
             'draughts' => DraughtsLanWaitingPage(

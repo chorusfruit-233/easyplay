@@ -1,3 +1,6 @@
+import 'xiangqi_lan_game.dart';
+import '../xiangqi/xiangqi_session.dart'
+    show xiangqiRulesVersion, xiangqiRuleProfile;
 import '../gomoku/gomoku_session.dart' show GomokuVariant, gomokuBoardSize;
 import 'gomoku_lan_game.dart';
 import '../chess/chess_session.dart' show chessRulesVersion;
@@ -25,6 +28,7 @@ class LanHostServer {
     LanAuthority? authority,
     this.draughtsAuthority,
     this.chessAuthority,
+    this.xiangqiAuthority,
     this.gomokuAuthority,
     required this.token,
   })
@@ -34,6 +38,7 @@ class LanHostServer {
           _authority,
           draughtsAuthority,
           chessAuthority,
+          xiangqiAuthority,
           gomokuAuthority,
         ].where((a) => a != null).length !=
         1) {
@@ -43,6 +48,7 @@ class LanHostServer {
   final LanAuthority? _authority;
   final DraughtsAuthority? draughtsAuthority;
   final ChessAuthority? chessAuthority;
+  final XiangqiAuthority? xiangqiAuthority;
   final GomokuLanAuthority? gomokuAuthority;
   LanAuthority get authority => _authority!;
   final String token;
@@ -51,6 +57,7 @@ class LanHostServer {
     authority: _authority,
     draughtsAuthority: draughtsAuthority,
     chessAuthority: chessAuthority,
+    xiangqiAuthority: xiangqiAuthority,
     gomokuAuthority: gomokuAuthority,
     token: token,
   );
@@ -61,7 +68,9 @@ class LanHostServer {
   bool get isDraughts => draughtsAuthority != null;
   bool get isGomoku => gomokuAuthority != null;
   int get seq => coordinator.seq;
-  int get boardSize => isGomoku
+  int get boardSize => xiangqiAuthority != null
+      ? 9
+      : isGomoku
       ? gomokuBoardSize
       : chessAuthority != null
       ? 8
@@ -114,13 +123,21 @@ class LanHostServer {
         'app': 'easyplay',
         'version': lanProtocolVersion,
         'board': boardSize,
-        'game': isGomoku
+        'game': xiangqiAuthority != null
+            ? 'xiangqi'
+            : isGomoku
             ? 'gomoku'
             : chessAuthority != null
             ? 'chess'
             : isDraughts
             ? 'draughts'
             : 'go',
+        if (xiangqiAuthority != null) ...{
+          'rulesVersion': xiangqiRulesVersion,
+          'ruleProfile': xiangqiRuleProfile,
+          'boardRows': 10,
+          'boardCols': 9,
+        },
         if (isGomoku)
           ...LanMessage.gomokuConfigToWire(gomokuAuthority!.variant),
         if (draughtsAuthority != null)
@@ -250,27 +267,39 @@ class SocketMessageTransport implements MessageTransport {
 class LanClientConnection {
   LanClientConnection(this.config)
     : draughtsVariant = null,
+      isXiangqi = false,
       isChess = false,
       isGomoku = false,
       gomokuVariant = null;
   LanClientConnection.draughts(DraughtsVariant variant)
     : config = const GoConfig(),
       draughtsVariant = variant,
+      isXiangqi = false,
       isChess = false,
       isGomoku = false,
       gomokuVariant = null;
   LanClientConnection.chess()
     : config = const GoConfig(),
       draughtsVariant = null,
+      isXiangqi = false,
       isChess = true,
       isGomoku = false,
       gomokuVariant = null;
   LanClientConnection.gomoku({GomokuVariant variant = GomokuVariant.freestyle})
     : config = const GoConfig(),
       draughtsVariant = null,
+      isXiangqi = false,
       isChess = false,
       isGomoku = true,
       gomokuVariant = variant;
+  LanClientConnection.xiangqi()
+    : config = const GoConfig(),
+      draughtsVariant = null,
+      isXiangqi = true,
+      isChess = false,
+      isGomoku = false,
+      gomokuVariant = null;
+  final bool isXiangqi;
   final bool isChess;
   final bool isGomoku;
   final GomokuVariant? gomokuVariant;
@@ -285,12 +314,14 @@ class LanClientConnection {
   DateTime _lastPong = DateTime.now();
   LanReplica? replica;
   DraughtsLanReplica? draughtsReplica;
+  XiangqiLanReplica? xiangqiReplica;
   ChessLanReplica? chessReplica;
   GomokuLanReplica? gomokuReplica;
   Side? side;
   bool started = false;
   int get seq =>
       gomokuReplica?.seq ??
+      xiangqiReplica?.seq ??
       chessReplica?.seq ??
       draughtsReplica?.seq ??
       replica?.seq ??
@@ -311,7 +342,9 @@ class LanClientConnection {
         : uri.replace(path: '/easyplay/ws');
     final socket = await WebSocket.connect(socketUri.toString());
     _socket = socket;
-    if (isGomoku) {
+    if (isXiangqi) {
+      xiangqiReplica ??= XiangqiLanReplica();
+    } else if (isGomoku) {
       gomokuReplica ??= GomokuLanReplica(variant: gomokuVariant!);
     } else if (isChess) {
       chessReplica ??= ChessLanReplica();
@@ -350,7 +383,9 @@ class LanClientConnection {
               message.type == LanMessageType.pass ||
               message.type == LanMessageType.resign ||
               LanMessage.eventTypes.contains(message.type)) {
-            final accepted = isGomoku
+            final accepted = isXiangqi
+                ? xiangqiReplica!.receive(message)
+                : isGomoku
                 ? gomokuReplica!.receive(message)
                 : isChess
                 ? chessReplica!.receive(message)
@@ -363,6 +398,7 @@ class LanClientConnection {
               }
               final stateRequest =
                   gomokuReplica?.stateRequest() ??
+                  xiangqiReplica?.stateRequest() ??
                   chessReplica?.stateRequest() ??
                   draughtsReplica?.stateRequest() ??
                   replica!.stateRequest();
@@ -401,9 +437,11 @@ class LanClientConnection {
     socket.add(
       LanMessage(LanMessageType.hello, 0, {
         'roomVersion': lanProtocolVersion,
-        if (!isGomoku && !isChess && draughtsVariant == null)
+        if (!isXiangqi && !isGomoku && !isChess && draughtsVariant == null)
           ...LanMessage.configToWire(config),
-        'game': isGomoku
+        'game': isXiangqi
+            ? 'xiangqi'
+            : isGomoku
             ? 'gomoku'
             : isChess
             ? 'chess'
@@ -412,6 +450,10 @@ class LanClientConnection {
             : 'draughts',
         if (draughtsVariant != null) 'variant': draughtsVariant!.name,
         if (draughtsVariant != null) 'rulesVersion': draughtsRulesVersion,
+        if (isXiangqi) ...{
+          'rulesVersion': xiangqiRulesVersion,
+          'ruleProfile': xiangqiRuleProfile,
+        },
         if (isChess) 'rulesVersion': chessRulesVersion,
         if (isGomoku) ...LanMessage.gomokuConfigToWire(gomokuVariant!),
         'token': token,
@@ -453,6 +495,7 @@ class LanClientConnection {
   Future<void> close() async {
     _heartbeat?.cancel();
     await _socket?.close();
+    xiangqiReplica?.dispose();
     chessReplica?.dispose();
     if (!_messages.isClosed) await _messages.close();
     if (!_disconnections.isClosed) await _disconnections.close();

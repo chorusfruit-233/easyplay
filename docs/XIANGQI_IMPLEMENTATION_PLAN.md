@@ -1,6 +1,6 @@
 # EasyPlay 中国象棋（Xiangqi）一次性实现计划
 
-**状态：待实现**  
+**状态：已实现；本地、AI、LAN 与 WebRTC 验收通过**
 **仓库：** chorusfruit-233/easyplay  
 **检查基准：** main @ de118c2e6a39b77bc31e62986ee027a6d607e140  
 **检查时版本：** v1.4.5
@@ -739,55 +739,64 @@ Android APK 应同时包含 KataGo、Stockfish、Pikafish 和内置 LAN Web 客�
 
 ### 规则
 
-- [ ] 32 枚初始棋子布局正确
-- [ ] 红方先手
-- [ ] 全部棋子走法正确
-- [ ] 马腿、象眼、炮架正确
-- [ ] 将帅照面正确
-- [ ] 将军、应将正确
-- [ ] 将死与困毙正确
-- [ ] 长将、长捉符合固定规则配置
-- [ ] 无吃子着数判定正确
-- [ ] Undo 完整恢复历史状态
-- [ ] FEN / UCI round-trip 正确
-- [ ] Perft 和固定案例通过
+- [x] 32 枚初始棋子布局正确
+- [x] 红方先手
+- [x] 全部棋子走法正确
+- [x] 马腿、象眼、炮架正确
+- [x] 将帅照面正确
+- [x] 将军、应将正确
+- [x] 将死与困毙正确
+- [x] 长将、长捉符合固定规则配置
+- [x] 无吃子着数判定正确
+- [x] Undo 完整恢复历史状态
+- [x] FEN / UCI round-trip 正确
+- [x] Perft 和固定案例通过
 
 ### AI
 
-- [ ] Android Pikafish 可运行
-- [ ] Web Pikafish 可运行
-- [ ] NNUE 校验通过
-- [ ] 红黑 AI 对战正常
-- [ ] 六档难度
-- [ ] 无虚假着法
-- [ ] 取消旧搜索有效
-- [ ] 退出无残留进程 / Worker
+- [x] Android Pikafish 可运行
+- [x] Web Pikafish 可运行
+- [x] NNUE 校验通过
+- [x] 红黑 AI 对战正常
+- [x] 六档难度
+- [x] 无虚假着法
+- [x] 取消旧搜索有效
+- [x] 退出无残留进程 / Worker
 
 ### 联机
 
-- [ ] Android 建房
-- [ ] LAN 自动发现
-- [ ] 手动加入
-- [ ] 内置 Web 客户端
-- [ ] WebRTC 双端
-- [ ] 非法着由权威拒绝
-- [ ] seq 和 stateSync 正确
-- [ ] 断线后完整恢复
-- [ ] 悔棋、和棋、认输
-- [ ] 再来一局
-- [ ] 长将长捉无状态分叉
+- [x] Android 建房
+- [x] LAN 自动发现
+- [x] 手动加入
+- [x] 内置 Web 客户端
+- [x] WebRTC 双端
+- [x] 非法着由权威拒绝
+- [x] seq 和 stateSync 正确
+- [x] 断线后完整恢复
+- [x] 悔棋、和棋、认输
+- [x] 再来一局
+- [x] 长将长捉无状态分叉
 
 ### 发布回归
 
-- [ ] Go / KataGo 正常
-- [ ] Chess / Stockfish 19 正常
-- [ ] Draughts 正常
-- [ ] Gomoku 正常
-- [ ] 既有 LAN / WebRTC 测试通过
-- [ ] Android Debug / Release 构建通过
-- [ ] GitHub Pages 构建通过
-- [ ] 第三方许可证和模型来源完整
-- [ ] 无棋谱库或对局持久化记录
+- [x] Go / KataGo 正常
+- [x] Chess / Stockfish 19 正常
+- [x] Draughts 正常
+- [x] Gomoku 正常
+- [x] 既有 LAN / WebRTC 测试通过
+- [x] Android Debug / Release 构建通过
+- [x] GitHub Pages 构建通过
+- [x] 第三方许可证和模型来源完整
+- [x] 无棋谱库或对局持久化记录
+
+### 验收记录（2026-10-04）
+
+- Dart 静态分析无问题；Flutter 523 项测试通过，1 项可选 Stockfish 原生测试跳过。
+- 固定 Pikafish 原生程序独立验证 perft；未修改的上游 C++ 规则验证长将、长捉与混合将军循环。固定配置不代表全部赛事条例兼容。
+- Android 16 ARM64 真机完成 NNUE 加载、红黑 AI、停止与退出进程检查，以及建房、口令等待、主机开始后 Web 加入。自动发现由扫描器与 probe 测试验证。
+- 浏览器验证 Pikafish/Stockfish Worker、Pages 子路径、14 组 RTC 传输场景与五种游戏大厅。
+- Debug 与 Release 构建通过；本地 Release 使用测试签名验证，未发布。APK 保留三种引擎和内置 LAN Web 客户端。
+- Web 字体异步加载后，棋盘自动重绘；不额外捆绑候选字形字体。
 
 ## 27. 不允许的妥协
 

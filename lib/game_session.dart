@@ -1,4 +1,4 @@
-enum GameType { go, chess, checkers, gomoku }
+enum GameType { go, chess, checkers, gomoku, xiangqi }
 
 enum Side { black, white }
 
@@ -181,6 +181,9 @@ class GameSession {
 
   GameSession(this.type, {GoConfig? goConfig})
     : _goConfig = goConfig ?? const GoConfig() {
+    if (type == GameType.xiangqi) {
+      throw UnsupportedError('Use XiangqiSession for Xiangqi');
+    }
     if (type == GameType.chess) {
       throw UnsupportedError('Use ChessSession for Chess');
     }

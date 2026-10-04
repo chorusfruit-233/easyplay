@@ -355,10 +355,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.pageBack();
       await tester.pumpAndSettle();
-          final saved = find.text('${variant.label} · 1 手');
-          await tester.ensureVisible(saved);
-          await tester.pumpAndSettle();
-          await tester.tap(saved);
+      final saved = find.text('${variant.label} · 1 手');
+      await tester.ensureVisible(saved);
+      await tester.pumpAndSettle();
+      await tester.tap(saved);
       await tester.pumpAndSettle();
       final resumed = tester.widget<GomokuGamePage>(
         find.byType(GomokuGamePage),
