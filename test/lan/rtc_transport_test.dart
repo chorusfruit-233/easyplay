@@ -5,6 +5,7 @@ import 'package:easyplay/game_session.dart';
 import 'package:easyplay/lan/lan_game.dart';
 import 'package:easyplay/lan/lan_protocol.dart';
 import 'package:easyplay/lan/rtc_channel.dart';
+import 'package:easyplay/lan/rtc_framing.dart';
 
 class Channel implements RtcTextChannel {
   final incomingController = StreamController<String>.broadcast();
@@ -35,6 +36,41 @@ class Channel implements RtcTextChannel {
 }
 
 void main() {
+  test('retains messages received before room subscribes', () async {
+    final channel = Channel();
+    final receiver = RtcMessageTransport(channel);
+    final early = LanMessage(LanMessageType.ping, 0, {'nonce': 'early'});
+    try {
+      for (final frame in rtcFrames(early)) {
+        channel.incomingController.add(frame);
+      }
+      // The DataChannel delivers before the room attaches its listener.
+      await Future<void>.delayed(Duration.zero);
+      final received = await receiver.messages.first.timeout(
+        const Duration(milliseconds: 200),
+      );
+      expect(received.encode(), early.encode());
+    } finally {
+      await receiver.close();
+    }
+  });
+
+  test('pre-subscription queue rejects excess messages', () async {
+    final channel = Channel();
+    final receiver = RtcMessageTransport(channel);
+    try {
+      final message = LanMessage(LanMessageType.ping, 0, {'nonce': 'early'});
+      for (var i = 0; i < 65; i++) {
+        for (final frame in rtcFrames(message)) {
+          channel.incomingController.add(frame);
+        }
+      }
+      await Future<void>.delayed(Duration.zero);
+      await expectLater(receiver.messages.first, throwsFormatException);
+    } finally {
+      await receiver.close();
+    }
+  });
   test(
     'queued sync yields to control messages while channel applies backpressure',
     () async {

@@ -42,13 +42,20 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
       }
     }
 
+    let phase = 'initialization';
+    for (const [role, page] of [['host', host], ['guest', guest]]) {
+      page.on('pageerror', error => console.error(`${phase} ${role}: ${error.message}`));
+    }
     const action = (page, name) => page.evaluate(n => easyplayRtcSmoke.action(n).then(JSON.parse), name);
     const state = page => page.evaluate(() => JSON.parse(easyplayRtcSmoke.state()));
     const transportGames = process.env.RTC_UI_ONLY === '1' ? [] : ['go','chess','xiangqi','gomoku','gomoku-standard','gomoku-renju','english','international','brazilian','russian','pool','italian','spanish','turkish'];
     for (const game of transportGames) {
+      phase = `${game}: handshake`;
+      console.log(phase);
       const invitation = await host.evaluate(g => easyplayRtcSmoke.offer(g), game);
       const response = await guest.evaluate(text => easyplayRtcSmoke.answer(text), invitation);
-      await host.evaluate(text => easyplayRtcSmoke.accept(text), response);
+      // Stress the open-to-room handoff without masking failures with retries.
+      await host.evaluate(text => easyplayRtcSmoke.acceptDelayed(text), response);
       assert.equal((await state(host)).started, false);
       assert.equal((await state(guest)).started, false);
       await action(host, 'start');
@@ -56,6 +63,8 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
       await action(host, 'move');
       await guest.waitForFunction(() => JSON.parse(easyplayRtcSmoke.state()).seq === 1);
       assert.equal((await state(host)).signature, (await state(guest)).signature);
+      phase = `${game}: reconnect`;
+      console.log(phase);
       const resumed = await host.evaluate(() => easyplayRtcSmoke.resume());
       const resumedAnswer = await guest.evaluate(text => easyplayRtcSmoke.answer(text), resumed);
       await host.evaluate(text => easyplayRtcSmoke.accept(text), resumedAnswer);

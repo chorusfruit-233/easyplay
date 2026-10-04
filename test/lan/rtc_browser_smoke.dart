@@ -95,12 +95,17 @@ Future<String> answer(String raw) async {
   return invite.answer(sdp).encode();
 }
 
-Future<void> accept(String raw) async {
+Future<void> accept(String raw, {bool delayBinding = false}) async {
   final room = _room!;
   final reply = RtcInvitation.decode(raw, expectedType: 'answer');
   room.invitation.validateAnswer(reply);
   await room.peer!.acceptAnswer(reply.sdp);
-  await room.attachPeer(await room.peer!.transport);
+  final transport = await room.peer!.transport;
+  if (delayBinding) {
+    // Deliberately let guest hello arrive before the host room subscribes.
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+  }
+  await room.attachPeer(transport);
   if (room.coordinator!.playerCount != 2) {
     await room.coordinator!.playerCounts
         .firstWhere((n) => n == 2)
@@ -249,6 +254,10 @@ void main() {
             ).then((s) => s.toJS).toJS).toJS,
             'accept': ((JSString text) => accept(
               text.toDart,
+            ).then((_) => true.toJS).toJS).toJS,
+            'acceptDelayed': ((JSString text) => accept(
+              text.toDart,
+              delayBinding: true,
             ).then((_) => true.toJS).toJS).toJS,
             'action': ((JSString name) => action(
               name.toDart,

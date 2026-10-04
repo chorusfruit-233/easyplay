@@ -20,23 +20,31 @@ class RtcMessageTransport implements MessageTransport {
     _incoming = channel.incoming.listen((raw) {
       try {
         final message = _assembler.receive(raw);
-        if (message != null) _messages.add(message);
+        if (message != null) _receive(message);
       } catch (_) {
-        _messages.addError(const FormatException('传输校验失败，请重新同步'));
+        _receiveError(const FormatException('传输校验失败，请重新同步'));
       }
-    }, onError: (Object error) => _messages.addError(error));
+    }, onError: _receiveError);
     _disconnects = channel.disconnections.listen((_) {
       if (!_closed) _disconnections.add(null);
     });
     _expiry = Timer.periodic(const Duration(seconds: 2), (_) {
       if (_assembler.expire()) {
-        _messages.addError(const FormatException('同步分片超时'));
+        _receiveError(const FormatException('同步分片超时'));
       }
     });
   }
   final RtcTextChannel channel;
   final _assembler = RtcReassembler();
-  final _messages = StreamController<LanMessage>.broadcast();
+  late final _messages = StreamController<LanMessage>.broadcast(
+    onListen: _attachReceiver,
+  );
+  // DataChannel may open and deliver hello before RtcRoom attaches. Keep only
+  // this initial handoff buffered, with the same limits as the send queue.
+  final _pending = Queue<LanMessage>();
+  int _pendingBytes = 0;
+  Object? _pendingError;
+  bool _receiverAttached = false;
   final _disconnections = StreamController<void>.broadcast();
   final _small = Queue<_Outgoing>(), _large = Queue<_Outgoing>();
   late final StreamSubscription<String> _incoming;
@@ -48,6 +56,45 @@ class RtcMessageTransport implements MessageTransport {
   Stream<LanMessage> get messages => _messages.stream;
   @override
   Stream<void> get disconnections => _disconnections.stream;
+  void _attachReceiver() {
+    _receiverAttached = true;
+    if (_pendingError != null) {
+      _messages.addError(_pendingError!);
+      _pendingError = null;
+    }
+    while (_pending.isNotEmpty) {
+      _messages.add(_pending.removeFirst());
+    }
+    _pendingBytes = 0;
+  }
+
+  void _receive(LanMessage message) {
+    if (_closed) return;
+    if (_receiverAttached) {
+      _messages.add(message);
+      return;
+    }
+    if (_pendingError != null) return;
+    final size = utf8.encode(message.encode()).length;
+    if (_pending.length >= 64 || _pendingBytes + size > 8 * 1024 * 1024) {
+      _receiveError(const FormatException('接收队列超限'));
+      return;
+    }
+    _pending.add(message);
+    _pendingBytes += size;
+  }
+
+  void _receiveError(Object error) {
+    if (_closed) return;
+    if (_receiverAttached) {
+      _messages.addError(error);
+    } else {
+      _pending.clear();
+      _pendingBytes = 0;
+      _pendingError = error;
+    }
+  }
+
   @override
   void send(LanMessage message) {
     if (_closed) throw StateError('通道已关闭');
@@ -100,6 +147,9 @@ class RtcMessageTransport implements MessageTransport {
     _closed = true;
     _expiry.cancel();
     _assembler.clear();
+    _pending.clear();
+    _pendingBytes = 0;
+    _pendingError = null;
     _small.clear();
     _large.clear();
     _queuedBytes = 0;
