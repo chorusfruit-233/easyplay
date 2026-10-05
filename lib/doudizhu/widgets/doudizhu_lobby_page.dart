@@ -127,14 +127,14 @@ class _DouDizhuLobbyPageState extends State<DouDizhuLobbyPage> {
         final (host, client) = MemoryTransport.pair();
         coordinator.attach(host, fixedSeat: PlayerSeat.seat0);
         await replica.bind(client, token: coordinator.hostCredential);
+        replica.send('ready');
+        await replica.waitForSnapshot((r) => r.seats[0]['ready'] == true);
         if (!mounted || _closing) {
           await replica.close();
           await coordinator.close();
           await server.close();
           return;
         }
-        replica.send('ready');
-        await replica.waitForSnapshot((r) => r.seats[0]['ready'] == true);
         _coordinator = coordinator;
         _server = server;
         _addresses = addresses;
