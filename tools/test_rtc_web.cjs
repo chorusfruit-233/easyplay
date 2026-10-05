@@ -25,6 +25,19 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
   try {
     browser = await chromium.launch({headless: true, executablePath: process.env.CHROME_PATH || undefined, args: ['--no-sandbox']});
     const contexts = await Promise.all([browser.newContext(), browser.newContext()]);
+    // Keep test-only references so late ICE notifications can be exercised
+    // deterministically after the room has authenticated the guest.
+    await Promise.all(contexts.map(context => context.addInitScript(() => {
+      const NativePeer = window.RTCPeerConnection;
+      window.__easyplayTestPeers = [];
+      window.RTCPeerConnection = new Proxy(NativePeer, {
+        construct(target, args) {
+          const peer = new target(...args);
+          window.__easyplayTestPeers.push(peer);
+          return peer;
+        },
+      });
+    })));
     const [host, guest] = await Promise.all(contexts.map(c => c.newPage()));
     const url = `http://127.0.0.1:${server.address().port}/easyplay/`;
     await Promise.all([host.goto(url), guest.goto(url)]);
@@ -132,6 +145,12 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
         const uiResponse = await guest.evaluate(() => navigator.clipboard.readText());
         await fillInvitation(host, uiResponse);
         await host.getByRole('button', {name: '导入', exact: true}).click();
+        await guest.getByText('已加入，等待房主开始对局', {exact: true}).waitFor();
+        await guest.evaluate(async () => {
+          window.__easyplayTestPeers.at(-1).dispatchEvent(new Event('connectionstatechange'));
+          await new Promise(requestAnimationFrame);
+          await new Promise(requestAnimationFrame);
+        });
         await guest.getByText('已加入，等待房主开始对局', {exact: true}).waitFor();
         if (isGomoku) {
           assert.equal(await guest.getByText(boardLabel, {exact: true}).count(), 0);

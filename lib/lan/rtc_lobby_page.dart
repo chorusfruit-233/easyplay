@@ -79,6 +79,7 @@ class _RtcLobbyPageState extends State<RtcLobbyPage> {
   StreamSubscription<String>? _states;
   StreamSubscription<int>? _players;
   StreamSubscription<LanMessage>? _messages;
+  StreamSubscription<void>? _disconnects;
   String? _output, _error;
   String _status = '选择创建房间，或粘贴对手的邀请';
   bool _busy = false, _connected = false, _inMatch = false;
@@ -107,6 +108,7 @@ class _RtcLobbyPageState extends State<RtcLobbyPage> {
     await _states?.cancel();
     await _players?.cancel();
     await _messages?.cancel();
+    await _disconnects?.cancel();
     if (widget.resumeRoom == null) {
       await _room?.close();
       _room = null;
@@ -207,6 +209,15 @@ class _RtcLobbyPageState extends State<RtcLobbyPage> {
       if (message.type == LanMessageType.matchStart &&
           widget.resumeRoom == null) {
         unawaited(_enterMatch());
+      }
+    });
+    _disconnects?.cancel();
+    _disconnects = _room?.client.disconnections.listen((_) {
+      if (mounted && identical(_room?.peer, peer)) {
+        setState(() {
+          _connected = false;
+          _status = '连接已断开，请重新交换邀请和回应';
+        });
       }
     });
   }
@@ -347,6 +358,7 @@ class _RtcLobbyPageState extends State<RtcLobbyPage> {
     _states?.cancel();
     _players?.cancel();
     _messages?.cancel();
+    _disconnects?.cancel();
     if (widget.resumeRoom == null) unawaited(_room?.close() ?? Future.value());
     super.dispose();
   }
@@ -417,7 +429,9 @@ class _RtcLobbyPageState extends State<RtcLobbyPage> {
             ],
           ),
         const SizedBox(height: 16),
-        Text(_status),
+        // ICE state notifications may arrive after authenticated state sync.
+        // Keep the room-ready status until a real disconnect is received.
+        Text(_connected && _room?.isHost == false ? '已加入，等待房主开始对局' : _status),
         if (_error != null)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 8),
