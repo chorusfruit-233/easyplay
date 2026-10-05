@@ -247,6 +247,19 @@ class RtcRoom {
     _localBound = true;
   }
 
+  Future<void> disconnectPeer() async {
+    await _remoteDisconnect?.cancel();
+    _remoteDisconnect = null;
+    if (isHost) {
+      coordinator!.disconnectIdentity(
+        invitation.sessionId,
+        coordinator!.firstSide.opponent,
+      );
+    }
+    await peer?.close();
+    peer = null;
+  }
+
   Future<void> attachPeer(MessageTransport transport) async {
     if (isHost) {
       await _remoteDisconnect?.cancel();

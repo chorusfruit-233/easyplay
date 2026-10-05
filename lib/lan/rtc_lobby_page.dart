@@ -111,7 +111,7 @@ class _RtcLobbyPageState extends State<RtcLobbyPage> {
       await _room?.close();
       _room = null;
     } else {
-      await _room?.peer?.close();
+      await _room?.disconnectPeer();
     }
     if (!mounted) return;
     setState(() {
@@ -146,7 +146,7 @@ class _RtcLobbyPageState extends State<RtcLobbyPage> {
         komi: komi,
         handicap: _handicap,
       )..validate();
-      await _room?.peer?.close();
+      await _room?.disconnectPeer();
       final peer = RtcPeer(iceServers: _iceServers);
       final invitation = _room?.invitation;
       final placeholder =
@@ -241,7 +241,7 @@ class _RtcLobbyPageState extends State<RtcLobbyPage> {
                 incoming.token != _room!.invitation.token)) {
           throw const FormatException('只能恢复原房间，房主刷新后无法恢复');
         }
-        await _room?.peer?.close();
+        await _room?.disconnectPeer();
         final room = _room ?? RtcRoom.guest(incoming);
         _room = room;
         room.invitation = incoming;

@@ -63,6 +63,10 @@ jobs:
         run: |
           flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/lan/rtc_browser_smoke.dart --output build/rtc-smoke
           node tools/test_rtc_web.cjs
+      - name: Three-player DouDizhu browser smoke
+        run: |
+          flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/doudizhu/rtc_browser_smoke.dart --output build/doudizhu-smoke
+          node tools/test_doudizhu_web.cjs
       - name: Theme browser smoke
         run: |
           flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/theme_browser_smoke.dart --output build/theme-smoke

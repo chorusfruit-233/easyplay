@@ -15,6 +15,7 @@ const lanMaxEvents = 20000;
 /// Requests propose the next seq; only the authority assigns/broadcasts it.
 /// Handshakes, heartbeat, rejection and synchronization do not consume seq.
 enum LanMessageType {
+  card,
   hello,
   helloAck,
   matchStart,
@@ -182,6 +183,15 @@ class LanMessage {
     }
 
     switch (type) {
+      case LanMessageType.card:
+        if (data['game'] != 'doudizhu' ||
+            data['protocolVersion'] != 1 ||
+            data['rulesVersion'] != 1 ||
+            data['action'] is! String ||
+            data['payload'] is! Map ||
+            _body.length > 65536) {
+          throw const FormatException('无效的斗地主消息');
+        }
       case LanMessageType.hello:
         integer('roomVersion');
         if (data['roomVersion'] != lanProtocolVersion) {

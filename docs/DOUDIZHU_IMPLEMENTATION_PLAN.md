@@ -1,6 +1,6 @@
 # EasyPlay 三人斗地主一次性实现计划
 
-**状态：待实现**  
+**状态：已完成；规则、AI、三人联机、隐私和 Android / Web 构建验收通过**
 **目标文件：** docs/DOUDIZHU_IMPLEMENTATION_PLAN.md  
 **仓库：** chorusfruit-233/easyplay  
 **制定时检查基准：** main @ 0446eca184020cda165ea5b042f9421372d4fc12（v1.5.1）  
@@ -354,3 +354,18 @@ python3 tools/package_lan_android.py --debug
 另新增斗地主专属牌型性质测试、三人 LAN 集成测试、三人 RTC 真实浏览器 smoke。构建时保持原有五棋种及 KataGo / Stockfish / Pikafish 资源不受影响。
 
 **完成定义：** 用户在 Android 或 Web 打开斗地主，可与两名本地 AI、两名真人或一名真人加一名 AI 完成一局经典三人斗地主。房主权威校验每个动作，三个玩家各自只收到有权查看的牌，网络掉线后凭座位身份恢复正确私有视图；结束后不保存历史牌谱，不引入下注或货币结算，也不破坏原有双人棋类系统。
+
+## 17. 实现与验收记录（2026-10-04）
+
+完整实现与使用说明见 [斗地主说明](DOUDIZHU.md)。规则、Session、受限玩家视图、AI、三人房间、LAN、双 peer WebRTC、同机遮挡及响应式界面均已接入首页；原有双人棋类房间保持独立。
+
+使用与 CI 一致的 Flutter 3.44.0 验证：
+
+- `dart format lib test` 与 `dart analyze lib test` 通过，无静态问题。
+- 全量 `flutter test`：566 项通过，包含原生 Stockfish / Pikafish smoke，无跳过项。
+- 斗地主及快捷加入针对性测试：46 项通过，包括真实三人 WebSocket、私有消息投影、认证重连、非法请求不改变权威状态及完整 AI 对局。
+- 三个独立 Chromium 上下文建立两条真实 DataChannel，完成私有发牌、公开出牌、单客人重连、终局、再来一局和两名真人加 AI 对局；实际大厅完成两套邀请/回应交换、开始、叫分和选牌出牌，横竖屏无布局异常。
+- 原有棋类 WebRTC transport / 大厅 smoke、Stockfish / Pikafish 浏览器 Worker、固定亚洲规则 C++ 对照均通过。
+- 产品 Web 构建及 `python3 tools/package_lan_android.py --debug` 通过；APK 包含更新后的内置 LAN Web 客户端，产物为 `build/web/` 与 `build/app/outputs/flutter-apk/app-debug.apk`。
+
+三人浏览器 smoke 已加入 CI；测试桥接与网络消息捕获仅用于测试，不随产品构建发布。房间与私有牌保留在内存，退出清空；联网限制与房主信任边界在使用说明中明确。

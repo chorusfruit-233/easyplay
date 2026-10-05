@@ -1,6 +1,6 @@
 # EasyPlay
 
-面向 Android 和 Web 的 Flutter 棋类应用，支持围棋、国际象棋、跳棋、五子棋和中国象棋。提供本地双人、设备本地 AI、Android 局域网房间及浏览器 WebRTC 对弈，无需账号或远程 AI 服务。
+面向 Android 和 Web 的 Flutter 棋牌应用，支持围棋、国际象棋、跳棋、五子棋、中国象棋和三人斗地主。提供本地双人、设备本地 AI、Android 局域网房间及浏览器 WebRTC 对弈，无需账号或远程 AI 服务。斗地主支持单人 AI、同机三人及三人联机。
 
 [下载 Android APK](https://github.com/chorusfruit-233/easyplay/releases/latest) · [打开 Web 版](https://chorusfruit-233.github.io/easyplay/)
 
@@ -13,8 +13,9 @@
 | 跳棋 | 英式/美式、国际、巴西、俄罗斯、Pool、意大利、西班牙、土耳其八种规则 | 自研本地搜索 |
 | 五子棋 | 15×15 自由、标准与连珠禁手规则 | 自研本地搜索，三档难度 |
 | 中国象棋 | 马腿、象眼、炮架、将帅照面、将死与困毙；固定亚洲长将/长捉配置 | Pikafish，六档难度 |
+| 斗地主 | 54 张牌、叫分、全部常用牌型、地主与农民阵营；三人对战 | Dart 本地启发式 AI，仅使用自己的手牌 |
 
-各游戏支持本地双人、AI 与联机。中国象棋的着法历史仅用于当前对局的规则、悔棋、搜索和重连，不持久化保存棋谱；规则范围见 [中国象棋说明](docs/XIANGQI.md)。
+棋类游戏支持本地双人、AI 与联机。斗地主支持经典三人规则、同机遮挡交接、设备本地 AI、三人 LAN / WebRTC 和两名真人加 AI 补位，详见 [斗地主说明](docs/DOUDIZHU.md)。中国象棋的着法历史仅用于当前对局的规则、悔棋、搜索和重连，不持久化保存棋谱；规则范围见 [中国象棋说明](docs/XIANGQI.md)。
 
 ## 联机
 
@@ -58,6 +59,7 @@ dart analyze lib test
 - [开发文档](docs/DEVELOPMENT.md)：结构、规则、平台构建与测试约定
 - [AI 引擎与模型](docs/AI_ENGINES.md)：KataGo CPU、配置和模型管理
 - [五子棋说明](docs/GOMOKU.md)：规则、AI、存储与联机
+- [斗地主说明](docs/DOUDIZHU.md)：固定规则、三人房间、手牌隐私与重连
 - [中国象棋说明](docs/XIANGQI.md)：固定规则、Pikafish、构建与模型许可
 - [WebRTC 联机说明](docs/WEBRTC_MULTIPLAYER.md)：邀请流程、STUN 与网络限制
 
