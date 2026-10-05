@@ -606,3 +606,7 @@ Android 构建过程中的 Java 25 restricted-method warning 不影响上述 APK
 ## 主题设置
 
 独立主题页复现 KernelSU 的 Material 配色设置，包括 15 个强调色、四种明暗模式、九种色彩风格、2021/2025 色彩标准和界面缩放；不提供 Miuix。主题状态、偏好迁移、官方算法来源和验证命令见 [主题说明](THEMES.md)。
+
+## 三人斗地主
+
+斗地主使用独立 `lib/doudizhu/` 规则、Session、AI 与三座位房间；不扩展棋类 `Side` 或双人 `RoomCoordinator`。私有快照按认证收件人投影，客户端不持有完整 Session 或权威事件日志。LAN 与 WebRTC 复用底层传输，新增三人浏览器 smoke 在 CI 单独执行。规则边界、模式、隐私与验证命令见 [斗地主说明](DOUDIZHU.md)。

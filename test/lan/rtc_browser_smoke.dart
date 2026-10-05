@@ -19,6 +19,22 @@ external set _api(JSObject value);
 RtcRoom? _room;
 Future<void>? _joining;
 int _padding = 0;
+String _lastError = '';
+Future<T> _guard<T>(Future<T> Function() operation) async {
+  try {
+    return await operation();
+  } catch (e) {
+    _lastError = e.toString();
+    rethrow;
+  }
+}
+
+Future<String> offer(String game) => _guard(() => _offer(game));
+Future<String> resumeOffer() => _guard(_resumeOffer);
+Future<String> answer(String text) => _guard(() => _answer(text));
+Future<String> action(String name) => _guard(() => _action(name));
+Future<void> accept(String text, {bool delayBinding = false}) =>
+    _guard(() => _accept(text, delayBinding: delayBinding));
 Future<void> tick() => Future<void>.delayed(const Duration(milliseconds: 30));
 GomokuVariant gomokuVariantFor(String game) => game == 'gomoku-standard'
     ? GomokuVariant.standard
@@ -26,7 +42,7 @@ GomokuVariant gomokuVariantFor(String game) => game == 'gomoku-standard'
     ? GomokuVariant.renju
     : GomokuVariant.freestyle;
 
-Future<String> offer(String game) async {
+Future<String> _offer(String game) async {
   await _room?.close();
   final variant = DraughtsVariant.values
       .where((v) => v.name == game)
@@ -56,7 +72,7 @@ Future<String> offer(String game) async {
   return room.invitation.encode();
 }
 
-Future<String> resumeOffer() async {
+Future<String> _resumeOffer() async {
   final room = _room!;
   await room.peer!.close();
   await tick();
@@ -76,7 +92,7 @@ Future<String> resumeOffer() async {
   return room.invitation.encode();
 }
 
-Future<String> answer(String raw) async {
+Future<String> _answer(String raw) async {
   await _room?.close();
   final invite = RtcInvitation.decode(raw, expectedType: 'offer');
   final room = _room = RtcRoom.guest(invite);
@@ -95,7 +111,7 @@ Future<String> answer(String raw) async {
   return invite.answer(sdp).encode();
 }
 
-Future<void> accept(String raw, {bool delayBinding = false}) async {
+Future<void> _accept(String raw, {bool delayBinding = false}) async {
   final room = _room!;
   final reply = RtcInvitation.decode(raw, expectedType: 'answer');
   room.invitation.validateAnswer(reply);
@@ -113,7 +129,7 @@ Future<void> accept(String raw, {bool delayBinding = false}) async {
   }
 }
 
-Future<String> action(String name) async {
+Future<String> _action(String name) async {
   if (_joining != null && !_room!.isHost) await _joining;
   final room = _room!, client = _room!.client;
   switch (name) {
@@ -288,6 +304,7 @@ void main() {
               urls.toDart,
             ).then((s) => s.toJS).toJS).toJS,
             'state': (() => state().toJS).toJS,
+            'lastError': (() => _lastError.toJS).toJS,
           }.jsify()
           as JSObject;
   runApp(

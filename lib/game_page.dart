@@ -26,6 +26,7 @@ extension GameTypeX on GameType {
     GameType.checkers => '跳棋',
     GameType.gomoku => '五子棋',
     GameType.xiangqi => '中国象棋',
+    GameType.doudizhu => '斗地主',
   };
   String get english => switch (this) {
     GameType.go => 'GO',
@@ -33,6 +34,7 @@ extension GameTypeX on GameType {
     GameType.checkers => 'CHECKERS',
     GameType.gomoku => 'GOMOKU',
     GameType.xiangqi => 'XIANGQI',
+    GameType.doudizhu => 'DOUDIZHU',
   };
   String get description => switch (this) {
     GameType.go => '在方寸之间，寻找全局的平衡',
@@ -40,6 +42,7 @@ extension GameTypeX on GameType {
     GameType.checkers => '轻快对弈，跳出你的节奏',
     GameType.gomoku => '连成五子，攻守之间见胜负',
     GameType.xiangqi => '楚河汉界，运筹将帅之间',
+    GameType.doudizhu => '三人纸牌，地主与农民的协作',
   };
   IconData get icon => switch (this) {
     GameType.go => Icons.blur_on,
@@ -47,6 +50,7 @@ extension GameTypeX on GameType {
     GameType.checkers => Icons.grid_4x4,
     GameType.gomoku => Icons.grain,
     GameType.xiangqi => Icons.account_balance,
+    GameType.doudizhu => Icons.style,
   };
 }
 
