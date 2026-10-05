@@ -63,6 +63,9 @@ class CardRtcInvitation {
         throw const FormatException('邀请身份无效');
       }
     }
+    if (d['seat'] is! int || d['createdAt'] is! String) {
+      throw const FormatException('邀请格式无效');
+    }
     final at = DateTime.tryParse(d['createdAt'] as String);
     if (at == null ||
         DateTime.now().difference(at) > const Duration(minutes: 30) ||
@@ -101,6 +104,7 @@ class CardRtcRoom {
     coordinator!.attach(server, fixedSeat: PlayerSeat.seat0);
     await replica.bind(client, token: coordinator!.hostCredential);
     replica.send('ready');
+    await replica.waitForSnapshot((r) => r.seats[0]['ready'] == true);
   }
 
   Future<String> offer(PlayerSeat seat) async {
@@ -110,6 +114,7 @@ class CardRtcRoom {
     if (coordinator!.seats[seat.index]['ai'] == true) {
       throw StateError('此座位由 AI 托管');
     }
+    await coordinator!.disconnectSeat(seat);
     await _peers.remove(seat)?.close();
     final peer = RtcPeer(iceServers: iceServers);
     _peers[seat] = peer;

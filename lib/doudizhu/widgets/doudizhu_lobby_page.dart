@@ -42,8 +42,7 @@ class _DouDizhuLobbyPageState extends State<DouDizhuLobbyPage> {
   void initState() {
     super.initState();
     if (widget.initialOrigin != null) {
-      _address.text =
-          '${widget.initialOrigin!.host}:${widget.initialOrigin!.port}';
+      _address.text = widget.initialOrigin!.origin;
     }
   }
 
@@ -135,6 +134,7 @@ class _DouDizhuLobbyPageState extends State<DouDizhuLobbyPage> {
           return;
         }
         replica.send('ready');
+        await replica.waitForSnapshot((r) => r.seats[0]['ready'] == true);
         _coordinator = coordinator;
         _server = server;
         _addresses = addresses;
@@ -163,6 +163,7 @@ class _DouDizhuLobbyPageState extends State<DouDizhuLobbyPage> {
       token: _password.text.trim(),
     );
     replica.reconnect = connect;
+    _observe(replica);
     await connect();
     if (replica.view!.publicState.phase == DouDizhuPhase.waiting) {
       replica.send('ready');

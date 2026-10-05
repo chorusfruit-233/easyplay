@@ -148,37 +148,107 @@ class PublicGameState {
     },
   };
   factory PublicGameState.fromWire(Map<String, Object?> d) {
-    final t = Map<String, Object?>.from(d['trick'] as Map);
-    final counts = (d['counts'] as List).cast<int>();
-    final bids = (d['bids'] as List).cast<int?>();
-    if (counts.length != 3 ||
-        bids.length != 3 ||
-        counts.any((n) => n < 0 || n > 20)) {
+    int number(Object? value, int max) {
+      if (value is! int || value < 0 || value > max) {
+        throw const FormatException('无效的公共状态数字');
+      }
+      return value;
+    }
+
+    PlayerSeat? seat(Object? value) =>
+        value == null ? null : PlayerSeat.values[number(value, 2)];
+    List<int> cards(Object? value) {
+      if (value is! List ||
+          value.length > 54 ||
+          value.toSet().length != value.length) {
+        throw const FormatException('无效或重复的公共牌');
+      }
+      return List.unmodifiable(value.map((v) => number(v, 53)));
+    }
+
+    final rawCounts = d['counts'], rawBids = d['bids'], rawTrick = d['trick'];
+    if (rawCounts is! List ||
+        rawCounts.length != 3 ||
+        rawBids is! List ||
+        rawBids.length != 3 ||
+        rawTrick is! Map) {
       throw const FormatException('无效的公共状态');
     }
-    return PublicGameState(
-      phase: DouDizhuPhase.values.byName(d['phase'] as String),
-      turn: PlayerSeat.values[d['turn'] as int],
-      counts: List.unmodifiable(counts),
-      bids: List.unmodifiable(bids),
-      bottom: List.unmodifiable((d['bottom'] as List).cast<int>()),
-      played: List.unmodifiable((d['played'] as List).cast<int>()),
-      trick: TrickState(
-        seat: t['seat'] == null ? null : PlayerSeat.values[t['seat'] as int],
-        cardIds: List.unmodifiable((t['cards'] as List).cast<int>()),
-        passes: t['passes'] as int,
+    final phase = DouDizhuPhase.values
+        .where((p) => p.name == d['phase'])
+        .firstOrNull;
+    final winner = DouDizhuTeam.values
+        .where((p) => p.name == d['winner'])
+        .firstOrNull;
+    if (phase == null ||
+        d['winner'] != null && winner == null ||
+        d['turn'] == null) {
+      throw const FormatException('无效阶段或结果');
+    }
+    final state = PublicGameState(
+      phase: phase,
+      turn: seat(d['turn'])!,
+      counts: List.unmodifiable(rawCounts.map((v) => number(v, 20))),
+      bids: List.unmodifiable(
+        rawBids.map((v) => v == null ? null : number(v, 3)),
       ),
-      landlord: d['landlord'] == null
-          ? null
-          : PlayerSeat.values[d['landlord'] as int],
-      winner: d['winner'] == null
-          ? null
-          : DouDizhuTeam.values.byName(d['winner'] as String),
-      winningSeat: d['winningSeat'] == null
-          ? null
-          : PlayerSeat.values[d['winningSeat'] as int],
-      dealNumber: d['dealNumber'] as int,
+      bottom: cards(d['bottom']),
+      played: cards(d['played']),
+      trick: TrickState(
+        seat: seat(rawTrick['seat']),
+        cardIds: cards(rawTrick['cards']),
+        passes: number(rawTrick['passes'], 1),
+      ),
+      landlord: seat(d['landlord']),
+      winner: winner,
+      winningSeat: seat(d['winningSeat']),
+      dealNumber: number(d['dealNumber'], 1000000000),
     );
+    final t = state.trick;
+    if (state.bottom.length > 3 ||
+        t.cardIds.any((id) => !state.played.contains(id)) ||
+        (t.seat == null) != (t.cardIds.isEmpty) ||
+        t.seat == null && t.passes != 0 ||
+        state.landlord != null && state.bottom.length != 3) {
+      throw const FormatException('公共牌桌状态不一致');
+    }
+    if ([DouDizhuPhase.waiting, DouDizhuPhase.bidding].contains(phase)) {
+      if (state.landlord != null ||
+          state.bottom.isNotEmpty ||
+          state.played.isNotEmpty ||
+          winner != null ||
+          state.winningSeat != null ||
+          t.cardIds.isNotEmpty ||
+          state.counts.any(
+            (n) => n != (phase == DouDizhuPhase.waiting ? 0 : 17),
+          )) {
+        throw const FormatException('发牌阶段状态不一致');
+      }
+    } else if (phase == DouDizhuPhase.playing ||
+        phase == DouDizhuPhase.finished) {
+      if (state.landlord == null ||
+          state.counts.fold<int>(0, (a, b) => a + b) + state.played.length !=
+              54 ||
+          PlayerSeat.values.any(
+            (s) => state.counts[s.index] > (s == state.landlord ? 20 : 17),
+          )) {
+        throw const FormatException('公共牌数不守恒');
+      }
+      if (phase == DouDizhuPhase.finished) {
+        if (winner == null ||
+            state.winningSeat == null ||
+            state.counts[state.winningSeat!.index] != 0 ||
+            winner !=
+                (state.winningSeat == state.landlord
+                    ? DouDizhuTeam.landlord
+                    : DouDizhuTeam.farmers)) {
+          throw const FormatException('无效胜负结果');
+        }
+      } else if (winner != null || state.winningSeat != null) {
+        throw const FormatException('未结束的对局不能有结果');
+      }
+    }
+    return state;
   }
 }
 
@@ -199,7 +269,11 @@ class DouDizhuPlayerView {
     'hand': hand,
   };
   factory DouDizhuPlayerView.fromWire(Map<String, Object?> d) {
-    final seat = PlayerSeat.values[d['seat'] as int];
+    final seatId = d['seat'];
+    if (seatId is! int || seatId < 0 || seatId > 2) {
+      throw const FormatException('无效座位');
+    }
+    final seat = PlayerSeat.values[seatId];
     final state = PublicGameState.fromWire(
       Map<String, Object?>.from(d['public'] as Map),
     );
@@ -207,7 +281,8 @@ class DouDizhuPlayerView {
     if (hand.length != state.counts[seat.index] ||
         hand.toSet().length != hand.length ||
         hand.any((id) => id < 0 || id > 53) ||
-        hand.any(state.played.contains)) {
+        hand.any(state.played.contains) ||
+        seat != state.landlord && hand.any(state.bottom.contains)) {
       throw const FormatException('无效的私有手牌');
     }
     return DouDizhuPlayerView(seat: seat, publicState: state, hand: hand);

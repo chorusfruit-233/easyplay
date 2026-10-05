@@ -89,6 +89,16 @@ class RoomCoordinator {
     peer.listen();
   }
 
+  /// Host-controlled teardown before exchanging a new RTC invitation.
+  /// Network requests cannot invoke this or displace an online seat.
+  void disconnectIdentity(String identity, Side fixedSide) {
+    for (final peer in _clients.toList()) {
+      if (peer.remoteAddress == identity && peer.fixedSide == fixedSide) {
+        _remove(peer);
+      }
+    }
+  }
+
   void startMatch() {
     if (_started) return;
     if (playerCount != 2) throw StateError('对手尚未加入');

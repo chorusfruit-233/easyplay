@@ -23,6 +23,7 @@ class _Connection {
   StreamSubscription<LanMessage>? messages;
   StreamSubscription<void>? lost;
   DateTime lastSeen = DateTime.now();
+  int failures = 0;
 }
 
 /// A three-seat authority. Only recipient-specific snapshots leave this class.
@@ -80,12 +81,22 @@ class CardRoomCoordinator extends ChangeNotifier {
     _changed();
   }
 
+  /// Invoked by the host when replacing this seat's RTC invitation.
+  Future<void> disconnectSeat(PlayerSeat seat) async {
+    if (seat == PlayerSeat.seat0) throw StateError('不能断开房主座位');
+    final connection = _seats[seat.index].connection;
+    if (connection != null) {
+      _detach(connection);
+      await connection.transport.close();
+    }
+  }
+
   void attach(
     MessageTransport transport, {
     PlayerSeat? fixedSeat,
     String? invitationCredential,
   }) {
-    if (_closed) {
+    if (_closed || _connections.length >= 12) {
       unawaited(transport.close());
       return;
     }
@@ -113,15 +124,22 @@ class CardRoomCoordinator extends ChangeNotifier {
             return;
           }
           if (action == 'ready') {
+            if (m.seq != seq + 1) throw StateError('状态已更新，请同步后重试');
             if (session.phase != DouDizhuPhase.waiting) {
               throw StateError('对局已经开始');
             }
+            if (_seats[c.seat!.index].ready) return;
             _seats[c.seat!.index].ready = true;
             _changed();
             return;
           }
           _submit(c.seat!, action as String, m.seq, p);
         } catch (e) {
+          if (c.seat == null && ++c.failures >= 3) {
+            _detach(c);
+            unawaited(c.transport.close());
+            return;
+          }
           _send(
             c,
             cardMessage('rejected', seq, {

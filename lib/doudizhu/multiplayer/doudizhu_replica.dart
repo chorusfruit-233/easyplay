@@ -11,6 +11,7 @@ class DouDizhuReplica extends ChangeNotifier {
   List<int> rematch = [];
   int seq = 0;
   String? roomId, _resume;
+  PlayerSeat? _seat;
   String? error;
   @visibleForTesting
   void Function(String)? onWireMessage;
@@ -41,6 +42,16 @@ class DouDizhuReplica extends ChangeNotifier {
               if (roomId != null && roomId != p['roomId']) {
                 throw const FormatException('房间身份不匹配');
               }
+              final assigned = p['seat'];
+              if (assigned is! int ||
+                  assigned < 0 ||
+                  assigned > 2 ||
+                  _seat != null && assigned != _seat!.index ||
+                  p['resume'] is! String ||
+                  p['roomId'] is! String) {
+                throw const FormatException('座位身份无效');
+              }
+              _seat = PlayerSeat.values[assigned];
               roomId = p['roomId'] as String;
               _resume = p['resume'] as String;
             case 'snapshot':
@@ -48,15 +59,35 @@ class DouDizhuReplica extends ChangeNotifier {
               final next = DouDizhuPlayerView.fromWire(
                 Map<String, Object?>.from(p['view'] as Map),
               );
-              if (view != null && view!.seat != next.seat) {
+              if (next.seat != _seat) {
                 throw const FormatException('座位身份改变');
               }
+              final rawSeats = p['seats'], rawRematch = p['rematch'];
+              if (rawSeats is! List ||
+                  rawSeats.length != 3 ||
+                  rawRematch is! List ||
+                  rawRematch.toSet().length != rawRematch.length ||
+                  rawRematch.any((s) => s is! int || s < 0 || s > 2)) {
+                throw const FormatException('无效房间快照');
+              }
+              final nextSeats = <Map<String, Object?>>[];
+              for (final seat in rawSeats) {
+                if (seat is! Map ||
+                    [
+                      'occupied',
+                      'connected',
+                      'ready',
+                      'ai',
+                    ].any((k) => seat[k] is! bool)) {
+                  throw const FormatException('无效座位状态');
+                }
+                nextSeats.add(Map<String, Object?>.from(seat));
+              }
+              // Commit only after the entire public/private snapshot validates.
               view = next;
               seq = m.seq;
-              seats = (p['seats'] as List)
-                  .map((s) => Map<String, Object?>.from(s as Map))
-                  .toList();
-              rematch = (p['rematch'] as List).cast<int>();
+              seats = nextSeats;
+              rematch = List<int>.from(rawRematch);
               connected = true;
               if (!_preserveError) error = null;
               if (!ready.isCompleted) ready.complete();
@@ -150,6 +181,8 @@ class DouDizhuReplica extends ChangeNotifier {
     await _lost?.cancel();
     await _transport?.close();
     _resume = null;
+    _seat = null;
+    roomId = null;
     view = null;
     seats.clear();
     rematch.clear();

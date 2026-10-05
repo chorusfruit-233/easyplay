@@ -163,7 +163,20 @@ void main() {
     expect(lobby.initialOrigin, origin);
     expect(
       tester.widget<TextField>(find.byType(TextField).first).controller!.text,
-      '192.168.1.20:8087',
+      origin.origin,
+    );
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('HTTPS quick join preserves its secure address scheme', (
+    tester,
+  ) async {
+    final origin = Uri.parse('https://room.example:8443');
+    await tester.pumpWidget(
+      MaterialApp(home: DouDizhuLobbyPage(initialOrigin: origin)),
+    );
+    expect(
+      tester.widget<TextField>(find.byType(TextField).first).controller!.text,
+      origin.origin,
     );
     expect(tester.takeException(), isNull);
   });

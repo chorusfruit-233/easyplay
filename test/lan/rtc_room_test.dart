@@ -202,6 +202,30 @@ void main() {
     );
   }
   test(
+    'host reconnect clears an old online seat before creating a peer',
+    () async {
+      final room = RtcRoom.host(RtcInvitation.offer('chess', 'v=0\r\n'));
+      final guest = RtcMatchClient(room.invitation);
+      await room.prepareHost();
+      addTearDown(() async {
+        await guest.close();
+        await room.close();
+      });
+      final (oldServer, oldClient) = MemoryTransport.pair();
+      await room.attachPeer(oldServer);
+      await guest.bind(oldClient);
+      expect(room.coordinator!.playerCount, 2);
+      // The host does not wait for a WebRTC remote-close event or a delay.
+      await room.disconnectPeer();
+      expect(room.coordinator!.playerCount, 1);
+      final (server, client) = MemoryTransport.pair();
+      await room.attachPeer(server);
+      await guest.bind(client);
+      expect(room.coordinator!.playerCount, 2);
+      expect(guest.side, room.coordinator!.firstSide.opponent);
+    },
+  );
+  test(
     'Gomoku RTC handshake rejects a different rule without consuming a seat',
     () async {
       final invite = RtcInvitation.offer(

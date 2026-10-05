@@ -67,6 +67,8 @@ class _DouDizhuGamePageState extends State<DouDizhuGamePage> {
           ..addAll(ids);
         _feedback = ids.isEmpty ? '没有合适的出牌，可以不要' : '已选中推荐出牌';
       });
+    } catch (_) {
+      if (mounted) setState(() => _feedback = '提示暂时不可用，请手动选牌');
     } finally {
       if (mounted) setState(() => _hinting = false);
     }

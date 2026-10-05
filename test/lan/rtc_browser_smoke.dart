@@ -74,8 +74,7 @@ Future<String> _offer(String game) async {
 
 Future<String> _resumeOffer() async {
   final room = _room!;
-  await room.peer!.close();
-  await tick();
+  await room.disconnectPeer();
   final old = room.invitation;
   room.peer = RtcPeer(iceServers: []);
   final sdp = await room.peer!.createOffer();
