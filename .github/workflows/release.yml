@@ -92,9 +92,19 @@ jobs:
         if: steps.version.outputs.publish == 'true'
         run: flutter test
 
+      - name: Cache Gradle dependencies
+        if: steps.version.outputs.publish == 'true'
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.gradle/caches/modules-2
+            ~/.gradle/wrapper/dists
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
       - name: Build signed LAN APKs
         if: steps.version.outputs.publish == 'true'
-        run: python3 tools/package_lan_android.py
+        run: python3 tools/package_lan_android.py --network-retries 2
 
       - name: Publish verified tag and APK
         if: steps.version.outputs.publish == 'true'

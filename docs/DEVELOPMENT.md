@@ -342,6 +342,8 @@ Android Studio、`flutter run` 和直接 Gradle 构建都会通过 `prepareLanWe
 
 网页资源生成到 `build/app/generated/lanWebAssets/flutter_assets/assets/web/`，不写入 `pubspec.yaml`。`python3 tools/package_lan_android.py --debug` 使用相同的 Gradle 打包流程。若 Python 不在 PATH 中，可在 Gradle 参数中指定 `-PlanWebPython=/path/to/python3`（原生 Stockfish 使用 `-PstockfishPython=...`）。
 
+CI 和 APK 发布缓存 Gradle 依赖及 Wrapper，打包启用 `--network-retries 2`。遇到依赖服务器 HTTP 429/临时 5xx、超时或连接重置时，分别等待 30、60 秒后最多重试两次；编译错误继续直接失败。本地默认不额外重试。重试逻辑用 `python3 -m unittest discover -s tools/tests` 验证。
+
 命令行运行：
 
 ```bash
