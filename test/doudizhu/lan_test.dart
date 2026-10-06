@@ -103,12 +103,37 @@ void main() {
       await until(
         () => guests[0].view!.publicState.phase == DouDizhuPhase.playing,
       );
+      await until(() => host.seq == room.seq);
+      host.send('play', {
+        'cards': [host.view!.hand.first],
+      });
+      await until(
+        () =>
+            guests[0].seq == room.seq && room.session.turn == PlayerSeat.seat1,
+      );
+      guests[0].send('pass');
+      await until(
+        () =>
+            guests[1].seq == room.seq && room.session.turn == PlayerSeat.seat2,
+      );
+      guests[1].send('pass');
+      await until(
+        () =>
+            guests[0].seq == room.seq && room.session.turn == PlayerSeat.seat0,
+      );
+      final historyBefore = jsonEncode(
+        guests[0].view!.publicState.toWire()['history'],
+      );
       final before = guests[0].view!.hand.toList();
       await guests[0].disconnect();
       await until(() => !room.allConnected);
       await guests[0].bind(await connectCardSocket(uri), token: 'friends');
       expect(guests[0].view!.hand, before);
       expect(guests[0].seq, room.seq);
+      expect(
+        jsonEncode(guests[0].view!.publicState.toWire()['history']),
+        historyBefore,
+      );
       expect(guests[1].connected, isTrue);
       final all = [host, ...guests];
       for (
@@ -136,6 +161,7 @@ void main() {
         ),
       );
       expect(room.session.validateConservation(), isTrue);
+      expect(guests[0].view!.publicState.history, isEmpty);
     },
   );
   test('independent protocol rejects incompatible envelopes', () {

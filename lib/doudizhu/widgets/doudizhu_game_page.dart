@@ -5,6 +5,7 @@ import '../doudizhu_match_controller.dart';
 import 'doudizhu_hand.dart';
 import 'doudizhu_card.dart';
 import 'bidding_panel.dart';
+import 'doudizhu_history.dart';
 
 class DouDizhuGamePage extends StatefulWidget {
   const DouDizhuGamePage({super.key, required this.controller});
@@ -96,6 +97,16 @@ class _DouDizhuGamePageState extends State<DouDizhuGamePage> {
       appBar: AppBar(
         title: const Text('斗地主'),
         actions: [
+          IconButton(
+            tooltip: '历史出牌',
+            onPressed: () => showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              useSafeArea: true,
+              builder: (_) => DouDizhuHistory(controller: controller),
+            ),
+            icon: const Icon(Icons.history),
+          ),
           IconButton(
             onPressed: () => showDialog<void>(
               context: context,

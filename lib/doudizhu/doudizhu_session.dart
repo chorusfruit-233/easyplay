@@ -7,6 +7,7 @@ class DouDizhuSession {
   final Random _random;
   final _hands = List.generate(3, (_) => <int>[]);
   List<int> _bottom = [], _played = [];
+  final _history = <CardPlay>[];
   List<int?> _bids = [null, null, null];
   DouDizhuPhase phase = DouDizhuPhase.waiting;
   PlayerSeat turn = PlayerSeat.seat0;
@@ -25,6 +26,7 @@ class DouDizhuSession {
     }
     _bottom = deck.sublist(51);
     _played = [];
+    _history.clear();
     _bids = [null, null, null];
     landlord = null;
     winner = null;
@@ -78,6 +80,7 @@ class DouDizhuSession {
     }
     _hands[seat.index].removeWhere(ids.contains);
     _played.addAll(ids);
+    _history.add(CardPlay(seat, ids));
     trick = TrickState(seat: seat, cardIds: List.unmodifiable(ids));
     if (_hands[seat.index].isEmpty) {
       winningSeat = seat;
@@ -94,6 +97,7 @@ class DouDizhuSession {
       throw StateError('尚未轮到你');
     }
     if (trick.seat == null || trick.seat == seat) throw StateError('领出玩家不能不要');
+    _history.add(CardPlay(seat, const []));
     if (trick.passes == 1) {
       turn = trick.seat!;
       trick = const TrickState();
@@ -110,6 +114,7 @@ class DouDizhuSession {
     bids: List.unmodifiable(_bids),
     bottom: List.unmodifiable(landlord == null ? <int>[] : _bottom),
     played: List.unmodifiable(_played),
+    history: _history,
     trick: trick,
     landlord: landlord,
     winner: winner,
@@ -139,6 +144,7 @@ class DouDizhuSession {
     }
     _bottom.clear();
     _played.clear();
+    _history.clear();
     _bids = [null, null, null];
     landlord = null;
     winner = null;

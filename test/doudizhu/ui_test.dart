@@ -15,6 +15,45 @@ import 'package:easyplay/doudizhu/multiplayer/card_room_coordinator.dart';
 import 'test_support.dart';
 
 void main() {
+  testWidgets('history is public while covered, updates live and resets', (
+    tester,
+  ) async {
+    final controller = DouDizhuMatchController.hotseat();
+    addTearDown(controller.dispose);
+    controller.reveal();
+    controller.act('bid', {'score': 3});
+    controller.reveal();
+    final card = controller.view!.hand.first;
+    controller.act('play', {
+      'cards': [card],
+    });
+    for (final size in [const Size(320, 568), const Size(568, 320)]) {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      await tester.pumpWidget(
+        MaterialApp(home: DouDizhuGamePage(controller: controller)),
+      );
+      await tester.tap(find.byTooltip('历史出牌'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 · 玩家 1 · 地主 · 单牌'), findsOneWidget);
+      expect(find.byType(DouDizhuHand), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byTooltip('关闭历史出牌'));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(find.byTooltip('历史出牌'));
+    await tester.pumpAndSettle();
+    controller.reveal();
+    controller.act('pass');
+    await tester.pump();
+    expect(find.text('2 · 玩家 2 · 农民 · 不要'), findsOneWidget);
+    controller.act('rematch');
+    await tester.pump();
+    expect(find.text('本局还没有出牌'), findsOneWidget);
+    expect(find.text('1 · 玩家 1 · 地主 · 单牌'), findsNothing);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+  });
   testWidgets('home retains five games and opens sixth entry', (tester) async {
     GameType? selected;
     await tester.pumpWidget(

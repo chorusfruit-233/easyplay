@@ -120,7 +120,8 @@ class PublicGameState {
     this.winner,
     this.winningSeat,
     this.dealNumber = 0,
-  });
+    Iterable<CardPlay>? history,
+  }) : history = history == null ? null : List.unmodifiable(history);
   final DouDizhuPhase phase;
   final PlayerSeat turn;
   final PlayerSeat? landlord, winningSeat;
@@ -129,6 +130,9 @@ class PublicGameState {
   final List<int?> bids;
   final TrickState trick;
   final int dealNumber;
+
+  /// Null for older peers that do not supply public play history.
+  final List<CardPlay>? history;
   int get highestBid => bids.whereType<int>().fold(0, max);
   Map<String, Object?> toWire() => {
     'phase': phase.name,
@@ -137,6 +141,11 @@ class PublicGameState {
     'bids': bids,
     'bottom': bottom,
     'played': played,
+    if (history != null)
+      'history': [
+        for (final play in history!)
+          {'seat': play.seat.index, 'cards': play.cardIds},
+      ],
     'landlord': landlord?.index,
     'winner': winner?.name,
     'winningSeat': winningSeat?.index,
@@ -203,7 +212,43 @@ class PublicGameState {
       winner: winner,
       winningSeat: seat(d['winningSeat']),
       dealNumber: number(d['dealNumber'], 1000000000),
+      history: d.containsKey('history')
+          ? (() {
+              final raw = d['history'];
+              if (raw is! List || raw.length > 162) {
+                throw const FormatException('无效的出牌历史');
+              }
+              return raw.map((entry) {
+                if (entry is! Map || entry['seat'] == null) {
+                  throw const FormatException('无效的出牌记录');
+                }
+                return CardPlay(seat(entry['seat'])!, cards(entry['cards']));
+              }).toList();
+            })()
+          : null,
     );
+    final history = state.history;
+    if (history != null) {
+      final recorded = history.expand((p) => p.cardIds).toList();
+      if (recorded.length != state.played.length ||
+          List.generate(
+            recorded.length,
+            (i) => i,
+          ).any((i) => recorded[i] != state.played[i]) ||
+          history.isNotEmpty && history.first.cardIds.isEmpty ||
+          state.landlord == null && history.isNotEmpty ||
+          state.landlord != null &&
+              PlayerSeat.values.any(
+                (s) =>
+                    history
+                            .where((p) => p.seat == s)
+                            .fold<int>(0, (n, p) => n + p.cardIds.length) +
+                        state.counts[s.index] !=
+                    (s == state.landlord ? 20 : 17),
+              )) {
+        throw const FormatException('出牌历史与公共状态不一致');
+      }
+    }
     final t = state.trick;
     if (state.bottom.length > 3 ||
         t.cardIds.any((id) => !state.played.contains(id)) ||

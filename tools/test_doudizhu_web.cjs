@@ -42,6 +42,8 @@ const root = path.resolve(__dirname, '../build/doudizhu-smoke');
       const states=await Promise.all(active.map(state));
       for(let i=0;i<states.length;i++) {
         const v=states[i].view;assert.equal(v.seat,i);
+        assert.deepEqual(v.public.history.flatMap(p=>p.cards),v.public.played);
+        assert.deepEqual(v.public.history,states[0].view.public.history);
         for(let j=0;j<states.length;j++) if(i!==j) {
           const publicIds=new Set([...v.public.bottom,...v.public.played]);
           assert.ok(v.hand.every(id => publicIds.has(id) || !states[j].view.hand.includes(id)));
@@ -67,6 +69,7 @@ const root = path.resolve(__dirname, '../build/doudizhu-smoke');
     const before=await state(pages[1]);await pages[1].evaluate(() => easyplayDoudizhuSmoke.disconnect());
     await pages[0].waitForFunction(() => !JSON.parse(easyplayDoudizhuSmoke.state()).seats[1].connected);
     await connect(1);await synced();assert.deepEqual((await state(pages[1])).view.hand,before.view.hand);
+    assert.deepEqual((await state(pages[1])).view.public.history,before.view.public.history);
     assert.equal((await state(pages[2])).connected,true);await privacy();
     for(let n=0;n<400;n++) {
       const s=await state(pages[0]);if(s.view.public.phase==='finished') break;
@@ -75,6 +78,7 @@ const root = path.resolve(__dirname, '../build/doudizhu-smoke');
     assert.equal((await state(pages[0])).view.public.phase,'finished');await privacy();
     for(const p of pages) {await action(p,'rematch');await synced();}
     assert.equal((await state(pages[0])).view.public.phase,'bidding');
+    assert.deepEqual((await state(pages[0])).view.public.history,[]);
     await pages[0].evaluate(() => easyplayDoudizhuSmoke.mount());await pages[0].waitForTimeout(300);
     await pages[0].screenshot({path:'build/doudizhu-smoke/portrait.png'});
     await pages[0].setViewportSize({width:568,height:320});await pages[0].waitForTimeout(300);
@@ -136,6 +140,20 @@ const root = path.resolve(__dirname, '../build/doudizhu-smoke');
     await pages[0].getByRole('button',{name:/[♠♥♣♦]/}).first().click();
     await pages[0].getByRole('button',{name:'出牌',exact:true}).click();
     await pages[0].getByText('玩家 1 · 地主 · 19 张',{exact:true}).waitFor();
+    for (const p of pages) {
+      await p.getByRole('button',{name:'历史出牌',exact:true}).click();
+      await p.getByText('1 · 玩家 1 · 地主 · 单牌',{exact:false}).waitFor();
+    }
+    for (const [i,p] of pages.entries()) {
+      if(i===0) continue;
+      await p.getByRole('button',{name:'关闭历史出牌',exact:true}).click();
+      await p.getByRole('button',{name:'不要',exact:true}).click();
+      await pages[0].getByText(`${i+1} · 玩家 ${i+1} · 农民 · 不要`,{exact:true}).waitFor();
+    }
+    await pages[0].screenshot({path:'build/doudizhu-smoke/history-portrait.png'});
+    await pages[0].setViewportSize({width:568,height:320});
+    await pages[0].waitForTimeout(300);
+    await pages[0].screenshot({path:'build/doudizhu-smoke/history-landscape.png'});
     assert.deepEqual(failures,[]);console.log('DOUDIZHU RTC PASS: private deal, public plays, reconnect, rematch, mixed AI, responsive UI, real lobby controls');
   } finally {await browser?.close();await new Promise(r=>server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1;});

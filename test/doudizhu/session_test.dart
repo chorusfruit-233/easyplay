@@ -84,6 +84,7 @@ void main() {
           'bids',
           'bottom',
           'played',
+          'history',
           'landlord',
           'winner',
           'winningSeat',
@@ -108,6 +109,41 @@ void main() {
       }
     },
   );
+  test('history records public actions, snapshots and resets', () {
+    final s = DouDizhuSession(random: Random(2))..deal();
+    s.bid(s.turn, 3);
+    final actor = s.turn;
+    final ids = [s.view(actor).hand.first];
+    s.play(actor, ids);
+    ids.clear();
+    final snapshot = s.publicState;
+    s.pass(s.turn);
+    s.pass(s.turn);
+    expect(snapshot.history!.length, 1);
+    expect(snapshot.history!.single.cardIds.length, 1);
+    expect(() => snapshot.history!.clear(), throwsUnsupportedError);
+    final restored = PublicGameState.fromWire(
+      Map<String, Object?>.from(jsonDecode(jsonEncode(s.publicState.toWire()))),
+    );
+    expect(restored.history!.map((p) => p.seat), PlayerSeat.values);
+    expect(restored.history!.map((p) => p.cardIds.length), [1, 0, 0]);
+    expect(() => s.pass(s.turn), throwsStateError);
+    expect(s.publicState.history!.length, 3);
+    final forged = s.publicState.toWire();
+    forged['history'] = [
+      {
+        'seat': 0,
+        'cards': [53],
+      },
+    ];
+    expect(() => PublicGameState.fromWire(forged), throwsFormatException);
+    final legacy = s.publicState.toWire()..remove('history');
+    expect(PublicGameState.fromWire(legacy).history, isNull);
+    s.deal();
+    expect(s.publicState.history, isEmpty);
+    s.close();
+    expect(s.publicState.history, isEmpty);
+  });
   test(
     'complete games conserve cards, both team outcomes and terminal rejection',
     () {
@@ -128,6 +164,7 @@ void main() {
             s.play(s.turn, cards);
           }
           expect(s.validateConservation(), isTrue);
+          PublicGameState.fromWire(s.publicState.toWire());
         }
         expect(s.phase, DouDizhuPhase.finished);
         winners.add(s.winner!);
