@@ -1,3 +1,4 @@
+import 'ui/app_layout.dart';
 import 'package:flutter/material.dart';
 
 import 'game_session.dart';
@@ -111,8 +112,7 @@ class _GoHomePageState extends State<GoHomePage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('首页'), centerTitle: true),
-    body: ListView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+    body: AppPageList(
       children: [
         _sectionTitle(context, '快速开始'),
         const SizedBox(height: 12),

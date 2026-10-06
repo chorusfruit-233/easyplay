@@ -1,3 +1,4 @@
+import '../../ui/app_layout.dart';
 import 'package:flutter/material.dart';
 import 'chess_ai_settings.dart';
 import 'chess_game_page.dart';
@@ -8,8 +9,7 @@ class ChessHomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('国际象棋')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         const Text(
           'CHESS',
@@ -30,10 +30,6 @@ class ChessHomePage extends StatelessWidget {
         ])
           Card(
             child: ListTile(
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 12,
-              ),
               leading: Icon(item.$3),
               title: Text(item.$1),
               subtitle: Text(item.$2),

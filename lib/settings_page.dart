@@ -1,3 +1,4 @@
+import 'ui/app_layout.dart';
 import 'package:flutter/material.dart';
 import 'theme_controller.dart';
 import 'theme_settings_page.dart';
@@ -25,8 +26,7 @@ class SettingsPage extends StatelessWidget {
         const SizedBox(width: 8),
       ],
     ),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Card(
           child: ListTile(
@@ -42,7 +42,7 @@ class SettingsPage extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: AppSpacing.control),
         Card(
           child: ListTile(
             leading: const Icon(Icons.touch_app_outlined),
@@ -57,14 +57,13 @@ class SettingsPage extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 28),
+        const SizedBox(height: AppSpacing.control),
         Text(
           '围棋 AI',
           style: Theme.of(
             context,
           ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
         ),
-        const SizedBox(height: 8),
         Card(
           child: ListTile(
             leading: const Icon(Icons.tune),
@@ -77,7 +76,6 @@ class SettingsPage extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 8),
         Card(
           child: ListTile(
             leading: const Icon(Icons.memory_outlined),

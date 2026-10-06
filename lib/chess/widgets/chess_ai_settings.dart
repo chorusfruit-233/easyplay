@@ -1,3 +1,4 @@
+import '../../ui/app_layout.dart';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import '../chess.dart';
@@ -16,8 +17,7 @@ class _ChessAiSettingsPageState extends State<ChessAiSettingsPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('AI 对战')),
-    body: ListView(
-      padding: const EdgeInsets.all(24),
+    body: AppPageList(
       children: [
         const Text('执棋'),
         const SizedBox(height: 12),

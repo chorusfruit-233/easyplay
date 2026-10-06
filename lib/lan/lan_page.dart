@@ -1,3 +1,4 @@
+import '../ui/app_layout.dart';
 import 'rtc_lobby_page.dart';
 import 'dart:async';
 import 'dart:math';
@@ -19,8 +20,7 @@ class LanLobbyPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('联机对弈')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Text(
           '与同一 WiFi 下的另一台设备进行围棋对局。',
@@ -137,8 +137,7 @@ class _LanRoomPageState extends State<LanRoomPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('创建房间')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Card(
           child: Padding(
@@ -348,8 +347,7 @@ class _LanJoinPageState extends State<LanJoinPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('加入房间')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         TextField(
           controller: _host,

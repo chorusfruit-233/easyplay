@@ -1,3 +1,4 @@
+import 'ui/app_layout.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -73,8 +74,7 @@ class AboutLicensesPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('关于与许可证')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Card(
           child: ListTile(

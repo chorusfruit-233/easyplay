@@ -1,3 +1,4 @@
+import '../../ui/app_layout.dart';
 import 'package:flutter/material.dart';
 import '../../lan/message_transport.dart';
 import '../../lan/rtc_transport.dart';
@@ -58,8 +59,7 @@ class DouDizhuHomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('斗地主')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Text('经典三人斗地主', style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 8),
@@ -79,7 +79,7 @@ class DouDizhuHomePage extends StatelessWidget {
             Icons.wifi,
             () => Navigator.push<void>(
               context,
-              MaterialPageRoute(builder: (_) => const DouDizhuLobbyPage()),
+              MaterialPageRoute(builder: (_) => const DouDizhuLanLobbyPage()),
             ),
           ),
           if (rtcSupported)

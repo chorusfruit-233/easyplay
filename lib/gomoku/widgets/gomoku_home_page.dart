@@ -1,3 +1,4 @@
+import '../../ui/app_layout.dart';
 import 'package:flutter/material.dart';
 
 import '../../game_session.dart' show Side, SideX;
@@ -132,8 +133,7 @@ class _GomokuHomePageState extends State<GomokuHomePage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('五子棋')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Text('GOMOKU', style: Theme.of(context).textTheme.headlineMedium),
         const SizedBox(height: 8),

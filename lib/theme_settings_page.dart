@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'app_theme.dart';
+import 'ui/app_layout.dart';
 import 'theme_controller.dart';
 
 class ThemeSettingsPage extends StatelessWidget {
@@ -25,7 +26,7 @@ class ThemeSettingsPage extends StatelessWidget {
               sliver: SliverList.list(
                 children: [
                   _ThemePreview(scheme: colors),
-                  const SizedBox(height: 13),
+                  const SizedBox(height: AppSpacing.inset),
                   SizedBox(
                     height: 72,
                     child: ListView.separated(
@@ -52,7 +53,7 @@ class ThemeSettingsPage extends StatelessWidget {
                       },
                     ),
                   ),
-                  const SizedBox(height: 13),
+                  const SizedBox(height: AppSpacing.inset),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: SegmentedButton<AppAppearance>(
@@ -95,7 +96,7 @@ class ThemeSettingsPage extends StatelessWidget {
                       AppAppearance.amoled => 'AMOLED 纯黑',
                     }),
                   ),
-                  const SizedBox(height: 13),
+                  const SizedBox(height: AppSpacing.inset),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     child: Card(
@@ -135,7 +136,7 @@ class ThemeSettingsPage extends StatelessWidget {
                                 if (v != null) controller.setStyle(v);
                               },
                             ),
-                            const SizedBox(height: 10),
+                            const SizedBox(height: AppSpacing.control),
                             DropdownButtonFormField<AppColorSpec>(
                               isExpanded: true,
                               key: ValueKey(controller.colorSpec),
@@ -174,7 +175,7 @@ class ThemeSettingsPage extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 13),
+                  const SizedBox(height: AppSpacing.inset),
                   _PageScaleControl(controller: controller),
                   if (controller.error != null)
                     Padding(

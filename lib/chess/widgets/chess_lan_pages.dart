@@ -1,3 +1,4 @@
+import '../../ui/app_layout.dart';
 import '../../lan/rtc_lobby_page.dart';
 import 'dart:async';
 import 'dart:math';
@@ -19,8 +20,7 @@ class ChessLanLobbyPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('国际象棋联机')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Text('标准国际象棋 · 规则版本 $chessRulesVersion'),
         const SizedBox(height: 16),
@@ -160,8 +160,7 @@ class _ChessLanRoomPageState extends State<ChessLanRoomPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('创建国际象棋房间')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Card(
           child: Padding(
@@ -324,8 +323,7 @@ class _ChessLanJoinPageState extends State<ChessLanJoinPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('加入国际象棋房间')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Text('标准国际象棋房间'),
         const SizedBox(height: 12),

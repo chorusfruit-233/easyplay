@@ -1,3 +1,4 @@
+import '../ui/app_layout.dart';
 import '../xiangqi/widgets/xiangqi_game_page.dart';
 import 'dart:async';
 
@@ -368,8 +369,7 @@ class _RtcLobbyPageState extends State<RtcLobbyPage> {
     appBar: AppBar(
       title: Text(widget.resumeRoom == null ? '浏览器点对点联机' : '重新交换邀请与回应'),
     ),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         const Text(
           '与好友私下交换完整邀请和回应。信息含网络连接候选，请勿公开发布。需要双方保持页面打开；部分网络无法直连，目前未启用 TURN。',

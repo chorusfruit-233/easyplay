@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'ui/app_layout.dart';
 
 enum AppAppearance { system, light, dark, amoled }
 
@@ -84,17 +85,35 @@ class AppTheme {
     ),
     cardTheme: _cardTheme,
     inputDecorationTheme: _inputTheme,
+    listTileTheme: const ListTileThemeData(
+      contentPadding: AppSpacing.controlInsets,
+      horizontalTitleGap: AppSpacing.control,
+      minVerticalPadding: AppSpacing.small,
+    ),
+    filledButtonTheme: FilledButtonThemeData(style: _buttonStyle),
+    outlinedButtonTheme: OutlinedButtonThemeData(style: _buttonStyle),
+    elevatedButtonTheme: ElevatedButtonThemeData(style: _buttonStyle),
+    textButtonTheme: TextButtonThemeData(style: _buttonStyle),
+    iconButtonTheme: const IconButtonThemeData(
+      style: ButtonStyle(minimumSize: WidgetStatePropertyAll(Size(48, 48))),
+    ),
+  );
+
+  static const _buttonStyle = ButtonStyle(
+    minimumSize: WidgetStatePropertyAll(Size(48, 48)),
+    padding: WidgetStatePropertyAll(AppSpacing.controlInsets),
   );
 
   static const _cardTheme = CardThemeData(
     elevation: 0,
-    margin: EdgeInsets.zero,
+    margin: AppSpacing.cardMargin,
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.all(Radius.circular(18)),
     ),
   );
   static const _inputTheme = InputDecorationTheme(
     filled: true,
+    contentPadding: AppSpacing.controlInsets,
     border: OutlineInputBorder(
       borderRadius: BorderRadius.all(Radius.circular(14)),
       borderSide: BorderSide.none,

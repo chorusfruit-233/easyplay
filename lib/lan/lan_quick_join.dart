@@ -1,3 +1,4 @@
+import '../ui/app_layout.dart';
 import '../doudizhu/widgets/doudizhu_lobby_page.dart';
 import '../xiangqi/widgets/xiangqi_lan_pages.dart';
 import 'dart:convert';
@@ -120,22 +121,40 @@ class _LanQuickJoinCardState extends State<LanQuickJoinCard> {
       final room = snapshot.data;
       if (room == null) return const SizedBox.shrink();
       return Padding(
-        padding: const EdgeInsets.only(top: 20),
+        padding: const EdgeInsets.only(top: AppSpacing.section),
         child: Card(
-          child: ListTile(
-            leading: const Icon(Icons.wifi),
-            title: const Text('加入当前主机房间'),
-            subtitle: Text('${room.label} · 输入口令即可加入'),
-            trailing: FilledButton(
-              onPressed: () => Navigator.push<void>(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => room.game == 'doudizhu'
-                      ? DouDizhuLobbyPage(initialOrigin: room.origin)
-                      : LanQuickJoinPage(room: room),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.inset),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(
+                  children: [
+                    Icon(Icons.wifi, size: 20),
+                    SizedBox(width: AppSpacing.small),
+                    Expanded(
+                      child: Text(
+                        '加入当前主机房间',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              child: const Text('快捷加入'),
+                const SizedBox(height: AppSpacing.small),
+                Text('${room.label} · 输入口令即可加入'),
+                const SizedBox(height: AppSpacing.control),
+                FilledButton(
+                  onPressed: () => Navigator.push<void>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => room.game == 'doudizhu'
+                          ? DouDizhuLobbyPage(initialOrigin: room.origin)
+                          : LanQuickJoinPage(room: room),
+                    ),
+                  ),
+                  child: const Text('快捷加入'),
+                ),
+              ],
             ),
           ),
         ),
@@ -218,8 +237,7 @@ class _LanQuickJoinPageState extends State<LanQuickJoinPage> {
       ? DouDizhuLobbyPage(initialOrigin: widget.room.origin)
       : Scaffold(
           appBar: AppBar(title: const Text('快捷加入')),
-          body: ListView(
-            padding: const EdgeInsets.all(20),
+          body: AppPageList(
             children: [
               Text(
                 '${widget.room.label} · ${widget.room.origin.host}:${widget.room.origin.port}',

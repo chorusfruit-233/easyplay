@@ -1,3 +1,4 @@
+import '../../ui/app_layout.dart';
 import 'package:flutter/material.dart';
 
 import '../../game_session.dart' show Side, SideX;
@@ -206,8 +207,7 @@ class _DraughtsNewGamePageState extends State<DraughtsNewGamePage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Checkers / Draughts')),
-    body: ListView(
-      padding: const EdgeInsets.all(16),
+    body: AppPageList(
       children: [
         Text(
           '选择规则',

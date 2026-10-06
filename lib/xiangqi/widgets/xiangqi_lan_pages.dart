@@ -1,3 +1,4 @@
+import '../../ui/app_layout.dart';
 import '../../lan/rtc_lobby_page.dart';
 import 'dart:async';
 import 'dart:math';
@@ -19,8 +20,7 @@ class XiangqiLanLobbyPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('中国象棋联机')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Text('标准中国象棋 · 规则版本 $xiangqiRulesVersion'),
         const SizedBox(height: 16),
@@ -160,8 +160,7 @@ class _XiangqiLanRoomPageState extends State<XiangqiLanRoomPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('创建中国象棋房间')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Card(
           child: Padding(
@@ -326,8 +325,7 @@ class _XiangqiLanJoinPageState extends State<XiangqiLanJoinPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('加入中国象棋房间')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Text('标准中国象棋房间'),
         const SizedBox(height: 12),

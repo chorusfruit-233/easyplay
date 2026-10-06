@@ -1,3 +1,4 @@
+import '../../ui/app_layout.dart';
 import '../../lan/rtc_lobby_page.dart';
 import 'dart:async';
 import 'dart:math';
@@ -24,8 +25,7 @@ class DraughtsLanLobbyPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('跳棋联机')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Text(
           '${variant.label} · ${DraughtsRules.forVariant(variant).shortDescription}',
@@ -174,8 +174,7 @@ class _DraughtsLanRoomPageState extends State<DraughtsLanRoomPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('创建跳棋房间')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Card(
           child: Padding(
@@ -349,8 +348,7 @@ class _DraughtsLanJoinPageState extends State<DraughtsLanJoinPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('加入跳棋房间')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Text('${widget.variant.label} 房间'),
         const SizedBox(height: 12),

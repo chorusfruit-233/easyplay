@@ -146,7 +146,7 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(find.byType(GoSectionPage), findsNothing);
-    expect(find.text('今天，\n来一局好棋。'), findsOneWidget);
+    expect(find.text('选一款，开始吧。'), findsOneWidget);
   });
 
   testWidgets('AI 对弈 asks for setup and then opens the board', (tester) async {
@@ -181,10 +181,10 @@ void main() {
     );
   });
 
-  testWidgets('the continue card enters the same section', (tester) async {
+  testWidgets('the redesigned home Go card enters the section', (tester) async {
     await tester.pumpWidget(const EasyPlayApp());
-    await tester.ensureVisible(find.text('开始'));
-    await tester.tap(find.text('开始'));
+    await tester.ensureVisible(find.text('围棋'));
+    await tester.tap(find.text('围棋'));
     await tester.pumpAndSettle();
 
     expect(find.byType(GoSectionPage), findsOneWidget);

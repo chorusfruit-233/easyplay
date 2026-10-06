@@ -1,3 +1,4 @@
+import '../../ui/app_layout.dart';
 import 'dart:async';
 import 'dart:math';
 
@@ -23,8 +24,7 @@ class GomokuLanLobbyPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('五子棋联机')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Text('15×15 · ${variant.label}'),
         Text(variant.description),
@@ -169,8 +169,7 @@ class _GomokuLanRoomPageState extends State<GomokuLanRoomPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('创建五子棋房间')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Card(
           child: Padding(
@@ -341,8 +340,7 @@ class _GomokuLanJoinPageState extends State<GomokuLanJoinPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('加入五子棋房间')),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
+    body: AppPageList(
       children: [
         Text('15×15 · ${widget.variant.label}房间'),
         const SizedBox(height: 12),
