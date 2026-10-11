@@ -82,12 +82,12 @@ class _GomokuGamePageState extends State<GomokuGamePage>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    _suspended = state != AppLifecycleState.resumed;
-    if (_suspended) {
-      setState(_cancelAi);
-    } else {
-      _driveAi();
-    }
+    // Rebuild on resume even when it is the human's turn and AI stays idle.
+    setState(() {
+      _suspended = state != AppLifecycleState.resumed;
+      if (_suspended) _cancelAi();
+    });
+    if (!_suspended) _driveAi();
   }
 
   void _cancelAi() {
