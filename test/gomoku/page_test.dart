@@ -83,6 +83,125 @@ void main() {
     expect((await GomokuStorage.list()).single.moveCount, 1);
   });
 
+  for (final variant in GomokuVariant.values) {
+    testWidgets('本地双人 ${variant.label} 切换应用后双方仍可落子', (tester) async {
+      final session = GomokuSession(variant: variant)..place(const Cell(7, 7));
+      await _pump(tester, GomokuGamePage(session: session));
+      await tester.pumpAndSettle();
+
+      for (final cell in [const Cell(7, 8), const Cell(8, 8)]) {
+        final before = session.toJson();
+        final side = session.turn;
+        final moveCount = session.moves.length;
+        for (final state in [
+          AppLifecycleState.inactive,
+          AppLifecycleState.hidden,
+          AppLifecycleState.paused,
+        ]) {
+          tester.binding.handleAppLifecycleStateChanged(state);
+          await tester.pump();
+        }
+        expect(
+          tester.widget<GomokuBoard>(find.byType(GomokuBoard)).enabled,
+          isFalse,
+        );
+        expect(session.toJson(), before);
+
+        for (final state in [
+          AppLifecycleState.hidden,
+          AppLifecycleState.inactive,
+          AppLifecycleState.resumed,
+        ]) {
+          tester.binding.handleAppLifecycleStateChanged(state);
+          await tester.pump();
+        }
+        await tester.tapAt(_point(tester, cell));
+        await tester.pumpAndSettle();
+        expect(session.moves.length, moveCount + 1);
+        expect(session.pieceAt(cell), side);
+        expect(session.turn, side.opponent);
+        expect(
+          (await GomokuStorage.list()).single.restore().toJson(),
+          session.toJson(),
+        );
+      }
+    });
+  }
+
+  testWidgets('人机对局在人类回合切换应用后仍可落子', (tester) async {
+    final session = GomokuSession();
+    final ai = _DelayedAi();
+    await _pump(
+      tester,
+      GomokuGamePage(session: session, aiLevel: GomokuAiLevel.beginner, ai: ai),
+    );
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    expect(
+      tester.widget<GomokuBoard>(find.byType(GomokuBoard)).enabled,
+      isFalse,
+    );
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+
+    await tester.tapAt(_point(tester, const Cell(7, 7)));
+    await tester.pump();
+    expect(session.pieceAt(const Cell(7, 7)), Side.black);
+    expect(ai.requests.length, 1);
+    ai.requests.single.complete(const GomokuAiResult(Cell(7, 8), 1, 1));
+    await tester.pumpAndSettle();
+    expect(session.pieceAt(const Cell(7, 8)), Side.white);
+    expect(session.turn, Side.black);
+  });
+
+  testWidgets('AI 思考时切换应用会恢复搜索，迟到旧结果不会落子', (tester) async {
+    final session = GomokuSession();
+    final ai = _DelayedAi();
+    await _pump(
+      tester,
+      GomokuGamePage(
+        session: session,
+        aiLevel: GomokuAiLevel.intermediate,
+        humanSide: Side.white,
+        ai: ai,
+      ),
+    );
+    expect(ai.requests.length, 1);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    expect(session.moves, isEmpty);
+    expect(find.text('AI 正在思考…'), findsNothing);
+    expect(ai.cancellations, greaterThan(0));
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(ai.requests.length, 2);
+    ai.requests.first.complete(const GomokuAiResult(Cell(7, 7), 1, 1));
+    await tester.pump();
+    expect(session.moves, isEmpty);
+    expect(find.text('AI 正在思考…'), findsOneWidget);
+
+    ai.requests.last.complete(const GomokuAiResult(Cell(7, 8), 1, 1));
+    await tester.pumpAndSettle();
+    expect(session.pieceAt(const Cell(7, 8)), Side.black);
+    await tester.tapAt(_point(tester, const Cell(7, 7)));
+    await tester.pump();
+    expect(session.pieceAt(const Cell(7, 7)), Side.white);
+    expect(ai.requests.length, 3);
+    ai.requests.last.complete(const GomokuAiResult(Cell(8, 8), 1, 1));
+    await tester.pumpAndSettle();
+    expect(session.moves.length, 3);
+    expect(session.turn, Side.white);
+  });
+
   testWidgets('首页提供 AI 三种难度、执棋方和可注入联机入口', (tester) async {
     await _pump(
       tester,
