@@ -59,8 +59,13 @@ class FakeLanConnection extends LanClientConnection {
   final LanHostServer authority;
   final sent = <LanMessage>[];
   final _events = StreamController<LanMessage>.broadcast();
+  final _disconnects = StreamController<void>.broadcast();
   @override
   Stream<LanMessage> get messages => _events.stream;
+  @override
+  Stream<void> get disconnections => _disconnects.stream;
+
+  void emitDisconnect() => _disconnects.add(null);
 
   @override
   void send(LanMessage message) {
@@ -79,6 +84,8 @@ class FakeLanConnection extends LanClientConnection {
     ),
   );
 
+  void syncGo() => _receive(authority.sync(replica!.stateRequest()));
+
   void _receive(LanMessage event) {
     if (event.type != LanMessageType.rejected) {
       final accepted =
@@ -96,6 +103,7 @@ class FakeLanConnection extends LanClientConnection {
 
   Future<void> dispose() async {
     await _events.close();
+    await _disconnects.close();
     chessReplica?.dispose();
     await authority.close();
   }

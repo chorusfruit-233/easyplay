@@ -31,7 +31,7 @@ Future<void> _show(WidgetTester tester, Widget board) => tester.pumpWidget(
 );
 
 void main() {
-  for (final action in ['move', 'undo', 'reset', 'replacement']) {
+  for (final action in ['move', 'undo', 'reset', 'replacement', 'resign']) {
     testWidgets('Go clears confirmation previews after $action', (
       tester,
     ) async {
@@ -73,6 +73,8 @@ void main() {
           expect(session.undo(), isTrue);
         case 'reset':
           session.reset();
+        case 'resign':
+          expect(session.resignGo(session.turn), isTrue);
         case 'replacement':
           session = GameSession(
             GameType.go,
@@ -88,6 +90,45 @@ void main() {
       await tester.pumpAndSettle();
     });
   }
+
+  testWidgets('Go setup clears a preview even when no move history changes', (
+    tester,
+  ) async {
+    final session = GameSession(
+      GameType.go,
+      goConfig: const GoConfig(boardSize: 9),
+    );
+    Future<void> render() => _show(
+      tester,
+      Board(
+        type: GameType.go,
+        session: session,
+        selected: null,
+        targets: const [],
+        placementMode: GoPlacementMode.doubleTap,
+        onCell: (_) {},
+      ),
+    );
+    await render();
+    await tester.tapAt(tester.getCenter(find.byType(Board)));
+    await render();
+    BoardPainter painter() =>
+        tester
+                .widget<CustomPaint>(
+                  find.descendant(
+                    of: find.byType(Board),
+                    matching: find.byType(CustomPaint),
+                  ),
+                )
+                .painter!
+            as BoardPainter;
+    expect(painter().preview, const Cell(4, 4));
+    session.setupGo({const Cell(0, 0): Side.black}, Side.white);
+    await render();
+    expect(session.moves, isEmpty);
+    expect(painter().preview, isNull);
+    await tester.pumpAndSettle();
+  });
 
   testWidgets(
     'Go and Gomoku commit fast taps without waiting for landing animation',

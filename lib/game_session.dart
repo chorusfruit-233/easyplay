@@ -164,7 +164,15 @@ class GameSession {
   double? _adjudicatedMargin;
   late List<List<GamePiece?>> initialGoBoard;
   Side initialGoTurn = Side.black;
+
+  /// Initial-record generation used to retain imported SGF trees while playing.
+  /// Only replacing the initial position invalidates that tree.
   int revision = 0;
+
+  /// Token for detecting mutations to this session when a widget rebuilds.
+  /// This is independent of [revision], so normal moves preserve SGF variations.
+  int get stateRevision => _stateRevision;
+  int _stateRevision = 0;
   late List<List<GamePiece?>> board;
   Side turn = Side.black;
   int blackCaptures = 0;
@@ -229,6 +237,7 @@ class GameSession {
     } else {
       deadGoStones.addAll(group);
     }
+    _stateRevision++;
     return true;
   }
 
@@ -236,6 +245,7 @@ class GameSession {
     if (type != GameType.go || !gameOver) return false;
     winner = calculateGoScore().winner;
     goScoreConfirmed = true;
+    _stateRevision++;
     return true;
   }
 
@@ -263,6 +273,7 @@ class GameSession {
     _adjudicatedMargin = margin;
     winner = adjudicatedWinner;
     goScoreConfirmed = true;
+    _stateRevision++;
   }
 
   bool resumeGo() {
@@ -278,6 +289,7 @@ class GameSession {
     _adjudicatedWinner = null;
     _adjudicatedMargin = null;
     winner = null;
+    _stateRevision++;
     return true;
   }
 
@@ -302,11 +314,14 @@ class GameSession {
     _positions
       ..clear()
       ..add(_signature(board));
+    revision++;
+    _stateRevision++;
   }
 
   void reset() {
     if (type == GameType.go) goConfig.validate();
     revision++;
+    _stateRevision++;
     goScoreConfirmed = false;
     goResignedSide = null;
     _adjudicatedWinner = null;
@@ -366,6 +381,7 @@ class GameSession {
     _consecutivePasses = 0;
     _finishTurn();
     _positions.add(_signature(board));
+    _stateRevision++;
     return true;
   }
 
@@ -379,6 +395,7 @@ class GameSession {
     winner = goResignedSide!.opponent;
     gameOver = true;
     goScoreConfirmed = true;
+    _stateRevision++;
     return true;
   }
 
@@ -390,6 +407,7 @@ class GameSession {
     if (_consecutivePasses >= 2) gameOver = true;
     _finishTurn();
     _positions.add(_signature(board));
+    _stateRevision++;
     return true;
   }
 
@@ -414,6 +432,7 @@ class GameSession {
     goResignedSide = null;
     _adjudicatedWinner = null;
     _adjudicatedMargin = null;
+    _stateRevision++;
     return true;
   }
 

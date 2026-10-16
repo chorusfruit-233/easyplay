@@ -7,14 +7,29 @@ import '../game_session.dart' show Cell;
 
 /// Paths use board coordinates, so rotation and resizing remain view concerns.
 class BoardMoveMotion {
-  BoardMoveMotion({required List<List<Cell>> paths, this.captureAt = const {}})
-    : paths = [for (final path in paths) List<Cell>.unmodifiable(path)];
+  BoardMoveMotion({
+    required List<List<Cell>> paths,
+    Map<Cell, double> captureAt = const {},
+  }) : paths = _snapshotPaths(paths),
+       captureAt = Map.unmodifiable({
+         for (final entry in captureAt.entries)
+           entry.key: entry.value.isFinite
+               ? entry.value.clamp(0.0, 1.0).toDouble()
+               : 0.0,
+       });
 
   factory BoardMoveMotion.alongPath(List<Cell> path, List<Cell> captures) {
+    final points = _snapshotPaths([path]).single;
+    if (captures.length > points.length - 1) {
+      throw ArgumentError('more captures than path segments');
+    }
+    if (captures.toSet().length != captures.length) {
+      throw ArgumentError('a captured cell cannot appear twice');
+    }
     final times = <Cell, double>{};
     for (var i = 0; i < captures.length; i++) {
-      final start = _point(path[i]);
-      final length = (_point(path[i + 1]) - start).distance;
+      final start = _point(points[i]);
+      final length = (_point(points[i + 1]) - start).distance;
       final crossing = ((_point(captures[i]) - start).distance / length).clamp(
         0.0,
         1.0,
@@ -30,13 +45,30 @@ class BoardMoveMotion {
           high = mid;
         }
       }
-      times[captures[i]] = (i + (low + high) / 2) / (path.length - 1);
+      times[captures[i]] = (i + (low + high) / 2) / (points.length - 1);
     }
-    return BoardMoveMotion(paths: [path], captureAt: times);
+    return BoardMoveMotion(paths: [points], captureAt: times);
   }
 
   final List<List<Cell>> paths;
   final Map<Cell, double> captureAt;
+
+  static List<List<Cell>> _snapshotPaths(List<List<Cell>> paths) {
+    final snapshot = List<List<Cell>>.unmodifiable([
+      for (final path in paths) List<Cell>.unmodifiable(path),
+    ]);
+    for (final path in snapshot) {
+      if (path.isEmpty) {
+        throw ArgumentError('a move path cannot be empty');
+      }
+      for (var i = 1; i < path.length; i++) {
+        if (path[i - 1] == path[i]) {
+          throw ArgumentError('a path segment cannot have zero length');
+        }
+      }
+    }
+    return snapshot;
+  }
 }
 
 class BoardPieceFrame<T extends Object> {
@@ -180,10 +212,11 @@ class BoardMotionScene<T extends Object> extends ChangeNotifier {
     }
     if (progress >= 1) return;
     for (final (cell, piece, captureAt) in _departing) {
-      final fade = ((progress - captureAt) / math.min(.3, 1 - captureAt)).clamp(
-        0.0,
-        1.0,
-      );
+      final fadeWindow = math.min(.3, 1 - captureAt);
+      // A capture at the endpoint stays visible until the final board replaces it.
+      final fade = fadeWindow <= 0
+          ? 0.0
+          : ((progress - captureAt) / fadeWindow).clamp(0.0, 1.0).toDouble();
       if (fade >= 1) continue;
       yield BoardPieceFrame(
         piece: piece,

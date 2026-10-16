@@ -120,7 +120,34 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
       await page.evaluate(() => new Promise(requestAnimationFrame).then(() => new Promise(requestAnimationFrame)));
       assert.ok((await field.inputValue()) === text, 'Flutter text input connection did not retain the invitation');
     };
-    for (const game of ['chess', 'xiangqi', 'gomoku', 'gomoku-standard', 'gomoku-renju']) {
+    const uiGoState = page => page.evaluate(() => JSON.parse(easyplayRtcSmoke.uiGoState()));
+    const waitGoPosition = (page, seq, moves) => page.waitForFunction(expected => {
+      const view = JSON.parse(easyplayRtcSmoke.uiGoState());
+      return view.ready && view.seq === expected.seq && view.moves.length === expected.moves;
+    }, {seq, moves});
+    const clickGoCell = async (page, row, col) => {
+      const view = await uiGoState(page);
+      assert.equal(view.ready, true);
+      const {x, y, width, height} = view.bounds;
+      await page.mouse.click(x + (col + .5) * width / view.size, y + (row + .5) * height / view.size);
+    };
+    const waitGoPreview = (page, row, col, seq) => page.waitForFunction(expected => {
+      const view = JSON.parse(easyplayRtcSmoke.uiGoState());
+      return view.ready && view.seq === expected.seq &&
+        view.preview?.[0] === expected.row && view.preview?.[1] === expected.col;
+    }, {row, col, seq});
+    const assertGoSynced = async (moves, seq) => {
+      await Promise.all([host, guest].map(page => waitGoPosition(page, seq, moves)));
+      const [left, right] = await Promise.all([host, guest].map(uiGoState));
+      assert.deepEqual(left.moves, right.moves);
+      assert.deepEqual(left.stones, right.stones);
+      assert.equal(left.turn, right.turn);
+      assert.equal(left.preview, null);
+      assert.equal(right.preview, null);
+      return left;
+    };
+    for (const game of ['go', 'chess', 'xiangqi', 'gomoku', 'gomoku-standard', 'gomoku-renju']) {
+      phase = `Flutter RTC ${game}: lobby`;
       const isGomoku = game.startsWith('gomoku');
       const wireGame = isGomoku ? 'gomoku' : game;
       const wireVariant = game === 'gomoku-standard' ? 'standard' : game === 'gomoku-renju' ? 'renju' : 'freestyle';
@@ -156,7 +183,56 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
           assert.equal(await guest.getByText(boardLabel, {exact: true}).count(), 0);
         }
         await host.getByRole('button', {name: '开始对局', exact: true}).click();
-        await Promise.all([host,guest].map(p => p.getByRole('button', {name: isGomoku ? '请求悔棋' : '悔棋', exact: true}).waitFor()));
+        await Promise.all([host,guest].map(p => p.getByRole('button', {name: isGomoku || game === 'go' ? '请求悔棋' : '悔棋', exact: true}).waitFor()));
+        if (game === 'go') {
+          phase = 'Flutter RTC go: double-tap confirmation';
+          const initial = await assertGoSynced(0, 0);
+          assert.equal(initial.side, 'black');
+          assert.equal((await uiGoState(guest)).side, 'white');
+          for (const page of [host, guest]) {
+            assert.equal((await uiGoState(page)).placementMode, 'doubleTap');
+          }
+          const center = Math.floor(initial.size / 2);
+          await clickGoCell(host, center, center);
+          await waitGoPreview(host, center, center, 0);
+          // The first click changes only the mounted board's preview. Neither
+          // peer has a committed move or an incremented authority sequence.
+          for (const page of [host, guest]) {
+            const view = await uiGoState(page);
+            assert.equal(view.seq, 0);
+            assert.deepEqual(view.moves, []);
+            assert.deepEqual(view.stones, []);
+          }
+          if (process.env.CAPTURE_RTC_GO === '1') {
+            const screenshot = path.resolve(__dirname, '../docs/images/go-lan-confirmation.png');
+            fs.mkdirSync(path.dirname(screenshot), {recursive: true});
+            await host.screenshot({path: screenshot, fullPage: true});
+          }
+          await clickGoCell(host, center, center);
+          const blackMove = await assertGoSynced(1, 1);
+          assert.deepEqual(blackMove.stones, [{cell: [center, center], side: 'black'}]);
+
+          await clickGoCell(guest, center, center + 1);
+          await waitGoPreview(guest, center, center + 1, 1);
+          assert.equal((await uiGoState(host)).seq, 1);
+          assert.equal((await uiGoState(host)).moves.length, 1);
+          assert.equal((await uiGoState(guest)).moves.length, 1);
+          await clickGoCell(guest, center, center + 1);
+          const whiteMove = await assertGoSynced(2, 2);
+          assert.deepEqual(whiteMove.stones, [
+            {cell: [center, center], side: 'black'},
+            {cell: [center, center + 1], side: 'white'},
+          ]);
+
+          phase = 'Flutter RTC go: negotiated undo';
+          await guest.getByRole('button', {name: '请求悔棋', exact: true}).click();
+          await host.getByText('对手请求悔棋', {exact: true}).waitFor();
+          await host.getByRole('button', {name: '同意', exact: true}).click();
+          const undone = await assertGoSynced(1, 4);
+          assert.deepEqual(undone.stones, blackMove.stones);
+          assert.equal(undone.turn, 'white');
+          console.log('Flutter RTC go board: first-click preview, two-click confirmation, remote reply and negotiated undo passed');
+        }
         if (isGomoku) {
           await Promise.all([host,guest].map(p => p.getByText(boardLabel, {exact: true}).waitFor()));
           await Promise.all([host,guest].map(p => p.getByText(`15×15 · ${label} · 0 手`, {exact: false}).first().waitFor()));

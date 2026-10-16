@@ -29,9 +29,20 @@
 
 对局页面必须保留棋盘控件的状态，不能用每手变化的 `revision` 或联机 `seq` 作为棋盘的 Key，否则上一局面会丢失，新着手只会立即显示终点。围棋的落子预览和手势在局面变化时单独清除，不依靠重建棋盘重置输入。页面回归会操作实际跳棋对局及围棋、五子棋、跳棋联机页面，检查本方与对手着手的动画中间帧。
 
+围棋使用 `GameSession.stateRevision` 识别走子、摆子、认输、计分和悔棋等状态变化；原有 `revision` 只代表初始记录代际，用于保留导入 SGF 的兄弟变例。围棋联机页面按已提交序号复用显示快照，避免双击或滑动确认的预览被普通重建清空；完整同步与断线会取消旧预览。退出计分阶段时清除本地死子标记。
+
+动画路径和吃子时间保存不可变快照。空单路径、相邻重复点、过量或重复吃子目标会被拒绝；空路径集合、单点落子和合法绕圈连跳仍受支持。吃子时间限制在 `0..1`，非有限值按 `0` 处理，终点吃子在最终局面到达时移除。
+
+中国象棋同时遵守父容器的宽高限制，保持 `9:10` 比例；小窗口和翻转棋盘的点击坐标通过控件测试验证。
+
+![中国象棋在 500×220 父容器中保持正确比例](images/xiangqi-constrained-layout.png)
+
 ```sh
 dart analyze lib test
 flutter test
+flutter build web --release --no-wasm-dry-run --base-href /easyplay/ \
+  --target test/lan/rtc_browser_smoke.dart --output build/rtc-smoke
+node tools/test_rtc_web.cjs
 flutter build web --release --no-wasm-dry-run --base-href /easyplay/ \
   --target test/board_motion_browser_smoke.dart --output build/board-motion-smoke
 node tools/test_board_motion_web.cjs
@@ -39,3 +50,5 @@ python3 tools/package_lan_android.py --debug
 ```
 
 新增测试覆盖落子与吃子中间帧、快速应手、悔棋/重开、批量同步、翻转、减少动态效果、后台恢复、易位、吃过路兵、升变和连跳。原有国际象棋像素回归在动画结束后比较完整画面与全新棋盘，继续检查空格和被吃棋子不残留。浏览器 smoke 使用五种实际棋盘控件与真实按钮，并通过系统媒体查询验证减少动态效果；测试入口不加入产品构建。
+
+WebRTC 浏览器回归通过真实双端围棋页面验证：首次点击只预览，二次点击提交并同步，对手应手后双方协商悔棋。设置 `CAPTURE_RTC_GO=1` 可保存首次点击的预览截图。

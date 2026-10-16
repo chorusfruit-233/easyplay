@@ -38,9 +38,9 @@ class XiangqiBoard extends StatelessWidget {
           ),
     builder: (context, motion) => LayoutBuilder(
       builder: (context, constraints) {
-        final availableHeight = math.max(
-          180.0,
-          MediaQuery.sizeOf(context).height - 260,
+        final availableHeight = math.min(
+          constraints.maxHeight,
+          math.max(180.0, MediaQuery.sizeOf(context).height - 260),
         );
         final width = math.min(constraints.maxWidth, availableHeight * .9);
         return Center(
