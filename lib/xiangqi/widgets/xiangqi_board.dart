@@ -50,6 +50,9 @@ class XiangqiBoard extends StatelessWidget {
             child: Semantics(
               label: '中国象棋棋盘，10 行 9 列',
               child: GestureDetector(
+                // Pointer coordinates identify the intersection. A board-wide
+                // semantic tap has no intersection coordinate.
+                excludeFromSemantics: true,
                 onTapUp: onCell == null
                     ? null
                     : (details) {

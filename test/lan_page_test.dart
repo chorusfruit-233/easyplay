@@ -35,57 +35,65 @@ Offset _point(WidgetTester tester, Cell cell) {
 }
 
 void main() {
-  for (final mode in [
-    GoPlacementMode.doubleTap,
-    GoPlacementMode.swipeConfirm,
-  ]) {
-    testWidgets(
-      'Go LAN preserves ${mode.name} confirmation and clears it on sync',
-      (tester) async {
-        SharedPreferences.setMockInitialValues({
-          GoPlacementPreferences.key: mode.name,
-        });
-        final connection = FakeLanConnection.go(Side.black);
-        await tester.pumpWidget(
-          MaterialApp(home: LanMatchPage(connection: connection)),
-        );
-        await tester.pumpAndSettle();
-        const first = Cell(4, 4), next = Cell(4, 6);
-        Future<void> confirm(Cell cell) => mode == GoPlacementMode.doubleTap
-            ? tester.tapAt(_point(tester, cell))
-            : tester.dragFrom(_point(tester, cell), const Offset(0, 40));
-        await tester.tapAt(_point(tester, first));
-        await tester.pumpAndSettle();
-        expect(_boardPainter(tester).preview, first);
-        expect(connection.sent, isEmpty);
-        await confirm(first);
-        await tester.pumpAndSettle();
-        expect(connection.sent.single.type, LanMessageType.move);
-        expect(connection.replica!.session.pieceAt(first)?.side, Side.black);
+  for (final side in Side.values) {
+    for (final mode in [
+      GoPlacementMode.doubleTap,
+      GoPlacementMode.swipeConfirm,
+    ]) {
+      testWidgets(
+        'Go LAN ${side.name} preserves ${mode.name} confirmation and clears it on sync',
+        (tester) async {
+          SharedPreferences.setMockInitialValues({
+            GoPlacementPreferences.key: mode.name,
+          });
+          final connection = FakeLanConnection.go(side);
+          await tester.pumpWidget(
+            MaterialApp(home: LanMatchPage(connection: connection)),
+          );
+          await tester.pumpAndSettle();
+          if (side == Side.white) {
+            connection.commit(Side.black, LanMessageType.move, {
+              'cell': [4, 3],
+            });
+            await tester.pumpAndSettle();
+          }
+          const first = Cell(4, 4), next = Cell(4, 6);
+          Future<void> confirm(Cell cell) => mode == GoPlacementMode.doubleTap
+              ? tester.tapAt(_point(tester, cell))
+              : tester.dragFrom(_point(tester, cell), const Offset(0, 40));
+          await tester.tapAt(_point(tester, first));
+          await tester.pumpAndSettle();
+          expect(_boardPainter(tester).preview, first);
+          expect(connection.sent, isEmpty);
+          await confirm(first);
+          await tester.pumpAndSettle();
+          expect(connection.sent.single.type, LanMessageType.move);
+          expect(connection.replica!.session.pieceAt(first)?.side, side);
 
-        connection.commit(Side.white, LanMessageType.move, {
-          'cell': [4, 5],
-        });
-        await tester.pumpAndSettle();
-        await tester.tapAt(_point(tester, next));
-        await tester.pumpAndSettle();
-        expect(_boardPainter(tester).preview, next);
-        final seq = connection.replica!.seq;
-        connection.syncGo();
-        await tester.pumpAndSettle();
-        expect(connection.replica!.seq, seq);
-        expect(_boardPainter(tester).preview, isNull);
-        await tester.tapAt(_point(tester, next));
-        await tester.pumpAndSettle();
-        expect(connection.sent, hasLength(1));
-        await confirm(next);
-        await tester.pumpAndSettle();
-        expect(connection.sent, hasLength(2));
-        expect(connection.replica!.session.pieceAt(next)?.side, Side.black);
-        await tester.pumpWidget(const SizedBox());
-        await connection.dispose();
-      },
-    );
+          connection.commit(side.opponent, LanMessageType.move, {
+            'cell': [4, 5],
+          });
+          await tester.pumpAndSettle();
+          await tester.tapAt(_point(tester, next));
+          await tester.pumpAndSettle();
+          expect(_boardPainter(tester).preview, next);
+          final seq = connection.replica!.seq;
+          connection.syncGo();
+          await tester.pumpAndSettle();
+          expect(connection.replica!.seq, seq);
+          expect(_boardPainter(tester).preview, isNull);
+          await tester.tapAt(_point(tester, next));
+          await tester.pumpAndSettle();
+          expect(connection.sent, hasLength(1));
+          await confirm(next);
+          await tester.pumpAndSettle();
+          expect(connection.sent, hasLength(2));
+          expect(connection.replica!.session.pieceAt(next)?.side, side);
+          await tester.pumpWidget(const SizedBox());
+          await connection.dispose();
+        },
+      );
+    }
   }
 
   testWidgets('Go LAN disconnect cancels a held placement preview', (
