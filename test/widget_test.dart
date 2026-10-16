@@ -53,6 +53,11 @@ void main() {
       scrollable: find.byType(Scrollable).last,
     );
     expect(find.text('本地双人对局'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('局域网联机'),
+      150,
+      scrollable: find.byType(Scrollable).last,
+    );
     expect(find.text('局域网联机'), findsOneWidget);
   });
 
@@ -100,7 +105,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('连珠禁手').last);
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('联机对弈'));
+    await tester.scrollUntilVisible(find.text('联机对弈'), 200);
+    await tester.pumpAndSettle();
     await tester.tap(find.text('联机对弈'));
     await tester.pumpAndSettle();
     expect(find.text('五子棋联机'), findsOneWidget);

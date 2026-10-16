@@ -75,6 +75,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('自由五子棋 · 1 手'), findsOneWidget);
     await tester.ensureVisible(find.text('自由五子棋 · 1 手'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('自由五子棋 · 1 手'));
     await tester.pumpAndSettle();
     final resumed = tester.widget<GomokuGamePage>(find.byType(GomokuGamePage));

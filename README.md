@@ -61,6 +61,7 @@ dart analyze lib test
 - [开发文档](docs/DEVELOPMENT.md)：结构、规则、平台构建与测试约定
 - [AI 引擎与模型](docs/AI_ENGINES.md)：KataGo CPU、配置和模型管理
 - [五子棋说明](docs/GOMOKU.md)：规则、AI、存储与联机
+- [AI 对抗观战](docs/AI_DUEL.md)：五子棋、跳棋双 AI 自动对弈与暂停、单步控制
 - [斗地主说明](docs/DOUDIZHU.md)：固定规则、三人房间、手牌隐私与重连
 - [中国象棋说明](docs/XIANGQI.md)：固定规则、Pikafish、构建与模型许可
 - [WebRTC 联机说明](docs/WEBRTC_MULTIPLAYER.md)：邀请流程、STUN 与网络限制

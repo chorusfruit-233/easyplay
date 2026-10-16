@@ -9,11 +9,13 @@ class DraughtsMatchLayout extends StatelessWidget {
     required this.header,
     required this.board,
     required this.footer,
+    this.compactLandscape = false,
   });
 
   final Widget header;
   final Widget board;
   final Widget footer;
+  final bool compactLandscape;
 
   Widget _fittedBoard() => LayoutBuilder(
     builder: (context, constraints) => Center(
@@ -29,14 +31,19 @@ class DraughtsMatchLayout extends StatelessWidget {
     padding: const EdgeInsets.all(16),
     child: LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth > 760) {
+        if (constraints.maxWidth > 760 ||
+            (compactLandscape &&
+                constraints.maxWidth >= 520 &&
+                constraints.maxWidth > constraints.maxHeight * 1.2)) {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(child: _fittedBoard()),
               const SizedBox(width: 16),
               SizedBox(
-                width: 310,
+                width: compactLandscape
+                    ? (constraints.maxWidth * .32).clamp(180, 310)
+                    : 310,
                 child: SingleChildScrollView(
                   child: Column(children: [header, footer]),
                 ),

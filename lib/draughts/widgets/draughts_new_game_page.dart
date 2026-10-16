@@ -1,6 +1,7 @@
 import '../../ui/app_layout.dart';
 import 'package:flutter/material.dart';
 
+import '../../ai/widgets/ai_duel_setup.dart';
 import '../../game_session.dart' show Side, SideX;
 import '../draughts_ai_level.dart';
 import '../draughts_record.dart';
@@ -11,6 +12,7 @@ import '../draughts_storage.dart';
 import '../draughts_variant.dart';
 import 'draughts_game_page.dart';
 import 'draughts_lan_pages.dart';
+import 'draughts_ai_duel_page.dart';
 
 class DraughtsNewGamePage extends StatefulWidget {
   const DraughtsNewGamePage({super.key});
@@ -100,6 +102,26 @@ class _DraughtsNewGamePageState extends State<DraughtsNewGamePage> {
     _reloadRecords();
   }
 
+  Future<void> _startAiDuel() async {
+    final config = await showAiDuelSetup(
+      context: context,
+      levels: DraughtsAiLevel.values,
+      initialLevel: DraughtsAiLevel.intermediate,
+      label: (level) => level.label,
+    );
+    if (config == null || !mounted) return;
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DraughtsAiDuelPage(
+          session: DraughtsSession(DraughtsRules.forVariant(_selected)),
+          config: config,
+        ),
+      ),
+    );
+    _reloadRecords();
+  }
+
   void _open(DraughtsRecord record) {
     late final DraughtsSession session;
     try {
@@ -135,15 +157,23 @@ class _DraughtsNewGamePageState extends State<DraughtsNewGamePage> {
     Navigator.push(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => DraughtsGamePage(
-          session: session,
-          recordId: record.id,
-          savedAt: record.createdAt,
-          aiLevel: record.kind == DraughtsGameKind.ai
-              ? record.aiLevel ?? DraughtsAiLevel.intermediate
-              : null,
-          humanSide: record.localSide ?? Side.white,
-        ),
+        builder: (_) => record.kind == DraughtsGameKind.aiDuel
+            ? DraughtsAiDuelPage(
+                session: session,
+                config: record.aiDuel!,
+                recordId: record.id,
+                createdAt: record.createdAt,
+                initiallyPaused: true,
+              )
+            : DraughtsGamePage(
+                session: session,
+                recordId: record.id,
+                savedAt: record.createdAt,
+                aiLevel: record.kind == DraughtsGameKind.ai
+                    ? record.aiLevel ?? DraughtsAiLevel.intermediate
+                    : null,
+                humanSide: record.localSide ?? Side.white,
+              ),
       ),
     ).then((_) {
       _reloadRecords();
@@ -258,6 +288,12 @@ class _DraughtsNewGamePageState extends State<DraughtsNewGamePage> {
           label: const Text('人机对弈'),
         ),
         const SizedBox(height: 8),
+        FilledButton.tonalIcon(
+          onPressed: _startAiDuel,
+          icon: const Icon(Icons.visibility_outlined),
+          label: const Text('AI 对抗'),
+        ),
+        const SizedBox(height: 8),
         OutlinedButton.icon(
           onPressed: () => Navigator.push<void>(
             context,
@@ -303,6 +339,7 @@ class _DraughtsNewGamePageState extends State<DraughtsNewGamePage> {
                           DraughtsGameKind.local => '本地',
                           DraughtsGameKind.online => '联机',
                           DraughtsGameKind.ai => '人机 · ${record.aiLevel?.label ?? '中级'}',
+                          DraughtsGameKind.aiDuel => 'AI 对抗 · 黑${record.aiDuel!.blackLevel.label} / 白${record.aiDuel!.whiteLevel.label}',
                         }} · ${record.moves.length} 手 · ${record.createdAt.toLocal()}',
                       ),
                       trailing: IconButton(

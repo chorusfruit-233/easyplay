@@ -1,10 +1,11 @@
+import '../ai/ai_duel_config.dart';
 import '../game_session.dart' show Side;
 import 'draughts_move.dart';
 import 'draughts_session.dart';
 import 'draughts_variant.dart';
 import 'draughts_ai_level.dart';
 
-enum DraughtsGameKind { local, online, ai }
+enum DraughtsGameKind { local, online, ai, aiDuel }
 
 class DraughtsRecord {
   DraughtsRecord({
@@ -17,6 +18,7 @@ class DraughtsRecord {
     this.id,
     this.sessionState,
     this.aiLevel,
+    this.aiDuel,
   }) : moves = List.unmodifiable(moves);
 
   final String? id;
@@ -28,6 +30,7 @@ class DraughtsRecord {
   final String? result;
   final Map<String, Object?>? sessionState;
   final DraughtsAiLevel? aiLevel;
+  final AiDuelConfig<DraughtsAiLevel>? aiDuel;
 
   factory DraughtsRecord.fromSession(
     DraughtsSession session, {
@@ -36,6 +39,7 @@ class DraughtsRecord {
     String? id,
     DateTime? createdAt,
     DraughtsAiLevel? aiLevel,
+    AiDuelConfig<DraughtsAiLevel>? aiDuel,
   }) => DraughtsRecord(
     variant: session.variant,
     moves: session.moves,
@@ -44,6 +48,7 @@ class DraughtsRecord {
     id: id,
     createdAt: createdAt ?? DateTime.now().toUtc(),
     aiLevel: aiLevel,
+    aiDuel: aiDuel,
     sessionState: session.toJson(),
     result: session.result?.winner == null
         ? (session.gameOver ? '1/2-1/2' : null)
@@ -60,6 +65,7 @@ class DraughtsRecord {
     'kind': kind.name,
     'localSide': localSide?.name,
     if (aiLevel != null) 'aiLevel': aiLevel!.name,
+    if (aiDuel != null) 'aiDuel': aiDuel!.toJson(),
     'createdAt': createdAt.toIso8601String(),
     'result': result,
     if (sessionState != null) 'session': sessionState,
@@ -95,6 +101,9 @@ class DraughtsRecord {
       variant: variant,
       kind: kind,
       localSide: side,
+      aiDuel: kind == DraughtsGameKind.aiDuel
+          ? AiDuelConfig.fromJson(value['aiDuel'], DraughtsAiLevel.values)
+          : null,
       aiLevel: DraughtsAiLevel.values
           .where((level) => level.name == value['aiLevel'])
           .firstOrNull,

@@ -54,7 +54,7 @@ void main() {
       createdAt: DateTime.utc(2026),
       session: GomokuSession()..place(const Cell(7, 7)),
     ).toJson();
-    final unknown = {...valid, 'id': 'newer', 'version': 2};
+    final unknown = {...valid, 'id': 'newer', 'version': 3};
     final illegal = {
       ...valid,
       'id': 'illegal',
