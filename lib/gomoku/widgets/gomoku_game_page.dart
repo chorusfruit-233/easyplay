@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../game_session.dart' show Cell, Side, SideX;
 import '../../go_placement.dart';
 import '../gomoku_ai.dart';
+import '../gomoku_placement.dart';
 import '../gomoku_session.dart';
 import '../gomoku_storage.dart';
 import 'gomoku_board.dart';
@@ -42,6 +43,9 @@ class _GomokuGamePageState extends State<GomokuGamePage>
   bool _leaving = false;
   String? _message;
   int _job = 0;
+
+  GoPlacementMode get _effectivePlacementMode =>
+      resolveGomokuPlacementMode(_placementMode);
 
   bool get _isAi => widget.aiLevel != null;
   int get _protectedOpening => _isAi && widget.humanSide == Side.white ? 1 : 0;
@@ -276,7 +280,7 @@ class _GomokuGamePageState extends State<GomokuGamePage>
             session: _session,
             onCell: _place,
             enabled: _canPlace,
-            placementMode: _placementMode,
+            placementMode: _effectivePlacementMode,
           ),
           footer: Column(
             children: [
@@ -310,7 +314,8 @@ class _GomokuGamePageState extends State<GomokuGamePage>
               ),
               const SizedBox(height: 8),
               Text(
-                '自动保存 · 落子：${_placementMode.label}',
+                '自动保存 · 落子：${_effectivePlacementMode.label}\n${gomokuPlacementHint(_placementMode)}',
+                textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],

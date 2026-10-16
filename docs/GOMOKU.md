@@ -35,7 +35,11 @@
 
 ## 棋盘与保存
 
-棋盘同时按可用高度和宽度缩放；状态和控制区可独立滚动。沿用设置中的直接点击、点击两次、滑动确认、按下松开和自动落子模式。
+棋盘同时按可用高度和宽度缩放；状态和控制区可独立滚动。默认“自动”模式始终先预览，再次点击同一交点才落子；点击另一空点可调整预览，上滑取消，棋盘大小不会跳过确认。本地双人、人机和联机使用相同策略，预览不会触发保存、AI 搜索或网络落子。
+
+“设置 → 落子模式”同时适用于围棋与五子棋，也可明确选择直接点击、点击两次、滑动确认或按下松开；对局底部显示当前实际模式和操作说明。
+
+![五子棋首次点击仅预览，确认前棋谱仍为零手](images/gomoku-placement-confirmation.png)
 
 本地/AI 对局在落子、悔棋、认输和重开时自动保存。首页“最近对局”可续局或删除；续局恢复规则、AI 难度、执棋方和完整局面。新局使用新 ID，保留旧局。存档使用 `shared_preferences` 的 `easyplay.gomoku.records.v1`，串行写入，最多 100 条，首页显示最近 20 条；不会上传。局面格式升级为版本 2 并记录 `variant`，旧版本 1 存档按自由规则恢复；未知规则或包含非法落子的存档会被跳过，其余存档仍可读取。
 
@@ -54,6 +58,7 @@ flutter test test/gomoku test/lan/gomoku_transport_test.dart
 flutter test
 dart analyze lib test
 flutter build web
+node tools/test_gomoku_placement_web.cjs
 python3 tools/package_lan_android.py --debug
 ```
 

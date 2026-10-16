@@ -43,6 +43,19 @@ Offset _point(WidgetTester tester, Cell cell) {
       );
 }
 
+Cell? _preview(WidgetTester tester) =>
+    (tester
+                    .widget<CustomPaint>(
+                      find.descendant(
+                        of: find.byType(GomokuBoard),
+                        matching: find.byType(CustomPaint),
+                      ),
+                    )
+                    .painter
+                as dynamic)
+            .preview
+        as Cell?;
+
 Future<void> _pump(WidgetTester tester, Widget page) async {
   await tester.pumpWidget(MaterialApp(home: page));
   await tester.pump();
@@ -55,6 +68,56 @@ void main() {
       GoPlacementPreferences.key: GoPlacementMode.direct.name,
     });
   });
+
+  for (final variant in GomokuVariant.values) {
+    for (final isAi in [false, true]) {
+      testWidgets('${variant.label} ${isAi ? '人机' : '本地双人'}默认先预览再确认落子', (
+        tester,
+      ) async {
+        SharedPreferences.setMockInitialValues({
+          if (isAi) GoPlacementPreferences.key: GoPlacementMode.automatic.name,
+        });
+        final session = GomokuSession(variant: variant);
+        final ai = _DelayedAi();
+        await _pump(
+          tester,
+          GomokuGamePage(
+            session: session,
+            aiLevel: isAi ? GomokuAiLevel.beginner : null,
+            ai: ai,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          tester.getSize(find.byType(GomokuBoard)).width / 15,
+          greaterThanOrEqualTo(24),
+        );
+        const first = Cell(6, 5), adjusted = Cell(7, 5);
+        await tester.tapAt(_point(tester, first));
+        await tester.pump();
+        expect(_preview(tester), first);
+        expect(session.moves, isEmpty);
+        expect(ai.requests, isEmpty);
+        expect((await GomokuStorage.list()).single.moveCount, 0);
+
+        await tester.tapAt(_point(tester, adjusted));
+        await tester.pump();
+        expect(_preview(tester), adjusted);
+        expect(session.moves, isEmpty);
+        await tester.tapAt(_point(tester, adjusted));
+        await tester.pump();
+        expect(session.moves, hasLength(1));
+        expect(session.pieceAt(adjusted), Side.black);
+        expect(session.pieceAt(first), isNull);
+        expect(_preview(tester), isNull);
+        expect(ai.requests, hasLength(isAi ? 1 : 0));
+        expect((await GomokuStorage.list()).single.moveCount, 1);
+        await tester.pumpWidget(const SizedBox());
+        if (isAi) ai.requests.single.complete(null);
+        await tester.pumpAndSettle();
+      });
+    }
+  }
 
   testWidgets('首页进入双人对局、落子、悔棋并续局', (tester) async {
     await _pump(tester, const GomokuHomePage());
@@ -379,6 +442,31 @@ void main() {
       expect(board.width, closeTo(board.height, .01));
       if (size.width == 640) expect(board.height, greaterThan(200));
       expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final dimension in [300.0, 550.0]) {
+    testWidgets('默认棋盘 $dimension 像素首次点击只预览', (tester) async {
+      final placed = <Cell>[];
+      await _pump(
+        tester,
+        Scaffold(
+          body: Center(
+            child: SizedBox.square(
+              dimension: dimension,
+              child: GomokuBoard(session: GomokuSession(), onCell: placed.add),
+            ),
+          ),
+        ),
+      );
+      const cell = Cell(3, 4);
+      await tester.tapAt(_point(tester, cell));
+      await tester.pump();
+      expect(_preview(tester), cell);
+      expect(placed, isEmpty);
+      await tester.tapAt(_point(tester, cell));
+      await tester.pump();
+      expect(placed, [cell]);
     });
   }
 

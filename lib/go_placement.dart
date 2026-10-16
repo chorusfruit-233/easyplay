@@ -18,7 +18,7 @@ extension GoPlacementModeX on GoPlacementMode {
   };
 
   String get description => switch (this) {
-    GoPlacementMode.automatic => '网格大时直接落子，网格小时采用二次确认。',
+    GoPlacementMode.automatic => '围棋按网格大小选择落子方式，五子棋采用二次确认。',
     GoPlacementMode.direct => '点击棋盘直接落子，适合大屏幕或放大后的棋盘。',
     GoPlacementMode.doubleTap => '第一次点击预览，再次点击该位置确认落子。向上滑动取消预览。',
     GoPlacementMode.swipeConfirm => '点击预览，向下滑动确认落子，向上滑动取消。',
