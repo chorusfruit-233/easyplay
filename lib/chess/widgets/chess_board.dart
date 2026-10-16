@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../widgets/board_motion.dart';
 import '../chess.dart';
 import 'chess_piece_painter.dart';
 
@@ -28,47 +29,70 @@ class ChessBoard extends StatelessWidget {
     final check = session.isInCheck(session.turn)
         ? ChessMoveGenerator.kingSquare(position, session.turn)
         : null;
-    return Center(
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: (MediaQuery.sizeOf(context).height - 260).clamp(240, 600),
-        ),
-        child: AspectRatio(
-          aspectRatio: 1,
-          child: ClipRect(
-            child: CustomPaint(
-              painter: _BoardPainter(
-                position: position,
-                last: session.moves.lastOrNull,
-                check: check,
-                selected: selected,
-                targets: List.unmodifiable(targets),
-                flipped: flipped,
-              ),
-              child: Column(
-                children: List.generate(
-                  8,
-                  (visualRow) => Expanded(
-                    child: Row(
-                      children: List.generate(8, (visualCol) {
-                        final cell = _cellAt(visualRow, visualCol, flipped);
-                        final piece = position.pieceAt(cell);
-                        return Expanded(
-                          child: Semantics(
-                            label:
-                                '${chessSquare(cell)} ${piece == null ? '空格' : '${piece.side.label}${piece.label}'}',
-                            button: onCell != null,
-                            child: GestureDetector(
-                              key: ValueKey('square-${chessSquare(cell)}'),
-                              behavior: HitTestBehavior.opaque,
-                              onTap: onCell == null
-                                  ? null
-                                  : () => onCell!(cell),
-                              child: const SizedBox.expand(),
+    final last = session.moves.lastOrNull;
+    final paths = <List<Cell>>[
+      if (last != null) [last.from, last.to],
+      if (last != null &&
+          position.pieceAt(last.to)?.type == ChessPieceType.king &&
+          (last.from.col - last.to.col).abs() == 2)
+        [
+          Cell(last.from.row, last.to.col == 6 ? 7 : 0),
+          Cell(last.from.row, last.to.col == 6 ? 5 : 3),
+        ],
+    ];
+    return AnimatedBoard<ChessPiece>(
+      pieces: {
+        for (var row = 0; row < 8; row++)
+          for (var col = 0; col < 8; col++)
+            Cell(row, col): ?position.pieceAt(Cell(row, col)),
+      },
+      history: session.moves,
+      pieceKey: (piece) => (piece.side, piece.type),
+      configuration: flipped,
+      move: BoardMoveMotion(paths: paths),
+      builder: (context, motion) => Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxWidth: (MediaQuery.sizeOf(context).height - 260).clamp(240, 600),
+          ),
+          child: AspectRatio(
+            aspectRatio: 1,
+            child: ClipRect(
+              child: CustomPaint(
+                painter: _BoardPainter(
+                  position: position,
+                  last: session.moves.lastOrNull,
+                  check: check,
+                  selected: selected,
+                  targets: List.unmodifiable(targets),
+                  flipped: flipped,
+                  motion: motion,
+                ),
+                child: Column(
+                  children: List.generate(
+                    8,
+                    (visualRow) => Expanded(
+                      child: Row(
+                        children: List.generate(8, (visualCol) {
+                          final cell = _cellAt(visualRow, visualCol, flipped);
+                          final piece = position.pieceAt(cell);
+                          return Expanded(
+                            child: Semantics(
+                              label:
+                                  '${chessSquare(cell)} ${piece == null ? '空格' : '${piece.side.label}${piece.label}'}',
+                              button: onCell != null,
+                              child: GestureDetector(
+                                key: ValueKey('square-${chessSquare(cell)}'),
+                                behavior: HitTestBehavior.opaque,
+                                onTap: onCell == null
+                                    ? null
+                                    : () => onCell!(cell),
+                                child: const SizedBox.expand(),
+                              ),
                             ),
-                          ),
-                        );
-                      }),
+                          );
+                        }),
+                      ),
                     ),
                   ),
                 ),
@@ -85,14 +109,15 @@ Cell _cellAt(int row, int col, bool flipped) =>
     Cell(flipped ? 7 - row : row, flipped ? 7 - col : col);
 
 class _BoardPainter extends CustomPainter {
-  const _BoardPainter({
+  _BoardPainter({
     required this.position,
     required this.last,
     required this.check,
     required this.selected,
     required this.targets,
     required this.flipped,
-  });
+    required this.motion,
+  }) : super(repaint: motion);
 
   final ChessPosition position;
   final ChessMove? last;
@@ -100,6 +125,7 @@ class _BoardPainter extends CustomPainter {
   final Cell? selected;
   final List<Cell> targets;
   final bool flipped;
+  final BoardMotionScene<ChessPiece> motion;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -124,7 +150,6 @@ class _BoardPainter extends CustomPainter {
         if (cell == selected) color = const Color(0xffd1bd63);
         canvas.drawRect(bounds, background..color = color);
         final piece = position.pieceAt(cell);
-        if (piece != null) paintChessPiece(canvas, bounds, piece);
         if (targets.contains(cell)) {
           final marker = Paint()..color = const Color(0x55203327);
           if (piece == null) {
@@ -164,6 +189,18 @@ class _BoardPainter extends CustomPainter {
         }
       }
     }
+    motion.paint(
+      canvas,
+      center: (at) => Offset(
+        ((flipped ? 7 - at.dx : at.dx) + .5) * square,
+        ((flipped ? 7 - at.dy : at.dy) + .5) * square,
+      ),
+      piecePainter: (canvas, piece) => paintChessPiece(
+        canvas,
+        Rect.fromCenter(center: Offset.zero, width: square, height: square),
+        piece,
+      ),
+    );
   }
 
   @override
@@ -173,6 +210,7 @@ class _BoardPainter extends CustomPainter {
       check != oldDelegate.check ||
       selected != oldDelegate.selected ||
       flipped != oldDelegate.flipped ||
+      motion != oldDelegate.motion ||
       !listEquals(targets, oldDelegate.targets);
 }
 

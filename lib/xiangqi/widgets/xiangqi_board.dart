@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import '../../widgets/board_motion.dart';
 import '../xiangqi.dart';
 import 'xiangqi_piece_painter.dart';
 
@@ -19,48 +20,69 @@ class XiangqiBoard extends StatelessWidget {
   final List<Cell> targets;
   final bool flipped;
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, constraints) {
-      final availableHeight = math.max(
-        180.0,
-        MediaQuery.sizeOf(context).height - 260,
-      );
-      final width = math.min(constraints.maxWidth, availableHeight * .9);
-      return Center(
-        child: SizedBox(
-          width: width,
-          height: width / .9,
-          child: Semantics(
-            label: '中国象棋棋盘，10 行 9 列',
-            child: GestureDetector(
-              onTapUp: onCell == null
-                  ? null
-                  : (details) {
-                      final step = width / 9;
-                      final col = (details.localPosition.dx / step - .5)
-                          .round();
-                      final row = (details.localPosition.dy / step - .5)
-                          .round();
-                      if (row < 0 || row > 9 || col < 0 || col > 8) return;
-                      onCell!(
-                        Cell(flipped ? 9 - row : row, flipped ? 8 - col : col),
-                      );
-                    },
-              child: CustomPaint(
-                painter: _BoardPainter(
-                  session.position,
-                  Theme.of(context).colorScheme,
-                  selected,
-                  targets,
-                  flipped,
-                  session.moves.isEmpty ? null : session.moves.last,
+  Widget build(BuildContext context) => AnimatedBoard<XiangqiPiece>(
+    pieces: {
+      for (var row = 0; row < 10; row++)
+        for (var col = 0; col < 9; col++)
+          Cell(row, col): ?session.position.board[row][col],
+    },
+    history: session.moves,
+    pieceKey: (piece) => (piece.side, piece.type, piece.id),
+    configuration: flipped,
+    move: session.moves.lastOrNull == null
+        ? null
+        : BoardMoveMotion(
+            paths: [
+              [session.moves.last.from, session.moves.last.to],
+            ],
+          ),
+    builder: (context, motion) => LayoutBuilder(
+      builder: (context, constraints) {
+        final availableHeight = math.max(
+          180.0,
+          MediaQuery.sizeOf(context).height - 260,
+        );
+        final width = math.min(constraints.maxWidth, availableHeight * .9);
+        return Center(
+          child: SizedBox(
+            width: width,
+            height: width / .9,
+            child: Semantics(
+              label: '中国象棋棋盘，10 行 9 列',
+              child: GestureDetector(
+                onTapUp: onCell == null
+                    ? null
+                    : (details) {
+                        final step = width / 9;
+                        final col = (details.localPosition.dx / step - .5)
+                            .round();
+                        final row = (details.localPosition.dy / step - .5)
+                            .round();
+                        if (row < 0 || row > 9 || col < 0 || col > 8) return;
+                        onCell!(
+                          Cell(
+                            flipped ? 9 - row : row,
+                            flipped ? 8 - col : col,
+                          ),
+                        );
+                      },
+                child: CustomPaint(
+                  painter: _BoardPainter(
+                    session.position,
+                    Theme.of(context).colorScheme,
+                    selected,
+                    targets,
+                    flipped,
+                    session.moves.isEmpty ? null : session.moves.last,
+                    motion,
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      );
-    },
+        );
+      },
+    ),
   );
 }
 
@@ -74,13 +96,20 @@ class _BoardPainter extends CustomPainter {
     this.targets,
     this.flipped,
     this.last,
-  ) : super(repaint: PaintingBinding.instance.systemFonts);
+    this.motion,
+  ) : super(
+        repaint: Listenable.merge([
+          PaintingBinding.instance.systemFonts,
+          motion,
+        ]),
+      );
   final XiangqiPosition position;
   final ColorScheme colors;
   final Cell? selected;
   final List<Cell> targets;
   final bool flipped;
   final XiangqiMove? last;
+  final BoardMotionScene<XiangqiPiece> motion;
   @override
   void paint(Canvas canvas, Size size) {
     final step = size.width / 9;
@@ -139,7 +168,6 @@ class _BoardPainter extends CustomPainter {
         final piece = position.board[row][col];
         final c = Cell(row, col);
         if (piece != null) {
-          paintXiangqiPiece(canvas, cell(c), step * .41, piece, colors);
           if (piece.type == XiangqiPieceType.general &&
               XiangqiMoveGenerator.isInCheck(position, piece.side)) {
             canvas.drawCircle(
@@ -164,6 +192,15 @@ class _BoardPainter extends CustomPainter {
         }
       }
     }
+    motion.paint(
+      canvas,
+      center: (at) => Offset(
+        ((flipped ? 8 - at.dx : at.dx) + .5) * step,
+        ((flipped ? 9 - at.dy : at.dy) + .5) * step,
+      ),
+      piecePainter: (canvas, piece) =>
+          paintXiangqiPiece(canvas, Offset.zero, step * .41, piece, colors),
+    );
     for (final target in targets) {
       canvas.drawCircle(
         cell(target),

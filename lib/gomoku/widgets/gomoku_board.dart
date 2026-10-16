@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../game_session.dart' show Cell, Side;
 import '../../go_placement.dart';
+import '../../widgets/board_motion.dart';
 import '../gomoku_session.dart';
 
 /// Fits the whole board into the viewport, including narrow landscape screens.
@@ -150,101 +151,122 @@ class _GomokuBoardState extends State<GomokuBoard> {
   }
 
   @override
-  Widget build(BuildContext context) => AspectRatio(
-    aspectRatio: 1,
-    child: LayoutBuilder(
-      builder: (context, constraints) {
-        final dimension = math.min(constraints.maxWidth, constraints.maxHeight);
-        final mode = widget.placementMode == GoPlacementMode.automatic
-            ? (dimension / widget.session.size >= 24
-                  ? GoPlacementMode.direct
-                  : GoPlacementMode.doubleTap)
-            : widget.placementMode;
-        return Semantics(
-          label: '${widget.session.variant.label}棋盘，15 行 15 列',
-          child: Listener(
-            behavior: HitTestBehavior.opaque,
-            onPointerDown: (event) {
-              if (!widget.enabled ||
-                  widget.session.gameOver ||
-                  _pointer != null) {
-                return;
-              }
-              _pointer = event.pointer;
-              _start = event.localPosition;
-              if (mode == GoPlacementMode.pressRelease) {
-                _select(_cellAt(event.localPosition, dimension));
-              }
-            },
-            onPointerMove: (event) {
-              if (_pointer != event.pointer) return;
-              if (mode == GoPlacementMode.pressRelease) {
-                _select(_cellAt(event.localPosition, dimension));
-              }
-            },
-            onPointerCancel: (event) {
-              if (_pointer != event.pointer) return;
-              _pointer = null;
-              _start = null;
-              _select(null);
-            },
-            onPointerUp: (event) {
-              if (_pointer != event.pointer) return;
-              final delta = event.localPosition - _start!;
-              _pointer = null;
-              _start = null;
-              final cell = _cellAt(event.localPosition, dimension);
-              if (mode == GoPlacementMode.pressRelease) {
-                _commit(cell);
-                return;
-              }
-              if (_preview != null && delta.dy <= -24) {
-                _select(null);
-                return;
-              }
-              if (mode == GoPlacementMode.swipeConfirm &&
-                  _preview != null &&
-                  delta.dy >= 24) {
-                _commit(_preview);
-                return;
-              }
-              if (delta.distance > 12 || cell == null) return;
-              switch (mode) {
-                case GoPlacementMode.direct:
-                  _commit(cell);
-                case GoPlacementMode.doubleTap:
-                  if (_preview == cell) {
-                    _commit(cell);
-                  } else {
-                    _select(cell);
-                  }
-                case GoPlacementMode.swipeConfirm:
-                  _select(cell);
-                case GoPlacementMode.pressRelease:
-                case GoPlacementMode.automatic:
-                  break;
-              }
-            },
-            child: CustomPaint(
-              painter: _GomokuPainter(
-                pieces: [
-                  for (var row = 0; row < widget.session.size; row++)
-                    [
-                      for (var col = 0; col < widget.session.size; col++)
-                        widget.session.pieceAt(Cell(row, col)),
-                    ],
-                ],
-                last: widget.session.moves.lastOrNull?.cell,
-                winningLine: List.of(widget.session.winningLine),
-                preview: _preview,
-                previewSide: widget.session.turn,
-                accent: Theme.of(context).colorScheme.primary,
-              ),
-              child: const SizedBox.expand(),
-            ),
+  Widget build(BuildContext context) => AnimatedBoard<Side>(
+    pieces: {
+      for (var row = 0; row < widget.session.size; row++)
+        for (var col = 0; col < widget.session.size; col++)
+          Cell(row, col): ?widget.session.pieceAt(Cell(row, col)),
+    },
+    history: [for (final move in widget.session.moves) (move.cell, move.side)],
+    pieceKey: (side) => side,
+    configuration: widget.session.variant,
+    move: widget.session.moves.lastOrNull == null
+        ? null
+        : BoardMoveMotion(
+            paths: [
+              [widget.session.moves.last.cell],
+            ],
           ),
-        );
-      },
+    builder: (context, motion) => AspectRatio(
+      aspectRatio: 1,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final dimension = math.min(
+            constraints.maxWidth,
+            constraints.maxHeight,
+          );
+          final mode = widget.placementMode == GoPlacementMode.automatic
+              ? (dimension / widget.session.size >= 24
+                    ? GoPlacementMode.direct
+                    : GoPlacementMode.doubleTap)
+              : widget.placementMode;
+          return Semantics(
+            label: '${widget.session.variant.label}棋盘，15 行 15 列',
+            child: Listener(
+              behavior: HitTestBehavior.opaque,
+              onPointerDown: (event) {
+                if (!widget.enabled ||
+                    widget.session.gameOver ||
+                    _pointer != null) {
+                  return;
+                }
+                _pointer = event.pointer;
+                _start = event.localPosition;
+                if (mode == GoPlacementMode.pressRelease) {
+                  _select(_cellAt(event.localPosition, dimension));
+                }
+              },
+              onPointerMove: (event) {
+                if (_pointer != event.pointer) return;
+                if (mode == GoPlacementMode.pressRelease) {
+                  _select(_cellAt(event.localPosition, dimension));
+                }
+              },
+              onPointerCancel: (event) {
+                if (_pointer != event.pointer) return;
+                _pointer = null;
+                _start = null;
+                _select(null);
+              },
+              onPointerUp: (event) {
+                if (_pointer != event.pointer) return;
+                final delta = event.localPosition - _start!;
+                _pointer = null;
+                _start = null;
+                final cell = _cellAt(event.localPosition, dimension);
+                if (mode == GoPlacementMode.pressRelease) {
+                  _commit(cell);
+                  return;
+                }
+                if (_preview != null && delta.dy <= -24) {
+                  _select(null);
+                  return;
+                }
+                if (mode == GoPlacementMode.swipeConfirm &&
+                    _preview != null &&
+                    delta.dy >= 24) {
+                  _commit(_preview);
+                  return;
+                }
+                if (delta.distance > 12 || cell == null) return;
+                switch (mode) {
+                  case GoPlacementMode.direct:
+                    _commit(cell);
+                  case GoPlacementMode.doubleTap:
+                    if (_preview == cell) {
+                      _commit(cell);
+                    } else {
+                      _select(cell);
+                    }
+                  case GoPlacementMode.swipeConfirm:
+                    _select(cell);
+                  case GoPlacementMode.pressRelease:
+                  case GoPlacementMode.automatic:
+                    break;
+                }
+              },
+              child: CustomPaint(
+                painter: _GomokuPainter(
+                  pieces: [
+                    for (var row = 0; row < widget.session.size; row++)
+                      [
+                        for (var col = 0; col < widget.session.size; col++)
+                          widget.session.pieceAt(Cell(row, col)),
+                      ],
+                  ],
+                  last: widget.session.moves.lastOrNull?.cell,
+                  winningLine: List.of(widget.session.winningLine),
+                  preview: _preview,
+                  previewSide: widget.session.turn,
+                  accent: Theme.of(context).colorScheme.primary,
+                  motion: motion,
+                ),
+                child: const SizedBox.expand(),
+              ),
+            ),
+          );
+        },
+      ),
     ),
   );
 }
@@ -257,7 +279,8 @@ class _GomokuPainter extends CustomPainter {
     required this.preview,
     required this.previewSide,
     required this.accent,
-  });
+    required this.motion,
+  }) : super(repaint: motion);
 
   final List<List<Side?>> pieces;
   final Cell? last;
@@ -265,6 +288,7 @@ class _GomokuPainter extends CustomPainter {
   final Cell? preview;
   final Side previewSide;
   final Color accent;
+  final BoardMotionScene<Side> motion;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -297,8 +321,7 @@ class _GomokuPainter extends CustomPainter {
         canvas.drawCircle(point(Cell(row, col)), step * .08, grid);
       }
     }
-    void stone(Cell cell, Side side, {bool ghost = false}) {
-      final center = point(cell);
+    void stone(Offset center, Side side, {bool ghost = false}) {
       final radius = step * .43;
       final fill = Paint()
         ..color =
@@ -324,12 +347,11 @@ class _GomokuPainter extends CustomPainter {
       );
     }
 
-    for (var row = 0; row < pieces.length; row++) {
-      for (var col = 0; col < pieces.length; col++) {
-        final side = pieces[row][col];
-        if (side != null) stone(Cell(row, col), side);
-      }
-    }
+    motion.paint(
+      canvas,
+      center: (at) => Offset((at.dx + .5) * step, (at.dy + .5) * step),
+      piecePainter: (canvas, side) => stone(Offset.zero, side),
+    );
     if (last != null) {
       canvas.drawCircle(
         point(last!),
@@ -350,7 +372,7 @@ class _GomokuPainter extends CustomPainter {
           ..strokeCap = StrokeCap.round,
       );
     }
-    if (preview != null) stone(preview!, previewSide, ghost: true);
+    if (preview != null) stone(point(preview!), previewSide, ghost: true);
   }
 
   @override
