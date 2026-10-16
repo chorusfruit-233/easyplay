@@ -276,6 +276,7 @@ String uiGoState() {
   final session = view.session;
   return jsonEncode({
     'ready': true,
+    'routeReady': ModalRoute.of(boardElement!)?.animation?.isCompleted != false,
     'seq': page!.connection.replica!.seq,
     'round': page!.connection.replica!.round,
     'side': page!.connection.side?.name,

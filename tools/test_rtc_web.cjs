@@ -123,7 +123,7 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
     const uiGoState = page => page.evaluate(() => JSON.parse(easyplayRtcSmoke.uiGoState()));
     const waitGoPosition = (page, seq, moves) => page.waitForFunction(expected => {
       const view = JSON.parse(easyplayRtcSmoke.uiGoState());
-      return view.ready && view.seq === expected.seq && view.moves.length === expected.moves;
+      return view.ready && view.routeReady && view.seq === expected.seq && view.moves.length === expected.moves;
     }, {seq, moves});
     const clickGoCell = async (page, row, col) => {
       const view = await uiGoState(page);
@@ -239,7 +239,9 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
         }
         console.log(`Flutter RTC ${game} lobby: create, invite, answer, authenticated wait and manual start passed`);
       } catch (error) {
+        console.error(`${phase}: ${error.message}`);
         for (const [name, page] of [['host', host], ['guest', guest]]) {
+          if (game === 'go') console.error(`go ${name} board: ${JSON.stringify(await uiGoState(page))}`);
           const status = await page.locator('flt-semantics').evaluateAll(nodes => nodes.filter(n => !n.querySelector('flt-semantics')).map(n => n.getAttribute('aria-label') || n.textContent || '').filter(text => text.length < 300 && /FormatException|StateError|失败|已加入|等待|连接|人数/.test(text)));
           console.error(`${game} ${name}: ${JSON.stringify(status)}`);
           await page.screenshot({path: `/tmp/easyplay-rtc-${game}-${name}.png`});
