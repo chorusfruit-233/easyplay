@@ -6,6 +6,42 @@ import 'package:easyplay/xiangqi/widgets/xiangqi_board.dart';
 import 'package:easyplay/xiangqi/widgets/xiangqi_game_page.dart';
 
 void main() {
+  testWidgets(
+    'board preserves its aspect ratio within both parent dimensions',
+    (tester) async {
+      for (final (available, expected) in [
+        (const Size(500, 220), const Size(198, 220)),
+        (const Size(120, 500), const Size(120, 400 / 3)),
+        (const Size(500, 70), const Size(63, 70)),
+      ]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: SizedBox.fromSize(
+                  size: available,
+                  child: XiangqiBoard(session: XiangqiSession()),
+                ),
+              ),
+            ),
+          ),
+        );
+        final board = tester.getSize(
+          find.descendant(
+            of: find.byType(XiangqiBoard),
+            matching: find.byType(CustomPaint),
+          ),
+        );
+        expect(board.width, closeTo(expected.width, .001));
+        expect(board.height, closeTo(expected.height, .001));
+        expect(board.aspectRatio, closeTo(9 / 10, .001));
+        expect(board.width, lessThanOrEqualTo(available.width));
+        expect(board.height, lessThanOrEqualTo(available.height));
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
+
   testWidgets('late system fonts invalidate the painted piece labels', (
     tester,
   ) async {
@@ -29,27 +65,43 @@ void main() {
     tester,
   ) async {
     Cell? tapped;
-    for (final flipped in [false, true]) {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SizedBox(
-              width: 360,
-              child: XiangqiBoard(
-                session: XiangqiSession(),
-                flipped: flipped,
-                onCell: (cell) => tapped = cell,
+    for (final available in [const Size(500, 220), const Size(120, 500)]) {
+      for (final flipped in [false, true]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: SizedBox.fromSize(
+                  size: available,
+                  child: XiangqiBoard(
+                    session: XiangqiSession(),
+                    flipped: flipped,
+                    onCell: (cell) => tapped = cell,
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-      );
-      final rect = tester.getRect(find.byType(CustomPaint).last);
-      await tester.tapAt(
-        rect.topLeft + Offset(rect.width / 18, rect.width / 18),
-      );
-      expect(tapped, flipped ? const Cell(9, 8) : const Cell(0, 0));
-      expect(rect.height, lessThanOrEqualTo(340));
+        );
+        final rect = tester.getRect(find.byType(CustomPaint).last);
+        for (final cell in [
+          const Cell(0, 0),
+          const Cell(0, 8),
+          const Cell(9, 0),
+          const Cell(9, 8),
+          const Cell(6, 2),
+        ]) {
+          tapped = null;
+          await tester.tapAt(
+            rect.topLeft +
+                Offset(
+                  (cell.col + .5) * rect.width / 9,
+                  (cell.row + .5) * rect.height / 10,
+                ),
+          );
+          expect(tapped, flipped ? Cell(9 - cell.row, 8 - cell.col) : cell);
+        }
+      }
     }
   });
   testWidgets('local controls play one move and undo without persistence', (

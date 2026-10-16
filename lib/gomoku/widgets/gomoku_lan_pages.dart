@@ -14,6 +14,7 @@ import '../../lan/lan_rematch_card.dart';
 import '../../lan/lan_scanner.dart';
 import '../../lan/lan_transport.dart';
 import '../../lan/rtc_lobby_page.dart';
+import '../gomoku_placement.dart';
 import '../gomoku_session.dart';
 import 'gomoku_board.dart';
 
@@ -521,6 +522,9 @@ class _GomokuLanMatchPageState extends State<GomokuLanMatchPage>
   int? _handledUndoSeq;
   GoPlacementMode _placementMode = GoPlacementMode.automatic;
 
+  GoPlacementMode get _effectivePlacementMode =>
+      resolveGomokuPlacementMode(_placementMode);
+
   GomokuLanReplica get _replica => widget.connection.gomokuReplica!;
   GomokuSession get _session => _replica.session;
   Side? get _side => widget.connection.side;
@@ -758,7 +762,7 @@ class _GomokuLanMatchPageState extends State<GomokuLanMatchPage>
           board: GomokuBoard(
             session: session,
             enabled: _myTurn,
-            placementMode: _placementMode,
+            placementMode: _effectivePlacementMode,
             onCell: _onCell,
           ),
           footer: Column(
@@ -798,6 +802,12 @@ class _GomokuLanMatchPageState extends State<GomokuLanMatchPage>
                     label: const Text('认输'),
                   ),
                 ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '落子：${_effectivePlacementMode.label}\n${gomokuPlacementHint(_placementMode)}',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
           ),

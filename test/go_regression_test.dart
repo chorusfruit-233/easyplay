@@ -159,6 +159,40 @@ void main() {
   });
 
   test(
+    'changing an imported initial setup exports the new stones and turn',
+    () {
+      final game = GoSgf.importGame('(;SZ[9]AB[aa]PL[B]C[old setup])');
+      game.setupGo({const Cell(1, 1): Side.white}, Side.white);
+
+      final restored = GoSgf.importGame(GoSgf.exportGame(game));
+      expect(restored.pieceAt(const Cell(0, 0)), isNull);
+      expect(restored.pieceAt(const Cell(1, 1))?.side, Side.white);
+      expect(restored.turn, Side.white);
+    },
+  );
+
+  test(
+    'setup after undoing an imported line discards the old initial tree',
+    () {
+      final game = GoSgf.importGame(
+        '(;SZ[9]AB[aa];W[bb](;B[cc])(;B[dd]C[old variation]))',
+      );
+      expect(game.undo(), isTrue);
+      expect(game.undo(), isTrue);
+      game.setupGo({const Cell(5, 5): Side.black}, Side.white);
+      expect(game.placeGo(const Cell(6, 6)), isTrue);
+
+      final sgf = GoSgf.exportGame(game);
+      final restored = GoSgf.importGame(sgf);
+      expect(restored.initialGoBoard[0][0], isNull);
+      expect(restored.initialGoBoard[5][5]?.side, Side.black);
+      expect(restored.moves.single.to, const Cell(6, 6));
+      expect(restored.moves.single.side, Side.white);
+      expect(sgf, isNot(contains('old variation')));
+    },
+  );
+
+  test(
     'invalid SGF variation path fails instead of silently using main line',
     () {
       expect(

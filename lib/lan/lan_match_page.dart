@@ -7,6 +7,7 @@ import '../board.dart';
 import '../game_session.dart';
 import '../go_placement.dart';
 import '../go_storage.dart';
+import 'lan_game.dart';
 import 'lan_protocol.dart';
 import 'lan_rematch_card.dart';
 import 'lan_transport.dart';
@@ -36,9 +37,25 @@ class _LanMatchPageState extends State<LanMatchPage> {
   int? _shownScore;
   int _round = 1;
   String? _status;
+  GameSession? _viewSession;
+  LanReplica? _viewReplica;
+  int _viewSeq = -1;
 
   LanClientConnection get _connection => widget.connection;
-  GameSession get _session => _connection.replica!.session;
+  GameSession get _session {
+    final replica = _connection.replica!;
+    // The replica reconstructs detached snapshots. Preview-only rebuilds need
+    // the same view; committed events and full sync replace it.
+    if (_viewSession == null ||
+        _viewReplica != replica ||
+        _viewSeq != replica.seq) {
+      _viewSession = replica.session;
+      _viewReplica = replica;
+      _viewSeq = replica.seq;
+    }
+    return _viewSession!;
+  }
+
   Side get _side => _connection.side!;
   bool get _myTurn =>
       !_recovering &&
@@ -68,6 +85,12 @@ class _LanMatchPageState extends State<LanMatchPage> {
 
   void _onMessage(LanMessage message) {
     if (!mounted) return;
+    if (message.type == LanMessageType.stateSync) _viewSession = null;
+    if ((message.type == LanMessageType.stateSync ||
+            LanMessage.eventTypes.contains(message.type)) &&
+        !_session.gameOver) {
+      _dead.clear();
+    }
     if (_round != _connection.replica!.round) {
       _round = _connection.replica!.round;
       _dead.clear();
@@ -109,6 +132,7 @@ class _LanMatchPageState extends State<LanMatchPage> {
   void _onDisconnected() {
     if (!mounted) return;
     setState(() {
+      _viewSession = null;
       _recovering = true;
       _pending = false;
       _status = '失去联系，正在等待重连。棋谱已保留。';
@@ -244,7 +268,11 @@ class _LanMatchPageState extends State<LanMatchPage> {
   @override
   Widget build(BuildContext context) {
     final game = _session;
-    if (!game.goScoreConfirmed) game.deadGoStones.addAll(_dead);
+    if (game.gameOver && !game.goScoreConfirmed) {
+      game.deadGoStones
+        ..clear()
+        ..addAll(_dead);
+    }
     final score = game.gameOver && game.goScoreConfirmed
         ? game.calculateGoScore()
         : null;

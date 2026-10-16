@@ -53,14 +53,14 @@ class _BoardState extends State<Board> {
   @override
   void initState() {
     super.initState();
-    _revision = widget.session.revision;
+    _revision = widget.session.stateRevision;
     _lastMove = widget.session.moves.lastOrNull;
   }
 
   @override
   void didUpdateWidget(covariant Board oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (_revision != widget.session.revision ||
+    if (_revision != widget.session.stateRevision ||
         _lastMove != widget.session.moves.lastOrNull ||
         oldWidget.session != widget.session ||
         oldWidget.type != widget.type ||
@@ -68,7 +68,7 @@ class _BoardState extends State<Board> {
       _preview = null;
       _activePointer = null;
       _pressReleaseActive = false;
-      _revision = widget.session.revision;
+      _revision = widget.session.stateRevision;
       _lastMove = widget.session.moves.lastOrNull;
     }
     if (widget.selected == null && oldWidget.selected != null) {
@@ -190,6 +190,9 @@ class _BoardState extends State<Board> {
               _pointerDeltaY = 0;
             },
             child: GestureDetector(
+              // A board-wide semantic tap has no intersection coordinate.
+              // Keep pointer taps positional instead of mapping them to center.
+              excludeFromSemantics: true,
               behavior: HitTestBehavior.opaque,
               onTapUp: (details) {
                 final cell = _cellAt(details.localPosition, constraints);

@@ -126,6 +126,116 @@ void main() {
       expect(game.turn, Side.black);
     });
 
+    test('live state changes are separate from the initial SGF generation', () {
+      final game = GameSession(GameType.go);
+      final recordRevision = game.revision;
+      var stateRevision = game.stateRevision;
+
+      void expectChanged() {
+        expect(game.stateRevision, greaterThan(stateRevision));
+        expect(game.revision, recordRevision);
+        stateRevision = game.stateRevision;
+      }
+
+      expect(game.placeGo(const Cell(4, 4)), isTrue);
+      expectChanged();
+      expect(game.passGo(), isTrue);
+      expectChanged();
+      expect(game.undo(), isTrue);
+      expectChanged();
+      final lastMove = game.moves.last;
+      expect(game.resignGo(), isTrue);
+      expectChanged();
+      expect(game.moves.last, same(lastMove));
+      expect(game.undo(), isTrue);
+      expectChanged();
+      expect(game.moves.last, same(lastMove));
+
+      game.reset();
+      expect(game.stateRevision, greaterThan(stateRevision));
+      expect(game.revision, greaterThan(recordRevision));
+    });
+
+    test(
+      'scoring and resuming invalidate observers without replacing moves',
+      () {
+        final game = GameSession(GameType.go);
+        game.setupGo({const Cell(4, 4): Side.white}, Side.black);
+        game.passGo();
+        game.passGo();
+        final recordRevision = game.revision;
+        final lastMove = game.moves.last;
+        var stateRevision = game.stateRevision;
+
+        expect(game.toggleDeadGoStone(const Cell(4, 4)), isTrue);
+        expect(game.stateRevision, greaterThan(stateRevision));
+        stateRevision = game.stateRevision;
+        expect(game.confirmGoScore(), isTrue);
+        expect(game.stateRevision, greaterThan(stateRevision));
+        stateRevision = game.stateRevision;
+        game.adjudicateGo({}, adjudicatedWinner: Side.white, margin: 3.5);
+        expect(game.stateRevision, greaterThan(stateRevision));
+        expect(game.moves.last, same(lastMove));
+        stateRevision = game.stateRevision;
+        expect(game.resumeGo(), isTrue);
+        expect(game.stateRevision, greaterThan(stateRevision));
+        expect(game.gameOver, isFalse);
+        expect(game.revision, recordRevision);
+      },
+    );
+
+    test('rejected operations leave both revisions unchanged', () {
+      final game = GameSession(GameType.go);
+      final recordRevision = game.revision;
+      final stateRevision = game.stateRevision;
+      expect(game.placeGo(const Cell(-1, 0)), isFalse);
+      expect(game.undo(), isFalse);
+      expect(game.toggleDeadGoStone(const Cell(4, 4)), isFalse);
+      expect(game.confirmGoScore(), isFalse);
+      expect(game.resumeGo(), isFalse);
+      expect(
+        () => game.setupGo({const Cell(-1, 0): Side.black}, Side.black),
+        throwsArgumentError,
+      );
+      expect(
+        () => game.adjudicateGo({}, adjudicatedWinner: Side.black, margin: 1),
+        throwsStateError,
+      );
+      expect(game.stateRevision, stateRevision);
+      expect(game.revision, recordRevision);
+
+      game.placeGo(const Cell(4, 4));
+      final moveRevision = game.stateRevision;
+      expect(game.placeGo(const Cell(4, 4)), isFalse);
+      expect(() => game.setupGo({}, Side.black), throwsStateError);
+      expect(game.stateRevision, moveRevision);
+      expect(game.revision, recordRevision);
+
+      game.resignGo();
+      final terminalRevision = game.stateRevision;
+      expect(game.placeGo(const Cell(5, 5)), isFalse);
+      expect(game.passGo(), isFalse);
+      expect(game.resignGo(), isFalse);
+      expect(game.toggleDeadGoStone(const Cell(4, 4)), isFalse);
+      expect(game.stateRevision, terminalRevision);
+      expect(game.revision, recordRevision);
+    });
+
+    test('setup and configuration advance the initial record generation', () {
+      final game = GameSession(GameType.go);
+      var recordRevision = game.revision;
+      var stateRevision = game.stateRevision;
+      game.setupGo({const Cell(2, 2): Side.black}, Side.white);
+      expect(game.revision, greaterThan(recordRevision));
+      expect(game.stateRevision, greaterThan(stateRevision));
+
+      recordRevision = game.revision;
+      stateRevision = game.stateRevision;
+      game.setGoConfig(const GoConfig(boardSize: 13));
+      expect(game.revision, greaterThan(recordRevision));
+      expect(game.stateRevision, greaterThan(stateRevision));
+    });
+
     test('rejects suicide and captures a surrounded group', () {
       final game = GameSession(GameType.go);
       for (final cell in [

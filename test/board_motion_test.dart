@@ -58,6 +58,116 @@ void main() {
     ],
   );
 
+  test('motion takes immutable snapshots of paths and capture times', () {
+    final path = [a, b];
+    final paths = [path];
+    final captureAt = {c: .5};
+    final motion = BoardMoveMotion(paths: paths, captureAt: captureAt);
+
+    path[0] = c;
+    paths.clear();
+    captureAt[c] = .9;
+    expect(motion.paths, [
+      [a, b],
+    ]);
+    expect(motion.captureAt, {c: .5});
+    expect(() => motion.paths.add([c]), throwsUnsupportedError);
+    expect(() => motion.paths[0] = [c], throwsUnsupportedError);
+    expect(() => motion.paths.single.add(c), throwsUnsupportedError);
+    expect(() => motion.captureAt[c] = 0, throwsUnsupportedError);
+  });
+
+  test('motion permits no paths, a new stone and a non-adjacent revisit', () {
+    expect(BoardMoveMotion(paths: []).paths, isEmpty);
+    expect(
+      BoardMoveMotion(
+        paths: [
+          [a],
+        ],
+      ).paths.single,
+      [a],
+    );
+    expect(BoardMoveMotion.alongPath([a, b, a], []).paths.single, [a, b, a]);
+  });
+
+  test('motion rejects empty paths and adjacent zero-length segments', () {
+    expect(() => BoardMoveMotion(paths: [[]]), throwsArgumentError);
+    expect(() => BoardMoveMotion.alongPath([], []), throwsArgumentError);
+    expect(
+      () => BoardMoveMotion(
+        paths: [
+          [a, a],
+        ],
+      ),
+      throwsArgumentError,
+    );
+    expect(() => BoardMoveMotion.alongPath([a, a], [b]), throwsArgumentError);
+    expect(() => BoardMoveMotion.alongPath([a, b, b], []), throwsArgumentError);
+  });
+
+  test('capture paths reject excess captures and duplicate victims', () {
+    expect(() => BoardMoveMotion.alongPath([a], [b]), throwsArgumentError);
+    expect(
+      () => BoardMoveMotion.alongPath([a, b], [a, c]),
+      throwsArgumentError,
+    );
+    expect(
+      () => BoardMoveMotion.alongPath([a, b, c], [b, b]),
+      throwsArgumentError,
+    );
+  });
+
+  test('capture times are finite and clamped to the animation interval', () {
+    final motion = BoardMoveMotion(
+      paths: [
+        [a, b],
+      ],
+      captureAt: {
+        const Cell(0, 0): -1,
+        const Cell(0, 1): 2,
+        const Cell(0, 2): double.nan,
+        const Cell(0, 3): double.infinity,
+        const Cell(0, 4): double.negativeInfinity,
+        const Cell(0, 5): .5,
+      },
+    );
+    expect(motion.captureAt, {
+      const Cell(0, 0): 0.0,
+      const Cell(0, 1): 1.0,
+      const Cell(0, 2): 0.0,
+      const Cell(0, 3): 0.0,
+      const Cell(0, 4): 0.0,
+      const Cell(0, 5): .5,
+    });
+  });
+
+  testWidgets('endpoint captures remain visible until the settled board', (
+    tester,
+  ) async {
+    final scene = await _show(tester, pieces: {a: 'white', c: 'black'});
+    await _show(
+      tester,
+      pieces: {b: 'white'},
+      history: [1],
+      move: BoardMoveMotion(
+        paths: [
+          [a, b],
+        ],
+        captureAt: {c: 1},
+      ),
+    );
+    expect(scene.frames.singleWhere((p) => p.departing).opacity, 1);
+    await tester.pump(const Duration(milliseconds: 239));
+    expect(scene.isAnimating, isTrue);
+    final captured = scene.frames.singleWhere((p) => p.departing);
+    expect(captured.opacity, 1);
+    expect(captured.scale, 1);
+    await tester.pumpAndSettle();
+    expect(scene.frames.single.piece, 'white');
+    expect(scene.frames.single.position, const Offset(3, 1));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'flying king capture fades when crossed rather than at the jump midpoint',
     (tester) async {

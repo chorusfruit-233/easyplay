@@ -47,7 +47,7 @@ class SettingsPage extends StatelessWidget {
           child: ListTile(
             leading: const Icon(Icons.touch_app_outlined),
             title: const Text('落子模式'),
-            subtitle: const Text('选择围棋棋盘的点击、预览和确认方式'),
+            subtitle: const Text('选择围棋和五子棋的点击、预览和确认方式'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.push(
               context,
@@ -150,7 +150,7 @@ class _GoPlacementSettingsPageState extends State<GoPlacementSettingsPage> {
               ),
               const SizedBox(height: 12),
               Text(
-                '选择会保存在本机，并应用于之后开始的围棋对局。自动模式会根据棋盘在屏幕上的网格大小选择直接落子或二次确认。',
+                '选择会保存在本机，并应用于之后开始的围棋和五子棋对局。自动模式下，围棋按网格大小选择落子方式；五子棋先预览，再次点击同一位置确认。',
                 style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),

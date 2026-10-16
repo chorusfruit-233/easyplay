@@ -43,6 +43,8 @@ class _Demo extends StatefulWidget {
 
 class _DemoState extends State<_Demo> {
   String game = 'go';
+  Cell? lastTap;
+  Map<String, double>? _boardBounds;
   bool reduced = false;
   int generation = 0, renderedGeneration = -1;
   GameSession go = GameSession(
@@ -67,6 +69,7 @@ class _DemoState extends State<_Demo> {
   }
 
   void _reset() {
+    lastTap = null;
     go = GameSession(GameType.go, goConfig: const GoConfig(boardSize: 9));
     gomoku = GomokuSession();
     chess = ChessSession(
@@ -128,6 +131,7 @@ class _DemoState extends State<_Demo> {
     }
   });
   BoardMotionScene<Object>? _scene() {
+    _boardBounds = null;
     BoardMotionScene<Object>? result;
     void visit(Element e) {
       final w = e.widget;
@@ -136,7 +140,19 @@ class _DemoState extends State<_Demo> {
       } else if (w is CustomPaint) {
         try {
           final scene = (w.painter as dynamic).motion;
-          if (scene is BoardMotionScene<Object>) result = scene;
+          if (scene is BoardMotionScene<Object>) {
+            result = scene;
+            final render = e.findRenderObject();
+            if (render is RenderBox && render.hasSize) {
+              final origin = render.localToGlobal(Offset.zero);
+              _boardBounds = {
+                'x': origin.dx,
+                'y': origin.dy,
+                'width': render.size.width,
+                'height': render.size.height,
+              };
+            }
+          }
         } on NoSuchMethodError {
           /* Other framework painters. */
         }
@@ -163,6 +179,8 @@ class _DemoState extends State<_Demo> {
         'xiangqi' => xiangqi.moves.length,
         _ => draughts.moves.length,
       },
+      'lastTap': lastTap == null ? null : [lastTap!.row, lastTap!.col],
+      'boardBounds': _boardBounds,
       'frames': [
         for (final p in scene?.frames ?? <BoardPieceFrame<Object>>[])
           {
@@ -208,7 +226,10 @@ class _DemoState extends State<_Demo> {
                           session: go,
                           selected: null,
                           targets: const [],
-                          onCell: (cell) => setState(() => go.placeGo(cell)),
+                          onCell: (cell) => setState(() {
+                            lastTap = cell;
+                            go.placeGo(cell);
+                          }),
                         ),
                         'gomoku' => GomokuBoard(
                           session: gomoku,
@@ -216,7 +237,10 @@ class _DemoState extends State<_Demo> {
                           onCell: (cell) => setState(() => gomoku.place(cell)),
                         ),
                         'chess' => ChessBoard(session: chess, onCell: null),
-                        'xiangqi' => XiangqiBoard(session: xiangqi),
+                        'xiangqi' => XiangqiBoard(
+                          session: xiangqi,
+                          onCell: (cell) => setState(() => lastTap = cell),
+                        ),
                         _ => DraughtsBoard(session: draughts, onCell: (_) {}),
                       },
                     ),

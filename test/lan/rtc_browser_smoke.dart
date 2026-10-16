@@ -5,6 +5,9 @@ import 'dart:js_interop';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
+import 'package:easyplay/board.dart';
+import 'package:easyplay/go_placement.dart';
+import 'package:easyplay/lan/lan_match_page.dart';
 import 'package:easyplay/lan/rtc_lobby_page.dart';
 import 'package:easyplay/draughts/draughts_variant.dart';
 import 'package:easyplay/gomoku/gomoku_variant.dart';
@@ -237,6 +240,76 @@ String state() {
   });
 }
 
+// Observe the actual lobby's mounted game page, not the transport-only _room.
+// This hook belongs only to this browser test target.
+String uiGoState() {
+  Element? boardElement;
+  Board? board;
+  LanMatchPage? page;
+  BoardPainter? painter;
+  void visit(Element element) {
+    final widget = element.widget;
+    if (widget is LanMatchPage) page = widget;
+    if (widget is Board) {
+      boardElement = element;
+      board = widget;
+    }
+    if (widget is CustomPaint && widget.painter is BoardPainter) {
+      painter = widget.painter! as BoardPainter;
+    }
+    element.visitChildren(visit);
+  }
+
+  final root = WidgetsBinding.instance.rootElement;
+  if (root != null) visit(root);
+  final view = board;
+  final render = boardElement?.findRenderObject();
+  if (view == null ||
+      page == null ||
+      painter == null ||
+      render is! RenderBox ||
+      !render.hasSize) {
+    return jsonEncode({'ready': false});
+  }
+  final origin = render.localToGlobal(Offset.zero);
+  final preview = painter!.preview;
+  final session = view.session;
+  return jsonEncode({
+    'ready': true,
+    'routeReady': ModalRoute.of(boardElement!)?.animation?.isCompleted != false,
+    'seq': page!.connection.replica!.seq,
+    'round': page!.connection.replica!.round,
+    'side': page!.connection.side?.name,
+    'turn': session.turn.name,
+    'placementMode': view.placementMode.name,
+    'preview': preview == null ? null : [preview.row, preview.col],
+    'moves': [
+      for (final move in session.moves)
+        {
+          'cell': [move.to.row, move.to.col],
+          'side': move.side?.name,
+          'pass': move.pass,
+        },
+    ],
+    'stones': [
+      for (var row = 0; row < session.size; row++)
+        for (var col = 0; col < session.size; col++)
+          if (session.board[row][col] case final piece?)
+            {
+              'cell': [row, col],
+              'side': piece.side.name,
+            },
+    ],
+    'size': session.size,
+    'bounds': {
+      'x': origin.dx,
+      'y': origin.dy,
+      'width': render.size.width,
+      'height': render.size.height,
+    },
+  });
+}
+
 // Optional live-network check: return only counts, never SDP or addresses.
 Future<String> stunProbe(String urls) async {
   final peer = RtcPeer(
@@ -283,6 +356,9 @@ void main() {
               final variant = DraughtsVariant.values
                   .where((v) => v.name == name)
                   .firstOrNull;
+              if (name == 'go') {
+                await GoPlacementPreferences.save(GoPlacementMode.doubleTap);
+              }
               runApp(
                 MaterialApp(
                   key: ValueKey(name),
@@ -303,6 +379,7 @@ void main() {
               urls.toDart,
             ).then((s) => s.toJS).toJS).toJS,
             'state': (() => state().toJS).toJS,
+            'uiGoState': (() => uiGoState().toJS).toJS,
             'lastError': (() => _lastError.toJS).toJS,
           }.jsify()
           as JSObject;

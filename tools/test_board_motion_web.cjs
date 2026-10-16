@@ -37,6 +37,22 @@ const capture = process.env.CAPTURE_BOARD_MOTION === '1';
     const shot=()=>page.screenshot({path:path.join(root,'frames',`motion-${String(frame++).padStart(4,'0')}.png`)});
     for(const game of ['go','gomoku','chess','xiangqi','draughts']) {
       await change(game);
+      if(game==='go' || game==='xiangqi') {
+        const view=await state(), rect=view.boardBounds;
+        assert.ok(rect, `${game}: painted board bounds are available`);
+        const [row,col,rows,cols]=game==='go' ? [1,1,9,9] : [6,2,10,9];
+        // Semantics is enabled for all browser controls. A fast off-center
+        // pointer click must keep its coordinates instead of becoming a tap
+        // on the entire board's center.
+        await page.mouse.click(rect.x+(col+.5)*rect.width/cols,rect.y+(row+.5)*rect.height/rows);
+        await page.waitForFunction(()=>JSON.parse(easyplayBoardMotion.state()).lastTap!==null);
+        assert.deepEqual((await state()).lastTap,[row,col],`${game}: preserve the clicked cell`);
+        if(game==='go') {
+          await page.getByRole('button',{name:'悔棋',exact:true}).click();
+          await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.moves===0 && !s.active;});
+        }
+        console.log(`PASS ${game}: off-center pointer coordinates with semantics enabled`);
+      }
       if(capture) {await page.waitForLoadState('networkidle');await page.waitForTimeout(3000);await shot();}
       // Record in the page before clicking: a short animation can finish
       // between two browser protocol round trips on a busy CI worker.

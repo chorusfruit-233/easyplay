@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../game_session.dart' show Cell, Side;
 import '../../go_placement.dart';
 import '../../widgets/board_motion.dart';
+import '../gomoku_placement.dart';
 import '../gomoku_session.dart';
 
 /// Fits the whole board into the viewport, including narrow landscape screens.
@@ -80,7 +81,7 @@ class GomokuBoard extends StatefulWidget {
     required this.session,
     required this.onCell,
     this.enabled = true,
-    this.placementMode = GoPlacementMode.direct,
+    this.placementMode = GoPlacementMode.automatic,
     this.onPreviewCell,
     this.onCancelPreview,
   });
@@ -175,11 +176,7 @@ class _GomokuBoardState extends State<GomokuBoard> {
             constraints.maxWidth,
             constraints.maxHeight,
           );
-          final mode = widget.placementMode == GoPlacementMode.automatic
-              ? (dimension / widget.session.size >= 24
-                    ? GoPlacementMode.direct
-                    : GoPlacementMode.doubleTap)
-              : widget.placementMode;
+          final mode = resolveGomokuPlacementMode(widget.placementMode);
           return Semantics(
             label: '${widget.session.variant.label}棋盘，15 行 15 列',
             child: Listener(
