@@ -299,7 +299,6 @@ class _LanMatchPageState extends State<LanMatchPage> {
                           ),
                         ),
                         child: Board(
-                          key: ValueKey(_connection.replica!.seq),
                           type: GameType.go,
                           session: game,
                           selected: null,

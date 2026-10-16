@@ -756,7 +756,6 @@ class _GomokuLanMatchPageState extends State<GomokuLanMatchPage>
             ],
           ),
           board: GomokuBoard(
-            key: ValueKey(_replica.seq),
             session: session,
             enabled: _myTurn,
             placementMode: _placementMode,
