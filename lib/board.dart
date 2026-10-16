@@ -190,6 +190,9 @@ class _BoardState extends State<Board> {
               _pointerDeltaY = 0;
             },
             child: GestureDetector(
+              // A board-wide semantic tap has no intersection coordinate.
+              // Keep pointer taps positional instead of mapping them to center.
+              excludeFromSemantics: true,
               behavior: HitTestBehavior.opaque,
               onTapUp: (details) {
                 final cell = _cellAt(details.localPosition, constraints);
