@@ -56,10 +56,10 @@ void main() {
         return Uint8List.fromList(data!.buffer.asUint8List());
       }))!;
 
-      // Compare retained rendering with a freshly mounted board after every
+      // Compare settled rendering with a freshly mounted board after every
       // transition. This catches ghosts from old layers or stale repaint state.
       Future<void> verify() async {
-        await tester.pump();
+        await tester.pumpAndSettle();
         final updated = await pixels();
         final last = session.moves.lastOrNull;
         if (last != null) {

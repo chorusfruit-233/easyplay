@@ -77,6 +77,10 @@ jobs:
         run: |
           flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/theme_browser_smoke.dart --output build/theme-smoke
           node tools/test_theme_web.cjs
+      - name: Board move animation browser smoke
+        run: |
+          flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/board_motion_browser_smoke.dart --output build/board-motion-smoke
+          node tools/test_board_motion_web.cjs
       - run: flutter build web --no-wasm-dry-run
       - name: Cache Gradle dependencies
         uses: actions/cache@v5

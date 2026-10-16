@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'game_session.dart';
 import 'go_placement.dart';
+import 'widgets/board_motion.dart';
 
 class Board extends StatefulWidget {
   final GameType type;
@@ -101,104 +102,125 @@ class _BoardState extends State<Board> {
   }
 
   @override
-  Widget build(BuildContext context) => AspectRatio(
-    aspectRatio: 1,
-    child: LayoutBuilder(
-      builder: (context, constraints) {
-        final mode = _resolvedMode(constraints);
-        return Listener(
-          behavior: HitTestBehavior.opaque,
-          onPointerDown: (event) {
-            if (mode == GoPlacementMode.pressRelease) {
-              _activePointer = event.pointer;
-              _pressReleaseActive = true;
-              _previewCell(_cellAt(event.localPosition, constraints));
-            } else if ((mode == GoPlacementMode.swipeConfirm ||
-                    mode == GoPlacementMode.doubleTap) &&
-                _preview != null) {
-              _activePointer = event.pointer;
-              _pointerStartY = event.localPosition.dy;
-              _pointerDeltaY = 0;
-            }
-          },
-          onPointerMove: (event) {
-            if (_activePointer != event.pointer) return;
-            if (_pressReleaseActive) {
-              _previewCell(_cellAt(event.localPosition, constraints));
-            } else {
-              _pointerDeltaY = event.localPosition.dy - _pointerStartY;
-            }
-          },
-          onPointerUp: (event) {
-            if (_activePointer != event.pointer) return;
-            if (_pressReleaseActive) {
-              _commit(_cellAt(event.localPosition, constraints) ?? _preview);
-            } else if (mode == GoPlacementMode.swipeConfirm) {
-              if (_pointerDeltaY >= 24) {
-                _commit(_preview);
-              } else if (_pointerDeltaY <= -24) {
-                _cancelPreview();
-              }
-            } else if (mode == GoPlacementMode.doubleTap &&
-                _pointerDeltaY <= -24) {
-              _cancelPreview();
-            }
-            _activePointer = null;
-            _pressReleaseActive = false;
-            _pointerDeltaY = 0;
-          },
-          onPointerCancel: (event) {
-            if (_activePointer != event.pointer) return;
-            if (_pressReleaseActive) _cancelPreview();
-            _activePointer = null;
-            _pressReleaseActive = false;
-            _pointerDeltaY = 0;
-          },
-          child: GestureDetector(
+  Widget build(BuildContext context) => AnimatedBoard<GamePiece>(
+    pieces: {
+      for (var row = 0; row < widget.session.size; row++)
+        for (var col = 0; col < widget.session.size; col++)
+          Cell(row, col): ?widget.session.board[row][col],
+    },
+    history: [
+      for (final move in widget.session.moves)
+        (move.from, move.to, move.side, move.pass),
+    ],
+    pieceKey: (piece) => (piece.side, piece.kind),
+    configuration: (widget.type, widget.session.size),
+    move: widget.session.moves.isEmpty || widget.session.moves.last.pass
+        ? null
+        : BoardMoveMotion(
+            paths: [
+              [?widget.session.moves.last.from, widget.session.moves.last.to],
+            ],
+          ),
+    builder: (context, motion) => AspectRatio(
+      aspectRatio: 1,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final mode = _resolvedMode(constraints);
+          return Listener(
             behavior: HitTestBehavior.opaque,
-            onTapUp: (details) {
-              final cell = _cellAt(details.localPosition, constraints);
-              switch (mode) {
-                case GoPlacementMode.direct:
-                  _commit(cell);
-                case GoPlacementMode.doubleTap:
-                  if (_preview == cell) {
-                    _commit(cell);
-                  } else {
-                    _previewCell(cell);
-                  }
-                case GoPlacementMode.swipeConfirm:
-                case GoPlacementMode.automatic:
-                  _previewCell(cell);
-                case GoPlacementMode.pressRelease:
-                  break;
+            onPointerDown: (event) {
+              if (mode == GoPlacementMode.pressRelease) {
+                _activePointer = event.pointer;
+                _pressReleaseActive = true;
+                _previewCell(_cellAt(event.localPosition, constraints));
+              } else if ((mode == GoPlacementMode.swipeConfirm ||
+                      mode == GoPlacementMode.doubleTap) &&
+                  _preview != null) {
+                _activePointer = event.pointer;
+                _pointerStartY = event.localPosition.dy;
+                _pointerDeltaY = 0;
               }
             },
-            child: CustomPaint(
-              painter: BoardPainter(
-                type: widget.type,
-                board: widget.session.board
-                    .map((row) => List<GamePiece?>.of(row))
-                    .toList(),
-                selected: widget.selected,
-                targets: List.of(widget.targets),
-                analysisHints: List.of(widget.analysisHints),
-                analysisOwnership: widget.analysisOwnership,
-                preview: _preview,
-                previewSide: widget.session.turn,
-                deadStones: Set.of(widget.session.deadGoStones),
-                annotations: widget.annotations,
-                lastMove:
-                    widget.session.moves.isEmpty ||
-                        widget.session.moves.last.pass
-                    ? null
-                    : widget.session.moves.last.to,
+            onPointerMove: (event) {
+              if (_activePointer != event.pointer) return;
+              if (_pressReleaseActive) {
+                _previewCell(_cellAt(event.localPosition, constraints));
+              } else {
+                _pointerDeltaY = event.localPosition.dy - _pointerStartY;
+              }
+            },
+            onPointerUp: (event) {
+              if (_activePointer != event.pointer) return;
+              if (_pressReleaseActive) {
+                _commit(_cellAt(event.localPosition, constraints) ?? _preview);
+              } else if (mode == GoPlacementMode.swipeConfirm) {
+                if (_pointerDeltaY >= 24) {
+                  _commit(_preview);
+                } else if (_pointerDeltaY <= -24) {
+                  _cancelPreview();
+                }
+              } else if (mode == GoPlacementMode.doubleTap &&
+                  _pointerDeltaY <= -24) {
+                _cancelPreview();
+              }
+              _activePointer = null;
+              _pressReleaseActive = false;
+              _pointerDeltaY = 0;
+            },
+            onPointerCancel: (event) {
+              if (_activePointer != event.pointer) return;
+              if (_pressReleaseActive) _cancelPreview();
+              _activePointer = null;
+              _pressReleaseActive = false;
+              _pointerDeltaY = 0;
+            },
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTapUp: (details) {
+                final cell = _cellAt(details.localPosition, constraints);
+                switch (mode) {
+                  case GoPlacementMode.direct:
+                    _commit(cell);
+                  case GoPlacementMode.doubleTap:
+                    if (_preview == cell) {
+                      _commit(cell);
+                    } else {
+                      _previewCell(cell);
+                    }
+                  case GoPlacementMode.swipeConfirm:
+                  case GoPlacementMode.automatic:
+                    _previewCell(cell);
+                  case GoPlacementMode.pressRelease:
+                    break;
+                }
+              },
+              child: CustomPaint(
+                painter: BoardPainter(
+                  type: widget.type,
+                  board: widget.session.board
+                      .map((row) => List<GamePiece?>.of(row))
+                      .toList(),
+                  selected: widget.selected,
+                  targets: List.of(widget.targets),
+                  analysisHints: List.of(widget.analysisHints),
+                  analysisOwnership: widget.analysisOwnership,
+                  preview: _preview,
+                  previewSide: widget.session.turn,
+                  deadStones: Set.of(widget.session.deadGoStones),
+                  annotations: widget.annotations,
+                  motion: motion,
+                  lastMove:
+                      widget.session.moves.isEmpty ||
+                          widget.session.moves.last.pass
+                      ? null
+                      : widget.session.moves.last.to,
+                ),
+                child: const SizedBox.expand(),
               ),
-              child: const SizedBox.expand(),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     ),
   );
 }
@@ -215,6 +237,7 @@ class BoardPainter extends CustomPainter {
   final Side previewSide;
   final Set<Cell> deadStones;
   final Map<String, List<String>> annotations;
+  final BoardMotionScene<GamePiece>? motion;
   BoardPainter({
     required this.type,
     required this.board,
@@ -227,7 +250,8 @@ class BoardPainter extends CustomPainter {
     this.previewSide = Side.black,
     this.deadStones = const {},
     this.annotations = const {},
-  });
+    this.motion,
+  }) : super(repaint: motion);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -334,51 +358,63 @@ class BoardPainter extends CustomPainter {
         );
       }
     }
-    for (var r = 0; r < n; r++) {
-      for (var c = 0; c < n; c++) {
-        final piece = board[r][c];
-        if (piece == null) continue;
-        final cell = Cell(r, c);
-        if (type == GameType.go) {
-          final center = _center(cell, step);
-          canvas.drawCircle(
-            center,
-            step * .39,
-            Paint()
-              ..color = piece.side == Side.black
-                  ? const Color(0xff171717)
-                  : Colors.white,
-          );
-          canvas.drawCircle(
-            center,
-            step * .39,
-            Paint()
-              ..color = Colors.black38
-              ..style = PaintingStyle.stroke
-              ..strokeWidth = 1,
-          );
-        } else {
-          final glyph = switch (piece.kind) {
-            PieceKind.king => '♚',
-            PieceKind.queen => '♛',
-            PieceKind.rook => '♜',
-            PieceKind.bishop => '♝',
-            PieceKind.knight => '♞',
-            PieceKind.pawn => '♟',
-            _ => '',
-          };
-          _drawText(
-            canvas,
-            glyph,
-            _center(cell, step),
-            step * .78,
-            piece.side == Side.black
-                ? const Color(0xff252525)
-                : const Color(0xfffaf6e9),
-            outline: piece.side == Side.white,
-          );
+    void pieceAt(Canvas canvas, GamePiece piece, Offset at) {
+      if (type == GameType.go) {
+        final center = at;
+        canvas.drawCircle(
+          center,
+          step * .39,
+          Paint()
+            ..color = piece.side == Side.black
+                ? const Color(0xff171717)
+                : Colors.white,
+        );
+        canvas.drawCircle(
+          center,
+          step * .39,
+          Paint()
+            ..color = Colors.black38
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1,
+        );
+      } else {
+        final glyph = switch (piece.kind) {
+          PieceKind.king => '♚',
+          PieceKind.queen => '♛',
+          PieceKind.rook => '♜',
+          PieceKind.bishop => '♝',
+          PieceKind.knight => '♞',
+          PieceKind.pawn => '♟',
+          _ => '',
+        };
+        _drawText(
+          canvas,
+          glyph,
+          at,
+          step * .78,
+          piece.side == Side.black
+              ? const Color(0xff252525)
+              : const Color(0xfffaf6e9),
+          outline: piece.side == Side.white,
+        );
+      }
+    }
+
+    if (motion == null) {
+      for (var row = 0; row < n; row++) {
+        for (var col = 0; col < n; col++) {
+          final piece = board[row][col];
+          if (piece != null) {
+            pieceAt(canvas, piece, _center(Cell(row, col), step));
+          }
         }
       }
+    } else {
+      motion!.paint(
+        canvas,
+        center: (at) => Offset((at.dx + .5) * step, (at.dy + .5) * step),
+        piecePainter: (canvas, piece) => pieceAt(canvas, piece, Offset.zero),
+      );
     }
     if (type == GameType.go &&
         preview != null &&
