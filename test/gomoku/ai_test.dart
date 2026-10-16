@@ -69,11 +69,8 @@ void main() {
     );
   }
 
-  test('beginner varies legal choices and may overlook threats', () async {
-    final session = position(
-      const [Cell(4, 2), Cell(10, 2), Cell(10, 4), Cell(12, 6)],
-      const [Cell(4, 3), Cell(4, 4), Cell(4, 5), Cell(4, 6)],
-    );
+  test('beginner varies searched-safe choices in quiet positions', () async {
+    final session = position(const [Cell(7, 7)], const [Cell(8, 8)]);
     final before = session.toJson();
     final ai = GomokuAi(random: Random(42));
     final choices = <Cell>{};
@@ -84,7 +81,6 @@ void main() {
       choices.add(result.cell);
     }
     expect(choices.length, greaterThan(3));
-    expect(choices.any((cell) => cell != const Cell(4, 7)), isTrue);
     expect(session.toJson(), before);
   });
 
