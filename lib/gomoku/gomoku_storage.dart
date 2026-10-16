@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../ai/ai_duel_config.dart';
 import '../game_session.dart' show Side;
 import 'gomoku_ai_level.dart';
 import 'gomoku_session.dart';
@@ -13,12 +14,14 @@ class GomokuRecord {
     required GomokuSession session,
     this.aiLevel,
     this.humanSide = Side.black,
+    this.aiDuel,
   }) : _state = session.fork().toJson();
 
   final String id;
   final DateTime createdAt;
   final GomokuAiLevel? aiLevel;
   final Side humanSide;
+  final AiDuelConfig<GomokuAiLevel>? aiDuel;
   final Map<String, Object?> _state;
 
   GomokuSession restore() => GomokuSession.fromJson(_state);
@@ -28,17 +31,18 @@ class GomokuRecord {
   String get resultLabel => restore().resultLabel;
 
   Map<String, Object?> toJson() => {
-    'version': 1,
+    'version': aiDuel == null ? 1 : 2,
     'id': id,
     'createdAt': createdAt.toUtc().toIso8601String(),
     'aiLevel': aiLevel?.name,
     'humanSide': humanSide.name,
+    if (aiDuel != null) 'aiDuel': aiDuel!.toJson(),
     'session': _state,
   };
 
   factory GomokuRecord.fromJson(Object? json) {
     if (json is! Map ||
-        json['version'] != 1 ||
+        (json['version'] != 1 && json['version'] != 2) ||
         json['id'] is! String ||
         (json['id'] as String).isEmpty ||
         json['createdAt'] is! String) {
@@ -57,12 +61,19 @@ class GomokuRecord {
     if (levelName != null && level == null) {
       throw const FormatException('无效的五子棋 AI 难度');
     }
+    final aiDuel = json['version'] == 2
+        ? AiDuelConfig.fromJson(json['aiDuel'], GomokuAiLevel.values)
+        : null;
+    if (aiDuel != null && level != null) {
+      throw const FormatException('AI 对抗不能同时为人机对弈');
+    }
     return GomokuRecord(
       id: json['id'] as String,
       createdAt: DateTime.parse(json['createdAt'] as String),
       session: GomokuSession.fromJson(json['session']),
       aiLevel: level,
       humanSide: side,
+      aiDuel: aiDuel,
     );
   }
 }

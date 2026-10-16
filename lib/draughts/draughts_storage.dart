@@ -71,6 +71,7 @@ class DraughtsStorage {
       result: record.result,
       sessionState: record.sessionState,
       aiLevel: record.aiLevel,
+      aiDuel: record.aiDuel,
     );
     final next = [saved, ...records.where((item) => item.id != id)].take(500);
     final prefs = await SharedPreferences.getInstance();

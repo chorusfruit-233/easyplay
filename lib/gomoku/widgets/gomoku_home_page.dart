@@ -1,11 +1,13 @@
 import '../../ui/app_layout.dart';
 import 'package:flutter/material.dart';
 
+import '../../ai/widgets/ai_duel_setup.dart';
 import '../../game_session.dart' show Side, SideX;
 import '../gomoku_ai_level.dart';
 import '../gomoku_session.dart';
 import '../gomoku_storage.dart';
 import 'gomoku_game_page.dart';
+import 'gomoku_ai_duel_page.dart';
 
 class GomokuHomePage extends StatefulWidget {
   const GomokuHomePage({super.key, this.lanBuilder, this.rtcBuilder});
@@ -94,16 +96,41 @@ class _GomokuHomePageState extends State<GomokuHomePage> {
     );
   }
 
+  Future<void> _startAiDuel() async {
+    final config = await showAiDuelSetup(
+      context: context,
+      levels: GomokuAiLevel.values,
+      initialLevel: GomokuAiLevel.intermediate,
+      label: (level) => level.label,
+    );
+    if (config == null || !mounted) return;
+    await _open(
+      GomokuAiDuelPage(
+        session: GomokuSession(variant: _variant),
+        config: config,
+      ),
+    );
+  }
+
   void _restore(GomokuRecord record) {
     try {
+      final aiDuel = record.aiDuel;
       _open(
-        GomokuGamePage(
-          session: record.restore(),
-          recordId: record.id,
-          createdAt: record.createdAt,
-          aiLevel: record.aiLevel,
-          humanSide: record.humanSide,
-        ),
+        aiDuel != null
+            ? GomokuAiDuelPage(
+                session: record.restore(),
+                config: aiDuel,
+                recordId: record.id,
+                createdAt: record.createdAt,
+                initiallyPaused: true,
+              )
+            : GomokuGamePage(
+                session: record.restore(),
+                recordId: record.id,
+                createdAt: record.createdAt,
+                aiLevel: record.aiLevel,
+                humanSide: record.humanSide,
+              ),
       );
     } on FormatException catch (error) {
       ScaffoldMessenger.of(
@@ -161,6 +188,12 @@ class _GomokuHomePageState extends State<GomokuHomePage> {
               _open(GomokuGamePage(session: GomokuSession(variant: _variant))),
         ),
         _entry('人机对弈', '选择初级、中级或高级及执棋方', Icons.smart_toy_outlined, _startAi),
+        _entry(
+          'AI 对抗',
+          '两名 AI 自动对弈，暂停或单步观战',
+          Icons.visibility_outlined,
+          _startAiDuel,
+        ),
         if (widget.lanBuilder != null)
           _entry(
             '联机对弈',
@@ -207,7 +240,11 @@ class _GomokuHomePageState extends State<GomokuHomePage> {
                           '${record.variant.label} · ${record.moveCount} 手',
                         ),
                         subtitle: Text(
-                          '${record.aiLevel == null ? '本地双人' : '人机 · ${record.aiLevel!.label}'} · ${record.gameOver ? record.resultLabel : '继续对局'} · ${record.createdAt.toLocal().toString().split('.').first}',
+                          '${record.aiDuel != null
+                              ? 'AI 对抗 · 黑${record.aiDuel!.blackLevel.label} / 白${record.aiDuel!.whiteLevel.label}'
+                              : record.aiLevel == null
+                              ? '本地双人'
+                              : '人机 · ${record.aiLevel!.label}'} · ${record.gameOver ? record.resultLabel : '继续对局'} · ${record.createdAt.toLocal().toString().split('.').first}',
                         ),
                         onTap: () => _restore(record),
                         trailing: IconButton(
