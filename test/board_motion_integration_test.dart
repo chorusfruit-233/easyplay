@@ -31,6 +31,64 @@ Future<void> _show(WidgetTester tester, Widget board) => tester.pumpWidget(
 );
 
 void main() {
+  for (final action in ['move', 'undo', 'reset', 'replacement']) {
+    testWidgets('Go clears confirmation previews after $action', (
+      tester,
+    ) async {
+      var session = GameSession(
+        GameType.go,
+        goConfig: const GoConfig(boardSize: 9),
+      )..placeGo(const Cell(0, 0));
+      final committed = <Cell>[];
+      Future<void> render() => _show(
+        tester,
+        Board(
+          type: GameType.go,
+          session: session,
+          selected: null,
+          targets: const [],
+          placementMode: GoPlacementMode.doubleTap,
+          onCell: committed.add,
+        ),
+      );
+      BoardPainter painter() =>
+          tester
+                  .widget<CustomPaint>(
+                    find.descendant(
+                      of: find.byType(Board),
+                      matching: find.byType(CustomPaint),
+                    ),
+                  )
+                  .painter!
+              as BoardPainter;
+      await render();
+      final point = tester.getCenter(find.byType(Board));
+      await tester.tapAt(point);
+      await render();
+      expect(painter().preview, const Cell(4, 4));
+      switch (action) {
+        case 'move':
+          expect(session.placeGo(const Cell(0, 1)), isTrue);
+        case 'undo':
+          expect(session.undo(), isTrue);
+        case 'reset':
+          session.reset();
+        case 'replacement':
+          session = GameSession(
+            GameType.go,
+            goConfig: const GoConfig(boardSize: 9),
+          )..placeGo(const Cell(0, 0));
+      }
+      await render();
+      expect(painter().preview, isNull);
+      await tester.tapAt(point);
+      await render();
+      expect(committed, isEmpty, reason: 'The old preview must not confirm');
+      expect(painter().preview, const Cell(4, 4));
+      await tester.pumpAndSettle();
+    });
+  }
+
   testWidgets(
     'Go and Gomoku commit fast taps without waiting for landing animation',
     (tester) async {

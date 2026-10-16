@@ -436,7 +436,6 @@ class _DraughtsGamePageState extends State<DraughtsGamePage>
             ],
           ),
           board: DraughtsBoard(
-            key: ValueKey(_session.revision),
             session: _session,
             selected: _selected,
             targets: _targets,

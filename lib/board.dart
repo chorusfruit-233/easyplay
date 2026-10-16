@@ -47,14 +47,29 @@ class _BoardState extends State<Board> {
   double _pointerStartY = 0;
   double _pointerDeltaY = 0;
   bool _pressReleaseActive = false;
+  late int _revision;
+  GameMove? _lastMove;
+
+  @override
+  void initState() {
+    super.initState();
+    _revision = widget.session.revision;
+    _lastMove = widget.session.moves.lastOrNull;
+  }
 
   @override
   void didUpdateWidget(covariant Board oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.placementMode != widget.placementMode) {
+    if (_revision != widget.session.revision ||
+        _lastMove != widget.session.moves.lastOrNull ||
+        oldWidget.session != widget.session ||
+        oldWidget.type != widget.type ||
+        oldWidget.placementMode != widget.placementMode) {
       _preview = null;
       _activePointer = null;
       _pressReleaseActive = false;
+      _revision = widget.session.revision;
+      _lastMove = widget.session.moves.lastOrNull;
     }
     if (widget.selected == null && oldWidget.selected != null) {
       _preview = null;

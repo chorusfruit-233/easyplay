@@ -874,7 +874,6 @@ class _DraughtsLanMatchPageState extends State<DraughtsLanMatchPage> {
             ],
           ),
           board: DraughtsBoard(
-            key: ValueKey(_replica.seq),
             session: session,
             selected: _selected,
             targets: _targets,
