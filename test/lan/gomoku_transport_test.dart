@@ -17,9 +17,9 @@ import 'package:http/testing.dart';
 
 const _config = <String, Object?>{
   'game': 'gomoku',
-  'rulesVersion': 2,
+  'rulesVersion': 3,
   'boardSize': 15,
-  'variant': 'freestyle',
+  'variant': 'professional',
 };
 
 void main() {
@@ -33,7 +33,7 @@ void main() {
           if (type == LanMessageType.hello) 'token': 'pin',
           if (type == LanMessageType.stateSync) 'events': <Object?>[],
         };
-        for (final variant in GomokuVariant.values) {
+        for (final variant in GomokuVariant.playable) {
           final config = {..._config, 'variant': variant.name};
           expect(
             LanMessage(type, 0, payload(config)).body['variant'],
@@ -42,9 +42,9 @@ void main() {
           expect(LanMessage.parseGomokuVariant(config), variant);
         }
         for (final entry in <String, List<Object?>>{
-          'rulesVersion': [null, 1, 3, '2', 2.0],
+          'rulesVersion': [null, 1, 2, '3', 3.0],
           'boardSize': [null, 9, 19, '15', 15.0],
-          'variant': [null, 'unknown', 'Freestyle', 7],
+          'variant': [null, 'unknown', 'freestyle', 'standard', 'renju', 7],
         }.entries) {
           final field = entry.key;
           for (final value in entry.value) {
@@ -82,7 +82,7 @@ void main() {
     () async {
       final origin = Uri.parse('http://192.168.1.20:8091/');
       for (final config in [
-        for (final variant in GomokuVariant.values)
+        for (final variant in GomokuVariant.playable)
           {..._config, 'variant': variant.name},
         {..._config, 'boardSize': 19},
         {..._config, 'rulesVersion': 1},
@@ -103,8 +103,8 @@ void main() {
         final room = await LanWebRoom.probe(origin, client: client);
         final valid =
             config['boardSize'] == 15 &&
-            config['rulesVersion'] == 2 &&
-            GomokuVariant.values.any((v) => v.name == config['variant']);
+            config['rulesVersion'] == 3 &&
+            GomokuVariant.playable.any((v) => v.name == config['variant']);
         if (valid) {
           expect(room!.game, 'gomoku');
           expect(room.gomokuVariant.name, config['variant']);
@@ -259,7 +259,7 @@ void main() {
     },
   );
 
-  for (final variant in GomokuVariant.values) {
+  for (final variant in GomokuVariant.playable) {
     test(
       '${variant.name}: discovery and handshake keep the selected rule',
       () async {
@@ -273,7 +273,10 @@ void main() {
         try {
           final found = await scanLanTargets(['127.0.0.1'], port: server.port!);
           expect(found.single.variant, variant.name);
-          await expectLater(wrong.connect(uri, token: 'pin'), throwsStateError);
+          await expectLater(
+            wrong.connect(uri, token: 'pin'),
+            throwsFormatException,
+          );
           expect(server.playerCount, 0);
           await client.connect(uri, token: 'pin');
           expect(client.gomokuVariant, variant);

@@ -12,7 +12,7 @@ LanMessage move(int seq, String side, Cell cell) =>
     });
 
 void main() {
-  for (final variant in GomokuVariant.values) {
+  for (final variant in GomokuVariant.playable) {
     test('${variant.name} survives undo, rematch and reconnect', () {
       final host = GomokuLanAuthority(variant: variant);
       final client = GomokuLanReplica(variant: variant);
@@ -57,8 +57,8 @@ void main() {
   test(
     'sync rejects missing, unknown, old and mismatched rules atomically',
     () {
-      final host = GomokuLanAuthority(variant: GomokuVariant.renju);
-      final client = GomokuLanReplica(variant: GomokuVariant.renju);
+      final host = GomokuLanAuthority(variant: GomokuVariant.professional);
+      final client = GomokuLanReplica(variant: GomokuVariant.professional);
       final event = host.submit(Side.black, move(1, 'B', const Cell(7, 7)));
       expect(client.receive(event), isTrue);
       final before = client.session.toJson();
@@ -76,74 +76,17 @@ void main() {
         expect(client.seq, 1);
       }
       expect(
-        client.receive(
-          LanMessage(LanMessageType.stateSync, valid.seq, {
-            ...valid.body,
-            'variant': GomokuVariant.standard.name,
-          }),
-        ),
-        isFalse,
+        () => LanMessage(LanMessageType.stateSync, valid.seq, {
+          ...valid.body,
+          'variant': GomokuVariant.standard.name,
+        }),
+        throwsFormatException,
       );
       expect(client.session.toJson(), before);
       expect(client.seq, 1);
       expect(client.receive(valid), isTrue);
     },
   );
-
-  test('Renju forbidden move is rejected by both host and replica', () {
-    final host = GomokuLanAuthority(variant: GomokuVariant.renju);
-    final client = GomokuLanReplica(variant: GomokuVariant.renju);
-    const black = [Cell(7, 6), Cell(7, 8), Cell(6, 7), Cell(8, 7)];
-    const white = [Cell(0, 0), Cell(0, 2), Cell(2, 0), Cell(2, 2)];
-    for (var i = 0; i < black.length; i++) {
-      for (final (side, cell) in [
-        (Side.black, black[i]),
-        (Side.white, white[i]),
-      ]) {
-        final event = host.submit(
-          side,
-          move(host.seq + 1, LanMessage.sideCode(side), cell),
-        );
-        expect(event.type, LanMessageType.move);
-        expect(client.receive(event), isTrue);
-      }
-    }
-    final before = host.session.toJson();
-    final forbidden = move(host.seq + 1, 'B', const Cell(7, 7));
-    final rejection = host.submit(Side.black, forbidden);
-    expect(rejection.type, LanMessageType.rejected);
-    expect(rejection.body['reason'], contains('三'));
-    expect(client.receive(forbidden), isFalse);
-    expect(host.seq, 8);
-    expect(client.seq, 8);
-    expect(host.session.toJson(), before);
-    expect(client.session.toJson(), before);
-  });
-
-  test('standard overline remains playable without a network win', () {
-    final host = GomokuLanAuthority(variant: GomokuVariant.standard);
-    final client = GomokuLanReplica(variant: GomokuVariant.standard);
-    const columns = [2, 3, 4, 6, 7, 5];
-    for (var i = 0; i < columns.length; i++) {
-      final black = host.submit(
-        Side.black,
-        move(host.seq + 1, 'B', Cell(7, columns[i])),
-      );
-      expect(black.type, LanMessageType.move);
-      expect(client.receive(black), isTrue);
-      if (i < columns.length - 1) {
-        final white = host.submit(
-          Side.white,
-          move(host.seq + 1, 'W', Cell(i * 2, 0)),
-        );
-        expect(client.receive(white), isTrue);
-      }
-    }
-    expect(host.session.gameOver, isFalse);
-    expect(client.session.gameOver, isFalse);
-    expect(client.session.winningLine, isEmpty);
-    expect(client.session.toJson(), host.session.toJson());
-  });
 
   test(
     'host commits moves once and rejects impersonation and illegal points',
@@ -223,6 +166,50 @@ void main() {
     () {
       final host = GomokuLanAuthority();
       final client = GomokuLanReplica();
+      for (final (side, cell) in [
+        (Side.black, const Cell(7, 7)),
+        (Side.black, const Cell(6, 7)),
+        (Side.black, const Cell(6, 6)),
+      ]) {
+        expect(
+          client.receive(
+            host.submit(
+              side,
+              move(host.seq + 1, LanMessage.sideCode(side), cell),
+            ),
+          ),
+          isTrue,
+        );
+      }
+      expect(
+        client.receive(
+          host.submit(
+            Side.white,
+            LanMessage(LanMessageType.gomokuExchange, host.seq + 1, {
+              'side': 'W',
+              'exchange': false,
+            }),
+          ),
+        ),
+        isTrue,
+      );
+      for (final (side, cell) in [
+        (Side.white, const Cell(8, 8)),
+        (Side.black, const Cell(8, 7)),
+        (Side.black, const Cell(7, 8)),
+        (Side.white, const Cell(7, 8)),
+        (Side.white, const Cell(14, 14)),
+      ]) {
+        expect(
+          client.receive(
+            host.submit(
+              side,
+              move(host.seq + 1, LanMessage.sideCode(side), cell),
+            ),
+          ),
+          isTrue,
+        );
+      }
       for (var col = 0; col < 5; col++) {
         final event = host.submit(
           Side.black,
@@ -287,7 +274,7 @@ void main() {
       'game': 'gomoku',
       'boardSize': 15,
       'rulesVersion': gomokuRulesVersion,
-      'variant': GomokuVariant.freestyle.name,
+      'variant': GomokuVariant.professional.name,
       'events': [
         move(1, 'B', const Cell(7, 7)).toWire(),
         move(2, 'W', const Cell(7, 7)).toWire(),

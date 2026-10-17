@@ -13,8 +13,6 @@ void main() {
         'go',
         'chess',
         'gomoku',
-        'gomoku-standard',
-        'gomoku-renju',
         ...DraughtsVariant.values.map((v) => v.name),
       ]) {
         final variant = DraughtsVariant.values
@@ -26,11 +24,7 @@ void main() {
               : 'draughts',
           'v=0\r\n',
           variant: variant,
-          gomokuVariant: game == 'gomoku-standard'
-              ? GomokuVariant.standard
-              : game == 'gomoku-renju'
-              ? GomokuVariant.renju
-              : GomokuVariant.freestyle,
+          gomokuVariant: GomokuVariant.professional,
         );
         final restored = RtcInvitation.decode(
           offer.encode(),
@@ -61,7 +55,7 @@ void main() {
       final offer = RtcInvitation.offer(
         'gomoku',
         'v=0\r\n',
-        gomokuVariant: GomokuVariant.renju,
+        gomokuVariant: GomokuVariant.professional,
       );
       final wrong = RtcInvitation(
         sessionId: offer.sessionId,
@@ -73,7 +67,7 @@ void main() {
         createdAt: offer.createdAt,
       );
       expect(() => offer.validateAnswer(wrong), throwsFormatException);
-      expect(offer.answer('v=0\r\n').gomokuVariant, GomokuVariant.renju);
+      expect(offer.answer('v=0\r\n').gomokuVariant, GomokuVariant.professional);
     },
   );
   test('reject stale, future, oversized, invalid type and unknown rules', () {

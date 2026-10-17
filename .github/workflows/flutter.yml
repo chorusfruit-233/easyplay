@@ -82,7 +82,7 @@ jobs:
           flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/board_motion_browser_smoke.dart --output build/board-motion-smoke
           node tools/test_board_motion_web.cjs
       - run: flutter build web --no-wasm-dry-run
-      - name: Gomoku placement confirmation browser smoke
+      - name: Competitive Renju opening and confirmation browser smoke
         run: node tools/test_gomoku_placement_web.cjs
       - name: Gomoku and Draughts AI duel browser smoke
         run: node tools/test_ai_duel_web.cjs

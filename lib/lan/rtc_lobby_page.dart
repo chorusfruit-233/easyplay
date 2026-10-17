@@ -23,7 +23,7 @@ class RtcLobbyEntry extends StatelessWidget {
     super.key,
     required this.game,
     this.variant,
-    this.gomokuVariant = GomokuVariant.freestyle,
+    this.gomokuVariant = GomokuVariant.professional,
   });
   final String game;
   final DraughtsVariant? variant;
@@ -56,7 +56,7 @@ class RtcLobbyPage extends StatefulWidget {
     super.key,
     required this.game,
     this.variant,
-    this.gomokuVariant = GomokuVariant.freestyle,
+    this.gomokuVariant = GomokuVariant.professional,
     this.resumeRoom,
     this.iceServers,
   });

@@ -74,8 +74,14 @@ void main() {
         expect(page.config.blackLevel, GomokuAiLevel.advanced);
         expect(page.config.whiteLevel, GomokuAiLevel.beginner);
       }
-      expect(find.text('黑方 AI · 高级'), findsOneWidget);
-      expect(find.text('白方 AI · 初级'), findsOneWidget);
+      expect(
+        find.text(draughts ? '黑方 AI · 高级' : '先手（执黑方） AI · 高级'),
+        findsOneWidget,
+      );
+      expect(
+        find.text(draughts ? '白方 AI · 初级' : '后手（执白方） AI · 初级'),
+        findsOneWidget,
+      );
       expect(find.text('继续'), findsOneWidget);
       await tester.pageBack();
       await tester.pumpAndSettle();
@@ -146,7 +152,7 @@ void main() {
                     initiallyPaused: true,
                   )
                 : GomokuAiDuelPage(
-                    session: GomokuSession(),
+                    session: GomokuSession(variant: GomokuVariant.freestyle),
                     config: gomokuConfig,
                     initiallyPaused: true,
                   ),

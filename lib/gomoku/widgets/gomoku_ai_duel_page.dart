@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../ai/ai_duel_config.dart';
 import '../../ai/widgets/ai_duel_page.dart';
-import '../../game_session.dart' show Cell;
+import '../../game_session.dart' show Side, SideX;
 import '../gomoku_ai_duel.dart';
 import '../gomoku_ai_level.dart';
 import '../gomoku_session.dart';
@@ -38,10 +38,16 @@ class _GomokuAiDuelPageState extends State<GomokuAiDuelPage> {
   );
 
   @override
-  Widget build(BuildContext context) => AiDuelPage<Cell>(
+  Widget build(BuildContext context) => AiDuelPage<GomokuAction>(
     controller: _controller,
     title: '五子棋',
     rules: _controller.session.variant.label,
+    rulesLabel: () =>
+        '${_controller.session.variant.label} · ${_controller.session.gameOver ? _controller.session.resultLabel : _controller.session.phaseLabel}',
+    playerLabel: _controller.session.variant.competitive
+        ? (side) =>
+              '${side == Side.black ? '先手' : '后手'}（执${_controller.session.colorForPlayer(side).label}）'
+        : null,
     blackLevel: widget.config.blackLevel.label,
     whiteLevel: widget.config.whiteLevel.label,
     boardBuilder: (_) => GomokuBoard(

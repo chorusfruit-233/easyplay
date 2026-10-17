@@ -17,9 +17,13 @@ import '../../lan/rtc_lobby_page.dart';
 import '../gomoku_placement.dart';
 import '../gomoku_session.dart';
 import 'gomoku_board.dart';
+import 'gomoku_opening_panel.dart';
 
 class GomokuLanLobbyPage extends StatelessWidget {
-  const GomokuLanLobbyPage({super.key, this.variant = GomokuVariant.freestyle});
+  const GomokuLanLobbyPage({
+    super.key,
+    this.variant = GomokuVariant.professional,
+  });
   final GomokuVariant variant;
 
   @override
@@ -64,7 +68,10 @@ class GomokuLanLobbyPage extends StatelessWidget {
 }
 
 class GomokuLanRoomPage extends StatefulWidget {
-  const GomokuLanRoomPage({super.key, this.variant = GomokuVariant.freestyle});
+  const GomokuLanRoomPage({
+    super.key,
+    this.variant = GomokuVariant.professional,
+  });
   final GomokuVariant variant;
 
   @override
@@ -234,7 +241,10 @@ class _GomokuLanRoomPageState extends State<GomokuLanRoomPage> {
 }
 
 class GomokuLanJoinPage extends StatefulWidget {
-  const GomokuLanJoinPage({super.key, this.variant = GomokuVariant.freestyle});
+  const GomokuLanJoinPage({
+    super.key,
+    this.variant = GomokuVariant.professional,
+  });
   final GomokuVariant variant;
 
   @override
@@ -536,7 +546,7 @@ class _GomokuLanMatchPageState extends State<GomokuLanMatchPage>
       _connected &&
       !_negotiating &&
       !_session.gameOver &&
-      _side == _session.turn;
+      _side == _session.actor;
 
   @override
   void initState() {
@@ -683,7 +693,7 @@ class _GomokuLanMatchPageState extends State<GomokuLanMatchPage>
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('认输'),
-        content: Text('${side.label}确认认输吗？'),
+        content: Text('${_session.colorForPlayer(side).label}确认认输吗？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -698,6 +708,30 @@ class _GomokuLanMatchPageState extends State<GomokuLanMatchPage>
     );
     if (mounted && accepted == true && !_negotiating && !_session.gameOver) {
       _send(LanMessageType.resign);
+    }
+  }
+
+  Future<void> _pass() async {
+    if (!_myTurn || !_session.canPass) return;
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('停一手'),
+        content: const Text('确认放弃本次行棋权？双方连续停一手将判和棋。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('确认'),
+          ),
+        ],
+      ),
+    );
+    if (mounted && accepted == true && _myTurn && _session.canPass) {
+      _send(LanMessageType.pass);
     }
   }
 
@@ -717,9 +751,9 @@ class _GomokuLanMatchPageState extends State<GomokuLanMatchPage>
         ? session.turnLabel
         : !widget.connection.started
         ? '等待主机开始'
-        : session.turn == side
-        ? '轮到你 · ${side?.label ?? ''}'
-        : '轮到对手 · ${session.turn.label}';
+        : session.actor == side
+        ? '轮到你 · ${side == null ? '' : session.colorForPlayer(side).label}'
+        : '轮到对手';
     return Scaffold(
       appBar: AppBar(title: const Text('五子棋 · 联机')),
       body: SafeArea(
@@ -761,13 +795,20 @@ class _GomokuLanMatchPageState extends State<GomokuLanMatchPage>
           ),
           board: GomokuBoard(
             session: session,
-            enabled: _myTurn,
+            enabled: _myTurn && session.phase != GomokuPhase.exchange,
             placementMode: _effectivePlacementMode,
             onCell: _onCell,
           ),
           footer: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              GomokuOpeningPanel(
+                session: session,
+                enabled: _myTurn,
+                onExchange: (exchange) => _send(LanMessageType.gomokuExchange, {
+                  'exchange': exchange,
+                }),
+              ),
               if (session.gameOver && side != null)
                 LanRematchCard(
                   request: _replica.rematchRequest,
@@ -783,6 +824,11 @@ class _GomokuLanMatchPageState extends State<GomokuLanMatchPage>
                 spacing: 8,
                 runSpacing: 8,
                 children: [
+                  if (session.variant.competitive)
+                    TextButton(
+                      onPressed: _myTurn && session.canPass ? _pass : null,
+                      child: const Text('停一手'),
+                    ),
                   OutlinedButton.icon(
                     onPressed:
                         !_connected ||

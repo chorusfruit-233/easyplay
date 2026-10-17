@@ -109,7 +109,8 @@ void main() {
     final json = GomokuRecord(
       id: 'old',
       createdAt: DateTime.utc(2026),
-      session: GomokuSession()..place(const Cell(7, 7)),
+      session: GomokuSession(variant: GomokuVariant.freestyle)
+        ..place(const Cell(7, 7)),
     ).toJson();
     final oldState = {...json['session'] as Map, 'version': 1}
       ..remove('variant');

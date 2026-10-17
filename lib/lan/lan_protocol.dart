@@ -22,6 +22,7 @@ enum LanMessageType {
   stateRequest,
   stateSync,
   move,
+  gomokuExchange,
   pass,
   resign,
   rejected,
@@ -154,7 +155,7 @@ class LanMessage {
         body['boardSize'] != gomokuBoardSize) {
       throw const FormatException('五子棋规则版本或棋盘大小不兼容');
     }
-    final variant = GomokuVariant.values
+    final variant = GomokuVariant.playable
         .where((value) => value.name == body['variant'])
         .firstOrNull;
     if (variant == null) throw const FormatException('五子棋规则不支持或缺失');
@@ -285,6 +286,9 @@ class LanMessage {
         } else {
           parseCell(data['cell']);
         }
+      case LanMessageType.gomokuExchange:
+        parseSide(data['side']);
+        if (data['exchange'] is! bool) throw const FormatException('无效的交换选择');
       case LanMessageType.pass:
       case LanMessageType.resign:
       case LanMessageType.undoRequest:
@@ -336,6 +340,7 @@ class LanMessage {
 
   static const eventTypes = {
     LanMessageType.move,
+    LanMessageType.gomokuExchange,
     LanMessageType.pass,
     LanMessageType.resign,
     LanMessageType.undoRequest,

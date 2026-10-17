@@ -101,10 +101,8 @@ void main() {
     expect(find.text('GOMOKU'), findsOneWidget);
     expect(find.text('本地双人'), findsOneWidget);
     expect(find.text('人机对弈'), findsOneWidget);
-    await tester.tap(find.byType(DropdownButtonFormField<GomokuVariant>));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('连珠禁手').last);
-    await tester.pumpAndSettle();
+    expect(find.byType(DropdownButtonFormField<GomokuVariant>), findsNothing);
+    expect(find.textContaining('三手交换'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('联机对弈'), 200);
     await tester.pumpAndSettle();
     await tester.tap(find.text('联机对弈'));
@@ -114,7 +112,7 @@ void main() {
       tester
           .widget<GomokuLanLobbyPage>(find.byType(GomokuLanLobbyPage))
           .variant,
-      GomokuVariant.renju,
+      GomokuVariant.professional,
     );
     expect(find.text('创建房间'), findsOneWidget);
     expect(find.text('加入房间'), findsOneWidget);

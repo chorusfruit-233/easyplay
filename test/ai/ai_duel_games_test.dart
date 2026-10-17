@@ -59,7 +59,7 @@ Future<void> finishSearch<M>(
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  for (final variant in GomokuVariant.values) {
+  for (final variant in GomokuVariant.values.where((v) => !v.competitive)) {
     testWidgets('Gomoku ${variant.name}: both AIs, save, undo and new record', (
       tester,
     ) async {
@@ -156,7 +156,7 @@ void main() {
   testWidgets('Gomoku winning move stops autoplay and survives saving', (
     tester,
   ) async {
-    final session = GomokuSession();
+    final session = GomokuSession(variant: GomokuVariant.freestyle);
     for (var col = 3; col <= 6; col++) {
       session.place(Cell(7, col));
       session.place(Cell(4, col));
@@ -185,7 +185,7 @@ void main() {
     final gomoku = GomokuRecord(
       id: 'duel',
       createdAt: DateTime.utc(2026),
-      session: GomokuSession(),
+      session: GomokuSession(variant: GomokuVariant.freestyle),
     ).toJson();
     for (final settings in [
       null,

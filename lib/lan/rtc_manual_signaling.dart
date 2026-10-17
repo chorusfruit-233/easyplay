@@ -16,7 +16,7 @@ class RtcInvitation {
     required this.token,
     required this.game,
     this.variant,
-    this.gomokuVariant = GomokuVariant.freestyle,
+    this.gomokuVariant = GomokuVariant.professional,
     this.goConfig = const GoConfig(),
     required this.type,
     required this.sdp,
@@ -116,7 +116,7 @@ class RtcInvitation {
     }
     final gomokuVariant = game == 'gomoku'
         ? LanMessage.parseGomokuVariant(Map<String, Object?>.from(data))
-        : GomokuVariant.freestyle;
+        : GomokuVariant.professional;
     DraughtsVariant? variant;
     if (game == 'draughts') {
       for (final item in DraughtsVariant.values) {
@@ -161,7 +161,7 @@ class RtcInvitation {
     String game,
     String sdp, {
     DraughtsVariant? variant,
-    GomokuVariant gomokuVariant = GomokuVariant.freestyle,
+    GomokuVariant gomokuVariant = GomokuVariant.professional,
     GoConfig config = const GoConfig(),
   }) => RtcInvitation(
     sessionId: rtcSecret(),

@@ -49,7 +49,7 @@ GomokuMoveAnalysis analyzeGomokuMove(
   final lines = analyzer.linesThrough(index, side);
   final winning = lines.where((line) {
     if (variant == GomokuVariant.freestyle ||
-        (variant == GomokuVariant.renju && side == Side.white)) {
+        (variant.hasForbiddenMoves && side == Side.white)) {
       return line.length >= 5;
     }
     return line.length == 5;
@@ -62,7 +62,7 @@ GomokuMoveAnalysis analyzeGomokuMove(
       winningLine: List.unmodifiable(winning.map(analyzer.cell)),
     );
   }
-  if (variant == GomokuVariant.renju && side == Side.black) {
+  if (variant.hasForbiddenMoves && side == Side.black) {
     final forbidden = analyzer.forbiddenAt(index);
     if (forbidden != null) {
       return GomokuMoveAnalysis(

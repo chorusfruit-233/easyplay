@@ -51,7 +51,7 @@ class _DemoState extends State<_Demo> {
     GameType.go,
     goConfig: const GoConfig(boardSize: 9),
   );
-  GomokuSession gomoku = GomokuSession();
+  GomokuSession gomoku = GomokuSession(variant: GomokuVariant.freestyle);
   ChessSession chess = ChessSession();
   XiangqiSession xiangqi = XiangqiSession();
   late DraughtsSession draughts;
@@ -71,7 +71,7 @@ class _DemoState extends State<_Demo> {
   void _reset() {
     lastTap = null;
     go = GameSession(GameType.go, goConfig: const GoConfig(boardSize: 9));
-    gomoku = GomokuSession();
+    gomoku = GomokuSession(variant: GomokuVariant.freestyle);
     chess = ChessSession(
       position: parseFen('r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1'),
     );

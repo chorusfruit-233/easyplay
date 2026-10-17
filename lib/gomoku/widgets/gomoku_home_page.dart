@@ -21,7 +21,7 @@ class GomokuHomePage extends StatefulWidget {
 
 class _GomokuHomePageState extends State<GomokuHomePage> {
   late Future<List<GomokuRecord>> _records = GomokuStorage.list();
-  GomokuVariant _variant = GomokuVariant.freestyle;
+  static const _variant = GomokuVariant.professional;
 
   void _reload() {
     if (mounted) {
@@ -53,7 +53,7 @@ class _GomokuHomePageState extends State<GomokuHomePage> {
               children: [
                 DropdownButtonFormField<Side>(
                   initialValue: side,
-                  decoration: const InputDecoration(labelText: '执棋方'),
+                  decoration: const InputDecoration(labelText: '开局执棋方（之后可交换）'),
                   items: [
                     for (final value in Side.values)
                       DropdownMenuItem(value: value, child: Text(value.label)),
@@ -116,7 +116,7 @@ class _GomokuHomePageState extends State<GomokuHomePage> {
     try {
       final aiDuel = record.aiDuel;
       _open(
-        aiDuel != null
+        record.variant.competitive && aiDuel != null
             ? GomokuAiDuelPage(
                 session: record.restore(),
                 config: aiDuel,
@@ -130,6 +130,7 @@ class _GomokuHomePageState extends State<GomokuHomePage> {
                 createdAt: record.createdAt,
                 aiLevel: record.aiLevel,
                 humanSide: record.humanSide,
+                readOnly: !record.variant.competitive,
               ),
       );
     } on FormatException catch (error) {
@@ -164,22 +165,15 @@ class _GomokuHomePageState extends State<GomokuHomePage> {
       children: [
         Text('GOMOKU', style: Theme.of(context).textTheme.headlineMedium),
         const SizedBox(height: 8),
-        const Text('15×15 · 黑方先行 · 选择双方使用的规则'),
-        const SizedBox(height: 16),
-        DropdownButtonFormField<GomokuVariant>(
-          initialValue: _variant,
-          decoration: const InputDecoration(labelText: '规则'),
-          items: [
-            for (final variant in GomokuVariant.values)
-              DropdownMenuItem(value: variant, child: Text(variant.label)),
-          ],
-          onChanged: (value) => setState(() => _variant = value!),
+        const Text('15×15 · 竞技连珠'),
+        const SizedBox(height: 12),
+        const Card(
+          child: Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('26种指定开局 · 三手交换 · 五手两打\n黑方禁长连、四四、三三，禁手判负；五连优先获胜。'),
+          ),
         ),
-        const SizedBox(height: 8),
-        Text(_variant.description),
-        if (_variant == GomokuVariant.renju)
-          const Text('采用自由开局，不含交换开局流程；黑方禁手会被拒绝并显示原因。'),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         _entry(
           '本地双人',
           '在同一设备上轮流落子',
@@ -244,7 +238,11 @@ class _GomokuHomePageState extends State<GomokuHomePage> {
                               ? 'AI 对抗 · 黑${record.aiDuel!.blackLevel.label} / 白${record.aiDuel!.whiteLevel.label}'
                               : record.aiLevel == null
                               ? '本地双人'
-                              : '人机 · ${record.aiLevel!.label}'} · ${record.gameOver ? record.resultLabel : '继续对局'} · ${record.createdAt.toLocal().toString().split('.').first}',
+                              : '人机 · ${record.aiLevel!.label}'} · ${!record.variant.competitive
+                              ? '旧规则 · 仅供查看'
+                              : record.gameOver
+                              ? record.resultLabel
+                              : '继续对局'} · ${record.createdAt.toLocal().toString().split('.').first}',
                         ),
                         onTap: () => _restore(record),
                         trailing: IconButton(

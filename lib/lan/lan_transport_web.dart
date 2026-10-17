@@ -76,13 +76,14 @@ class LanClientConnection {
       isChess = true,
       isGomoku = false,
       gomokuVariant = null;
-  LanClientConnection.gomoku({GomokuVariant variant = GomokuVariant.freestyle})
-    : config = const GoConfig(),
-      draughtsVariant = null,
-      isXiangqi = false,
-      isChess = false,
-      isGomoku = true,
-      gomokuVariant = variant;
+  LanClientConnection.gomoku({
+    GomokuVariant variant = GomokuVariant.professional,
+  }) : config = const GoConfig(),
+       draughtsVariant = null,
+       isXiangqi = false,
+       isChess = false,
+       isGomoku = true,
+       gomokuVariant = variant;
   LanClientConnection.xiangqi()
     : config = const GoConfig(),
       draughtsVariant = null,
@@ -126,6 +127,11 @@ class LanClientConnection {
   }
 
   Future<void> connect(Uri uri, {required String token}) async {
+    if (isGomoku) {
+      LanMessage.validateGomokuConfig(
+        LanMessage.gomokuConfigToWire(gomokuVariant!),
+      );
+    }
     _uri = uri;
     _token = token;
     final socketUri = uri.path.endsWith('/easyplay/ws')
