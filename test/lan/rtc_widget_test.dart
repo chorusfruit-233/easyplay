@@ -41,11 +41,11 @@ void main() {
       const MaterialApp(
         home: RtcLobbyPage(
           game: 'gomoku',
-          gomokuVariant: GomokuVariant.professional,
+          gomokuVariant: GomokuVariant.soosyrv8,
         ),
       ),
     );
-    expect(find.text('15×15 · 竞技连珠'), findsOneWidget);
+    expect(find.text('15×15 · 索索夫-8'), findsOneWidget);
     final invite = RtcInvitation.offer(
       'gomoku',
       'v=0\r\n',

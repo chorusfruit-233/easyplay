@@ -1,0 +1,19 @@
+Rapfi 250615 / 0.43.01 — Gomoku/Renju engine
+Copyright (C) 2022–2025 Rapfi developers; GPL-3.0-or-later.
+https://github.com/dhbloo/rapfi
+Complete corresponding source: https://github.com/dhbloo/rapfi/tree/1be1551ced57e38d53ed58f6d74bf6f8b4bdc230
+Source archive, SHA-256, build commands and the only source modification are
+provided in EasyPlay tools/build_rapfi.py and docs/RAPFI.md. The modification
+protects an absent thread member in the single-thread build with MULTI_THREADING.
+Bundled builds: Android ARM64 baseline NEON (no DotProd), Web SIMD128 Worker
+(single-thread, no SharedArrayBuffer requirement). Command modules disabled.
+The application implements Soosõrv-8; Rapfi searches free-opening Renju positions.
+
+Neural networks and classical model: CC0 1.0 Universal.
+https://github.com/dhbloo/rapfi-networks/tree/918b757a129258e9e765f77fe17d507c2bb1a60b
+The Renju black and white mix9svq models and model210901.bin are unmodified.
+See MODEL-LICENSE.txt. Network/source checksums: tools/prepare_rapfi.py.
+
+Rapfi dependencies (complete source/licenses in the source archive):
+cpptoml (MIT), cxxopts (MIT), LZ4 (BSD-2-Clause), SIMDe (MIT).
+Their license texts are included in THIRD-PARTY-LICENSES.txt.

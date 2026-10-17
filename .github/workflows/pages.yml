@@ -40,6 +40,9 @@ jobs:
       - name: Verify Stockfish assets
         run: python3 tools/prepare_stockfish.py --web-only
 
+      - name: Verify Rapfi assets
+        run: python3 tools/prepare_rapfi.py --web-only
+
       - name: Install dependencies
         run: flutter pub get
 

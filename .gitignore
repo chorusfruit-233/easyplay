@@ -75,3 +75,8 @@ app.*.map.json
 /android/app/src/main/jniLibs/arm64-v8a/libpikafish.so
 /assets/pikafish/*.nnue
 /web/pikafish/*.nnue
+
+# Pinned CC0 Rapfi networks; prepare_rapfi.py reconstructs the Web data pack.
+/assets/rapfi/*.bin
+/assets/rapfi/*.bin.lz4
+/web/rapfi/*.data

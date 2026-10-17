@@ -163,6 +163,7 @@ void main() {
     }
     final duel = GomokuAiDuelController(
       session: session,
+      ai: RecordingGomokuAi(),
       config: const AiDuelConfig(
         blackLevel: GomokuAiLevel.intermediate,
         whiteLevel: GomokuAiLevel.beginner,

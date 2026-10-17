@@ -8,10 +8,12 @@ class GomokuOpeningPanel extends StatelessWidget {
     required this.session,
     required this.enabled,
     required this.onExchange,
+    required this.onDeclare,
   });
   final GomokuSession session;
   final bool enabled;
   final ValueChanged<bool> onExchange;
+  final ValueChanged<int> onDeclare;
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +35,19 @@ class GomokuOpeningPanel extends StatelessWidget {
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodySmall,
             ),
-          if (session.phase == GomokuPhase.exchange)
+          if (session.phase == GomokuPhase.declaration)
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 6,
+              children: [
+                for (var count = 1; count <= 8; count++)
+                  OutlinedButton(
+                    onPressed: enabled ? () => onDeclare(count) : null,
+                    child: Text('$count打'),
+                  ),
+              ],
+            ),
+          if (session.awaitingExchange)
             Wrap(
               alignment: WrapAlignment.center,
               spacing: 8,

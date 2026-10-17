@@ -38,11 +38,17 @@ val preparePikafish = tasks.register<Exec>("preparePikafish") {
     commandLine(providers.gradleProperty("stockfishPython").getOrElse(if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3"), "tools/prepare_pikafish.py", "--android-only")
 }
 
+val prepareRapfi = tasks.register<Exec>("prepareRapfi") {
+    group = "build"
+    workingDir(rootProject.projectDir.parentFile)
+    commandLine(providers.gradleProperty("stockfishPython").getOrElse(if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3"), "tools/prepare_rapfi.py", "--android-only")
+}
+
 tasks.matching {
     it.name == "preBuild" || (it.name.startsWith("merge") &&
         (it.name.endsWith("NativeLibs") || it.name.endsWith("JniLibFolders")))
 }.configureEach {
-    dependsOn(prepareStockfish, preparePikafish)
+    dependsOn(prepareStockfish, preparePikafish, prepareRapfi)
 }
 
 // Generate assets for rootBundle directly, so every Android entry point packs
@@ -74,6 +80,8 @@ val prepareLanWeb = tasks.register<Exec>("prepareLanWeb") {
         repository.resolve("tools/prepare_lan_web.py"),
         repository.resolve("tools/package_lan_android.py"),
         repository.resolve("tools/prepare_stockfish.py"),
+        repository.resolve("tools/prepare_pikafish.py"),
+        repository.resolve("tools/prepare_rapfi.py"),
     )
     inputs.property("flutterSdk", flutterSdk)
     inputs.file("$flutterSdk/bin/cache/flutter_tools.stamp")
@@ -136,6 +144,7 @@ android {
             useLegacyPackaging = true
             keepDebugSymbols += "**/libstockfish.so"
             keepDebugSymbols += "**/libpikafish.so"
+            keepDebugSymbols += "**/librapfi.so"
             keepDebugSymbols += "**/libkatago.so"
         }
     }

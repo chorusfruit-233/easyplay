@@ -11,7 +11,7 @@ class GomokuNegotiation {
 
 /// The authenticated host validates every move with the local rules engine.
 class GomokuLanAuthority {
-  GomokuLanAuthority({this.variant = GomokuVariant.professional})
+  GomokuLanAuthority({this.variant = GomokuVariant.soosyrv8})
     : _state = _GomokuLanState(variant);
   final GomokuVariant variant;
   final _GomokuLanState _state;
@@ -69,7 +69,7 @@ class GomokuLanAuthority {
 }
 
 class GomokuLanReplica {
-  GomokuLanReplica({this.variant = GomokuVariant.professional})
+  GomokuLanReplica({this.variant = GomokuVariant.soosyrv8})
     : _state = _GomokuLanState(variant);
   final GomokuVariant variant;
   _GomokuLanState _state;
@@ -155,6 +155,12 @@ class _GomokuLanState {
         if (session.actor != side ||
             !session.exchangeColors(data['exchange'] as bool)) {
           return '当前不能选择交换';
+        }
+      case LanMessageType.gomokuDeclare:
+        if (undoRequest != null) return '请先处理悔棋请求';
+        if (session.actor != side ||
+            !session.declareProposals(data['count'] as int)) {
+          return '当前不能声明五手候选数量';
         }
       case LanMessageType.pass:
         if (undoRequest != null) return '请先处理悔棋请求';

@@ -23,6 +23,7 @@ enum LanMessageType {
   stateSync,
   move,
   gomokuExchange,
+  gomokuDeclare,
   pass,
   resign,
   rejected,
@@ -289,6 +290,12 @@ class LanMessage {
       case LanMessageType.gomokuExchange:
         parseSide(data['side']);
         if (data['exchange'] is! bool) throw const FormatException('无效的交换选择');
+      case LanMessageType.gomokuDeclare:
+        parseSide(data['side']);
+        final count = data['count'];
+        if (count is! int || count < 1 || count > 8) {
+          throw const FormatException('无效的五手候选数量');
+        }
       case LanMessageType.pass:
       case LanMessageType.resign:
       case LanMessageType.undoRequest:
@@ -341,6 +348,7 @@ class LanMessage {
   static const eventTypes = {
     LanMessageType.move,
     LanMessageType.gomokuExchange,
+    LanMessageType.gomokuDeclare,
     LanMessageType.pass,
     LanMessageType.resign,
     LanMessageType.undoRequest,

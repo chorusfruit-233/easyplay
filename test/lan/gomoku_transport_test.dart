@@ -17,9 +17,9 @@ import 'package:http/testing.dart';
 
 const _config = <String, Object?>{
   'game': 'gomoku',
-  'rulesVersion': 3,
+  'rulesVersion': 4,
   'boardSize': 15,
-  'variant': 'professional',
+  'variant': 'soosyrv8',
 };
 
 void main() {
@@ -103,7 +103,7 @@ void main() {
         final room = await LanWebRoom.probe(origin, client: client);
         final valid =
             config['boardSize'] == 15 &&
-            config['rulesVersion'] == 3 &&
+            config['rulesVersion'] == 4 &&
             GomokuVariant.playable.any((v) => v.name == config['variant']);
         if (valid) {
           expect(room!.game, 'gomoku');

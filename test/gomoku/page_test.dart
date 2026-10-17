@@ -136,10 +136,10 @@ void main() {
     expect(page.session.moves.length, 1);
     await tester.pageBack();
     await tester.pumpAndSettle();
-    expect(find.text('竞技连珠 · 1 手'), findsOneWidget);
-    await tester.ensureVisible(find.text('竞技连珠 · 1 手'));
+    expect(find.text('索索夫-8 · 1 手'), findsOneWidget);
+    await tester.ensureVisible(find.text('索索夫-8 · 1 手'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('竞技连珠 · 1 手'));
+    await tester.tap(find.text('索索夫-8 · 1 手'));
     await tester.pumpAndSettle();
     final resumed = tester.widget<GomokuGamePage>(find.byType(GomokuGamePage));
     expect(resumed.session.pieceAt(const Cell(7, 7)), Side.black);
@@ -551,7 +551,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byType(DropdownButtonFormField<GomokuVariant>), findsNothing);
-      expect(find.textContaining('三手交换'), findsOneWidget);
+      expect(find.textContaining('两次交换'), findsOneWidget);
       expect(find.text('自由五子棋'), findsNothing);
       expect(find.text('标准五子棋'), findsNothing);
       await tester.ensureVisible(find.text('联机对弈'));

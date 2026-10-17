@@ -22,7 +22,7 @@ class LanWebRoom {
     this.origin,
     this.game,
     this.variant, {
-    this.gomokuVariant = GomokuVariant.professional,
+    this.gomokuVariant = GomokuVariant.soosyrv8,
   });
   final Uri origin;
   final String game;
@@ -76,7 +76,7 @@ class LanWebRoom {
       }
       final gomokuVariant = game == 'gomoku'
           ? LanMessage.parseGomokuVariant(Map<String, Object?>.from(data))
-          : GomokuVariant.professional;
+          : GomokuVariant.soosyrv8;
       DraughtsVariant? variant;
       if (game == 'draughts') {
         for (final item in DraughtsVariant.values) {

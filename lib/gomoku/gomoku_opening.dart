@@ -1,30 +1,48 @@
 import '../game_session.dart' show Cell, Side;
 
-enum GomokuPhase { opening, exchange, fourth, proposals, selection, normal }
+enum GomokuPhase {
+  opening,
+  exchange,
+  fourth,
+  declaration,
+  secondExchange,
+  proposals,
+  selection,
+  normal,
+}
 
-enum GomokuActionType { place, exchange, pass }
+enum GomokuActionType { place, exchange, declare, pass }
 
 class GomokuAction {
   const GomokuAction.place(Cell this.cell)
     : type = GomokuActionType.place,
+      count = null,
       exchange = null;
   const GomokuAction.exchange(bool this.exchange)
     : type = GomokuActionType.exchange,
+      count = null,
+      cell = null;
+  const GomokuAction.declare(int this.count)
+    : type = GomokuActionType.declare,
+      exchange = null,
       cell = null;
   const GomokuAction.pass()
     : type = GomokuActionType.pass,
+      count = null,
       cell = null,
       exchange = null;
 
   final GomokuActionType type;
   final Cell? cell;
   final bool? exchange;
+  final int? count;
 
   Map<String, Object?> toJson() => {
     'type': type.name,
     if (cell != null) 'row': cell!.row,
     if (cell != null) 'col': cell!.col,
     if (exchange != null) 'exchange': exchange,
+    if (count != null) 'count': count,
   };
 
   factory GomokuAction.fromJson(Object? value) {
@@ -33,6 +51,9 @@ class GomokuAction {
       return GomokuAction.exchange(value['exchange'] as bool);
     }
     if (value['type'] == 'pass') return const GomokuAction.pass();
+    if (value['type'] == 'declare' && value['count'] is int) {
+      return GomokuAction.declare(value['count'] as int);
+    }
     if (value['type'] == 'place' &&
         value['row'] is int &&
         value['col'] is int) {

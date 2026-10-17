@@ -144,7 +144,7 @@ Future<void> main(List<String> args) async {
         String variant;
         Map<String, Object?> saved;
         if (name == 'gomoku') {
-          final session = GomokuSession();
+          final session = GomokuSession(variant: GomokuVariant.professional);
           final current = CurrentGomoku(
             Random(seed),
             GomokuAiLevel.advanced.depth,

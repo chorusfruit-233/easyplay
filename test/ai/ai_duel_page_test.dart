@@ -5,6 +5,7 @@ import 'package:easyplay/draughts/widgets/draughts_board.dart';
 import 'package:easyplay/draughts/widgets/draughts_new_game_page.dart';
 import 'package:easyplay/game_session.dart' show Cell;
 import 'package:easyplay/gomoku/gomoku_ai_level.dart';
+import 'package:easyplay/gomoku/gomoku_ai.dart' show GomokuAi;
 import 'package:easyplay/gomoku/gomoku_session.dart';
 import 'package:easyplay/gomoku/gomoku_storage.dart';
 import 'package:easyplay/gomoku/widgets/gomoku_ai_duel_page.dart';
@@ -110,6 +111,7 @@ void main() {
                     initiallyPaused: true,
                   )
                 : GomokuAiDuelPage(
+                    ai: GomokuAi(),
                     session: GomokuSession(variant: GomokuVariant.renju),
                     config: gomokuConfig,
                     initiallyPaused: true,
@@ -152,6 +154,7 @@ void main() {
                     initiallyPaused: true,
                   )
                 : GomokuAiDuelPage(
+                    ai: GomokuAi(),
                     session: GomokuSession(variant: GomokuVariant.freestyle),
                     config: gomokuConfig,
                     initiallyPaused: true,

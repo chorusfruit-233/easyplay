@@ -106,7 +106,16 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
       console.log(phase);
       const resumed = await host.evaluate(() => easyplayRtcSmoke.resume().catch(e => { throw new Error(`resume: ${String(easyplayRtcSmoke.lastError() || e.message)}`); }));
       const resumedAnswer = await guest.evaluate(text => easyplayRtcSmoke.answer(text).catch(e => { throw new Error(`answer resumed: ${String(easyplayRtcSmoke.lastError() || e.message)}`); }), resumed);
+      try {
       await host.evaluate(text => easyplayRtcSmoke.accept(text).catch(e => { throw new Error(`accept resumed: ${String(easyplayRtcSmoke.lastError() || e.message)}`); }), resumedAnswer);
+      } catch (error) {
+        for (const [name,page] of [['host',host],['guest',guest]]) {
+          console.error(name + ' RTC diagnostic: ' + JSON.stringify(await page.evaluate(() => ({
+            error:easyplayRtcSmoke.lastError(), state:JSON.parse(easyplayRtcSmoke.state()),
+          }))));
+        }
+        throw error;
+      }
       await guest.waitForFunction(() => JSON.parse(easyplayRtcSmoke.state()).seq === 1);
       assert.equal((await state(host)).signature, (await state(guest)).signature);
       await action(host, 'large');
@@ -176,8 +185,8 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
       phase = `Flutter RTC ${game}: lobby`;
       const isGomoku = game.startsWith('gomoku');
       const wireGame = isGomoku ? 'gomoku' : game;
-      const wireVariant = 'professional';
-      const label = '竞技连珠';
+      const wireVariant = 'soosyrv8';
+      const label = '索索夫-8';
       const boardLabel = `${label}棋盘，15 行 15 列`;
       try {
         await Promise.all([host,guest].map(p => p.evaluate(g => easyplayRtcSmoke.lobby(g), game)));
@@ -296,6 +305,12 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
           assert.equal((await view(host)).actor,'black');
           assert.equal((await view(host)).exchanged,true);
           await confirm(host,8,8);
+          assert.equal((await view(host)).phase,'declaration');
+          await host.getByRole('button',{name:'2打',exact:true}).click();
+          await waitSeq(6);
+          assert.equal((await view(guest)).phase,'secondExchange');
+          await guest.getByRole('button',{name:'不交换',exact:true}).click();
+          await waitSeq(7);
           await confirm(guest,8,7);
           await confirm(guest,7,8);
           assert.equal((await view(host)).session.moves.length,4);
@@ -308,10 +323,10 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
           assert.deepEqual(sixth.session.moves[5],{row:8,col:7,side:'white'});
           await host.getByRole('button',{name:'请求悔棋',exact:true}).click();
           await guest.getByRole('button',{name:'同意',exact:true}).click();
-          await waitSeq(11);
+          await waitSeq(13);
           assert.equal((await view(host)).session.moves.length,5);
           assert.deepEqual((await view(host)).session,(await view(guest)).session);
-          console.log('Flutter RTC competitive Renju: preview, three-stone opening, swapped identities, two proposals, selection, W6 and negotiated undo passed');
+          console.log('Flutter RTC Soosõrv-8: preview, three-stone opening, declaration, both swap decisions, two proposals, selection, W6 and negotiated undo passed');
 
         }
         console.log(`Flutter RTC ${game} lobby: create, invite, answer, authenticated wait and manual start passed`);

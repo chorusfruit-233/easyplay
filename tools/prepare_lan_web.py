@@ -23,6 +23,7 @@ def main() -> None:
     subprocess.run([sys.executable, str(ROOT / "tools/prepare_stockfish.py"), "--web-only"],
                    cwd=ROOT, check=True)
     subprocess.run([sys.executable, str(ROOT / "tools/prepare_pikafish.py"), "--web-only"], cwd=ROOT, check=True)
+    subprocess.run([sys.executable, str(ROOT / "tools/prepare_rapfi.py"), "--web-only"], cwd=ROOT, check=True)
     # Deleted static files may otherwise survive in Flutter's Web output.
     if WEB_BUILD.exists():
         shutil.rmtree(WEB_BUILD)

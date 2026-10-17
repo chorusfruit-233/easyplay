@@ -93,14 +93,13 @@ class LanClientConnection {
       isChess = true,
       isGomoku = false,
       gomokuVariant = null;
-  LanClientConnection.gomoku({
-    GomokuVariant variant = GomokuVariant.professional,
-  }) : config = const GoConfig(),
-       draughtsVariant = null,
-       isXiangqi = false,
-       isChess = false,
-       isGomoku = true,
-       gomokuVariant = variant;
+  LanClientConnection.gomoku({GomokuVariant variant = GomokuVariant.soosyrv8})
+    : config = const GoConfig(),
+      draughtsVariant = null,
+      isXiangqi = false,
+      isChess = false,
+      isGomoku = true,
+      gomokuVariant = variant;
   LanClientConnection.xiangqi()
     : config = const GoConfig(),
       draughtsVariant = null,

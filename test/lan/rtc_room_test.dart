@@ -28,7 +28,7 @@ void main() {
               : 'draughts',
           'v=0\r\n',
           variant: variant,
-          gomokuVariant: GomokuVariant.professional,
+          gomokuVariant: GomokuVariant.soosyrv8,
         );
         final room = RtcRoom.host(invite);
         final guest = RtcMatchClient(invite);
@@ -225,7 +225,7 @@ void main() {
       final invite = RtcInvitation.offer(
         'gomoku',
         'v=0\r\n',
-        gomokuVariant: GomokuVariant.professional,
+        gomokuVariant: GomokuVariant.soosyrv8,
       );
       final room = RtcRoom.host(invite);
       final guest = RtcMatchClient(
@@ -246,11 +246,11 @@ void main() {
         expect(room.coordinator!.playerCount, 1);
         expect(
           room.client.gomokuReplica!.session.variant,
-          GomokuVariant.professional,
+          GomokuVariant.soosyrv8,
         );
         expect(
           room.coordinator!.gomokuAuthority!.session.variant,
-          GomokuVariant.professional,
+          GomokuVariant.soosyrv8,
         );
       } finally {
         await guest.close();
