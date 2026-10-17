@@ -71,11 +71,17 @@ class RtcPeer {
       () => _pc.sctp?.maxMessageSize.toInt() ?? rtcMaxFrameBytes,
     );
     _transport = RtcMessageTransport(_channel!);
-    data.onopen = ((web.Event _) {
+    void opened() {
+      if (_closed || _opened.isCompleted || data.readyState != 'open') return;
       _state = '通道已打开，正在握手/同步';
       _states.add(_state);
-      if (!_opened.isCompleted) _opened.complete(_transport!);
-    }).toJS;
+      _opened.complete(_transport!);
+    }
+
+    data.onopen = ((web.Event _) => opened()).toJS;
+    // Receiver datachannel callbacks can arrive after the channel opened.
+    // Complete the handoff now instead of waiting for an event already missed.
+    if (data.readyState == 'open') opened();
   }
 
   Future<String> _gather(web.RTCSessionDescriptionInit description) async {

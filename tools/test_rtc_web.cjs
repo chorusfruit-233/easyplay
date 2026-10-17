@@ -29,11 +29,37 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
     // deterministically after the room has authenticated the guest.
     await Promise.all(contexts.map(context => context.addInitScript(() => {
       const NativePeer = window.RTCPeerConnection;
+      const onDataChannel = Object.getOwnPropertyDescriptor(NativePeer.prototype, 'ondatachannel');
       window.__easyplayTestPeers = [];
+      window.__easyplayTestOpenedChannels = 0;
       window.RTCPeerConnection = new Proxy(NativePeer, {
         construct(target, args) {
           const peer = new target(...args);
           window.__easyplayTestPeers.push(peer);
+          // A fast receiver can hand the app an already-open DataChannel.
+          // Deliver after the native open event so a newly installed onopen
+          // handler cannot be relied on to complete the app's handshake.
+          Object.defineProperty(peer, 'ondatachannel', {
+            configurable: true,
+            set(handler) {
+              onDataChannel.set.call(peer, handler == null ? null : event => {
+                const channel = event.channel;
+                let delivered = false;
+                const deliver = () => {
+                  if (delivered || channel.readyState !== 'open') return;
+                  delivered = true;
+                  channel.removeEventListener('open', deliver);
+                  setTimeout(() => {
+                    window.__easyplayTestOpenedChannels++;
+                    handler.call(peer, event);
+                  }, 0);
+                };
+                channel.addEventListener('open', deliver, {once: true});
+                // The native open event may also predate datachannel itself.
+                if (channel.readyState === 'open') setTimeout(deliver, 20);
+              });
+            },
+          });
           return peer;
         },
       });
@@ -300,6 +326,8 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
         throw error;
       }
     }
+    assert.ok(await guest.evaluate(() => window.__easyplayTestOpenedChannels > 0), 'already-open receiver channels were exercised');
+    console.log('Already-open DataChannel handoff: authenticated transport and all Flutter lobbies passed');
     await Promise.all(contexts.map(c => c.close()));
   } finally {
     await browser?.close();
