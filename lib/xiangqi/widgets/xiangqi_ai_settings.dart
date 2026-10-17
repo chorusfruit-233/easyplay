@@ -35,14 +35,22 @@ class _XiangqiAiSettingsPageState extends State<XiangqiAiSettingsPage> {
         const SizedBox(height: 12),
         Wrap(
           spacing: 8,
+          runSpacing: 8,
           children: [
             for (final level in XiangqiAiLevel.values)
               ChoiceChip(
-                label: Text(level.label),
+                label: Text(level.displayLabel),
                 selected: _level == level,
                 onSelected: (_) => setState(() => _level = level),
               ),
           ],
+        ),
+        const SizedBox(height: 12),
+        Text(
+          XiangqiAiLevel.strengthNote,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         ),
         const SizedBox(height: 32),
         FilledButton(
