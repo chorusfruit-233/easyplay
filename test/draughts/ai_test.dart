@@ -17,9 +17,15 @@ void main() {
     DraughtsAiLevel.intermediate,
     DraughtsAiLevel.advanced,
   ]) {
-    test('${level.label} varies equally scored opening moves', () async {
+    test('${level.label} varies equally scored quiet moves', () async {
       final session = DraughtsSession(
         DraughtsRules.forVariant(DraughtsVariant.english),
+        position: board({
+          const Cell(2, 1): const DraughtsPiece(Side.black, DraughtsRank.king),
+          const Cell(5, 6): const DraughtsPiece(Side.black, DraughtsRank.king),
+          const Cell(2, 5): const DraughtsPiece(Side.white, DraughtsRank.king),
+          const Cell(5, 2): const DraughtsPiece(Side.white, DraughtsRank.king),
+        }),
       );
       final before = session.toJson();
       final ai = DraughtsAi(random: Random(42));

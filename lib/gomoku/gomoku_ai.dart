@@ -9,10 +9,14 @@ export 'gomoku_ai_level.dart';
 part 'gomoku_ai_position.dart';
 
 class GomokuAiResult {
-  const GomokuAiResult(this.cell, this.depth, this.nodes);
+  const GomokuAiResult(this.cell, this.depth, this.nodes, {this.evaluation});
   final Cell cell;
   final int depth;
   final int nodes;
+
+  /// Side-to-move score from a completed iteration or direct tactical proof.
+  /// An interrupted search without a completed iteration has no evaluation.
+  final int? evaluation;
 }
 
 /// Bounded local search with mandatory defense, forcing-line extensions and a
@@ -59,6 +63,63 @@ class GomokuAi {
       ];
       return choices.isEmpty ? null : GomokuAction.place(_choose(choices));
     }
+    if (level == GomokuAiLevel.advanced) return _advancedOpening(session);
+    return _heuristicOpening(session);
+  }
+
+  Future<GomokuAction?> _advancedOpening(GomokuSession session) async {
+    Future<GomokuAiResult?> analyze(
+      GomokuSession candidate,
+      int branches,
+    ) async {
+      final pending = search(
+        candidate,
+        level: GomokuAiLevel.advanced,
+        maxDepth: 3,
+        maxNodes: GomokuAiLevel.advanced.nodes ~/ branches,
+        timeLimit: Duration(
+          milliseconds: GomokuAiLevel.advanced.milliseconds ~/ branches,
+        ),
+      );
+      final generation = _generation;
+      final result = await pending;
+      return generation == _generation ? result : null;
+    }
+
+    if (session.phase == GomokuPhase.selection) {
+      int? best;
+      final choices = <Cell>[];
+      for (final cell in session.proposals) {
+        final candidate = session.fork()..place(cell);
+        final result = await analyze(candidate, session.proposals.length);
+        if (result == null) return null;
+        final score = result.evaluation;
+        if (score == null) return _heuristicOpening(session);
+        if (best == null || score > best) {
+          best = score;
+          choices.clear();
+        }
+        if (score == best) choices.add(cell);
+      }
+      return choices.isEmpty ? null : GomokuAction.place(_choose(choices));
+    }
+    final result = await analyze(session, 1);
+    if (result == null) return null;
+    final score = result.evaluation;
+    if (score == null) return _heuristicOpening(session);
+    if (session.phase == GomokuPhase.exchange) {
+      // Normal search lets black choose a free fifth move. A proven white win
+      // remains valid when white can choose between two fifths. A black win
+      // need not survive that constraint, so ordinary scores retain the book
+      // decision instead of treating this approximation as the opening game.
+      return score >= _Search.win - 1000
+          ? const GomokuAction.exchange(false)
+          : _heuristicOpening(session);
+    }
+    return GomokuAction.place(result.cell);
+  }
+
+  GomokuAction? _heuristicOpening(GomokuSession session) {
     final position = _Position(session);
     int value(int index, Side side) => position.pattern(index, side).score;
     if (session.phase == GomokuPhase.exchange) {
@@ -128,6 +189,9 @@ class GomokuAi {
     failureReason = null;
     if (source.gameOver) return null;
     final position = _Position(source);
+    final proposalSession = source.phase == GomokuPhase.proposals
+        ? source.fork()
+        : null;
     final search = _Search(
       position,
       cancelled: () => generation != _generation,
@@ -140,11 +204,15 @@ class GomokuAi {
           ? 10
           : 8,
       extension: level == GomokuAiLevel.advanced
-          ? 8
+          ? 12
           : level == GomokuAiLevel.intermediate
           ? 6
           : 2,
       varietyMargin: level == GomokuAiLevel.beginner ? 1500 : 0,
+      advanced: level == GomokuAiLevel.advanced,
+      rootAllowed: proposalSession == null
+          ? null
+          : (index) => proposalSession.canPlace(position.cell(index)),
     );
     await Future<void>.delayed(Duration.zero);
     if (generation != _generation) return null;
@@ -160,9 +228,15 @@ class GomokuAi {
         position.cell(_choose(search.randomRoots)),
         result.depth,
         result.nodes,
+        evaluation: level == GomokuAiLevel.beginner ? null : search.evaluation,
       );
     }
-    return result;
+    return GomokuAiResult(
+      result.cell,
+      result.depth,
+      result.nodes,
+      evaluation: search.evaluation,
+    );
   }
 }
 
@@ -224,18 +298,50 @@ class _Search {
     required this.candidateLimit,
     required this.extension,
     required this.varietyMargin,
+    required this.advanced,
+    this.rootAllowed,
   });
   static const win = 10000000;
   final _Position position;
   final bool Function() cancelled;
   final int maxNodes, maxDepth, candidateLimit, extension, varietyMargin;
+  final bool advanced;
+  final bool Function(int)? rootAllowed;
+  int? evaluation;
   final Duration timeLimit;
   final clock = Stopwatch();
   final _table = <(int, int, Side), _Entry>{};
   final _frontiers = <(int, int, Side), _Frontier>{};
+  final _killers = <int, List<int>>{};
+  final _history = <(Side, int), int>{};
   final randomRoots = <int>[];
   int nodes = 0, operations = 0;
   bool noLegalMoves = false;
+
+  List<_Move> _ordered(List<_Move> moves, int? preferred, int ply) {
+    if (!advanced || moves.length < 2) return moves;
+    final killers = _killers[ply] ?? const <int>[];
+    int priority(_Move move) =>
+        (move.index == preferred ? 100000000 : 0) +
+        (move.attack.forcing ? 10000000 : 0) +
+        move.order +
+        (killers.contains(move.index) ? 2000 : 0) +
+        (_history[(position.turn, move.index)] ?? 0);
+    return List<_Move>.of(moves)..sort((a, b) {
+      final score = priority(b).compareTo(priority(a));
+      return score != 0 ? score : a.index.compareTo(b.index);
+    });
+  }
+
+  void _cutoff(_Move move, int depth, int ply) {
+    if (!advanced || depth <= 0 || move.attack.forcing) return;
+    final killers = _killers.putIfAbsent(ply, () => []);
+    killers.remove(move.index);
+    killers.insert(0, move.index);
+    if (killers.length > 2) killers.removeLast();
+    final key = (position.turn, move.index);
+    _history[key] = min(2000, (_history[key] ?? 0) + depth * depth * 4);
+  }
 
   void _check() {
     if (cancelled() || clock.elapsed >= timeLimit) throw _SearchStopped();
@@ -255,6 +361,7 @@ class _Search {
 
   Future<int?> _firstLegal() async {
     for (final move in position.candidateCells()) {
+      if (rootAllowed != null && !rootAllowed!(move)) continue;
       if (operations++ % 16 == 0) await Future<void>.delayed(Duration.zero);
       final analysis = position.analysis(move, position.turn, () {
         if (cancelled()) throw _SearchStopped();
@@ -283,6 +390,11 @@ class _Search {
     Set<int>? defenses;
     var stableDefenses = true;
     for (final index in position.nearbyCells()) {
+      if (rootAllowed != null &&
+          position._undo.isEmpty &&
+          !rootAllowed!(index)) {
+        continue;
+      }
       await _poll();
       var attack = position.pattern(index, position.turn);
       var defense = position.pattern(index, position.turn.opponent);
@@ -441,6 +553,8 @@ class _Search {
       }
       best = root.moves.first.index;
       if (root.wins || root.fork || root.forced || root.forkLoss) {
+        if (root.wins) evaluation = win - 1;
+        if (root.fork) evaluation = win - 3;
         return GomokuAiResult(position.cell(best), 1, nodes);
       }
       if (root.danger) {
@@ -477,7 +591,7 @@ class _Search {
     for (var depth = 1; depth <= maxDepth; depth++) {
       var score = -win * 2, candidate = best;
       final scores = <int, int>{};
-      final moves = List<_Move>.of(root.moves);
+      final moves = List<_Move>.of(_ordered(root.moves, best, 0));
       final pv = moves.indexWhere((move) => move.index == best);
       if (pv > 0) moves.insert(0, moves.removeAt(pv));
       try {
@@ -486,17 +600,38 @@ class _Search {
           final won = position.place(move);
           late int value;
           try {
-            value = won
-                ? win - 1
-                : -await _negamax(
-                    depth - 1,
-                    -win * 2,
-                    // A cutoff at -score can look tied while hiding a worse
-                    // reply. Search past the entire selectable score band.
-                    -score + varietyMargin + 1,
-                    1,
-                    extension,
-                  );
+            if (won) {
+              value = win - 1;
+            } else if (advanced && scores.isNotEmpty) {
+              // The two-point scout window proves ties as well as improvements.
+              // A fail-high improvement is re-searched before it can be chosen.
+              value = -await _negamax(
+                depth - 1,
+                -score - 1,
+                -score + 1,
+                1,
+                extension,
+              );
+              if (value > score) {
+                value = -await _negamax(
+                  depth - 1,
+                  -win * 2,
+                  -score + 1,
+                  1,
+                  extension,
+                );
+              }
+            } else {
+              value = -await _negamax(
+                depth - 1,
+                -win * 2,
+                // A cutoff at -score can look tied while hiding a worse
+                // reply. Search past the entire selectable score band.
+                -score + varietyMargin + 1,
+                1,
+                extension,
+              );
+            }
           } finally {
             position.undo();
           }
@@ -513,6 +648,7 @@ class _Search {
       }
       best = candidate;
       lastScores = scores;
+      evaluation = score;
       completedDepth = depth;
       if (score.abs() >= win - 1000) break;
     }
@@ -570,7 +706,7 @@ class _Search {
     if (frontier.forkLoss) return -win + ply + 4;
     if (frontier.fork) return win - ply - 3;
     if (frontier.moves.isEmpty) return -win + ply;
-    var moves = frontier.moves;
+    var moves = _ordered(frontier.moves, entry?.move, ply);
     var best = -win * 2;
     if (depth <= 0) {
       if (extensionLeft <= 0) return frontier.evaluation;
@@ -584,19 +720,39 @@ class _Search {
       }
     }
     var bestMove = moves.first.index;
+    var searched = 0;
     for (final move in moves) {
       final won = position.place(move);
       late int score;
       try {
-        score = won
-            ? win - ply - 1
-            : -await _negamax(
-                depth - 1,
-                -beta,
-                -alpha,
-                ply + 1,
-                extensionLeft - (depth <= 0 ? 1 : 0),
-              );
+        if (won) {
+          score = win - ply - 1;
+        } else if (advanced && searched > 0) {
+          score = -await _negamax(
+            depth - 1,
+            -alpha - 1,
+            -alpha,
+            ply + 1,
+            extensionLeft - (depth <= 0 ? 1 : 0),
+          );
+          if (score > alpha && score < beta) {
+            score = -await _negamax(
+              depth - 1,
+              -beta,
+              -alpha,
+              ply + 1,
+              extensionLeft - (depth <= 0 ? 1 : 0),
+            );
+          }
+        } else {
+          score = -await _negamax(
+            depth - 1,
+            -beta,
+            -alpha,
+            ply + 1,
+            extensionLeft - (depth <= 0 ? 1 : 0),
+          );
+        }
       } finally {
         position.undo();
       }
@@ -604,8 +760,12 @@ class _Search {
         best = score;
         bestMove = move.index;
       }
+      searched++;
       alpha = max(alpha, score);
-      if (alpha >= beta) break;
+      if (alpha >= beta) {
+        _cutoff(move, depth, ply);
+        break;
+      }
     }
     if (depth > 0) {
       final bound = best <= originalAlpha

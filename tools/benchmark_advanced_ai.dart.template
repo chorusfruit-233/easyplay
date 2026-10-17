@@ -1,0 +1,303 @@
+// Prepared and launched by benchmark_advanced_ai.py; baseline files stay local.
+import 'dart:convert';
+import 'dart:io';
+import 'dart:math';
+
+import '../lib/game_session.dart' show Side;
+import '../lib/gomoku/gomoku_ai.dart';
+import '../lib/gomoku/gomoku_session.dart';
+import '../lib/draughts/draughts_ai.dart';
+import '../lib/draughts/draughts_ai_level.dart';
+import '../lib/draughts/draughts_rules.dart';
+import '../lib/draughts/draughts_session.dart';
+import '../lib/draughts/draughts_variant.dart';
+import '../.dart_tool/advanced_ai_baseline/gomoku_ai.dart' as old_gomoku;
+import '../.dart_tool/advanced_ai_baseline/draughts_ai.dart' as old_draughts;
+
+mixin SearchStats {
+  int searchedDepth = 0, searchedNodes = 0;
+  void resetStats() {
+    searchedDepth = 0;
+    searchedNodes = 0;
+  }
+
+  void note(dynamic result) {
+    if (result == null) return;
+    searchedDepth = max(searchedDepth, result.depth as int);
+    searchedNodes += result.nodes as int;
+  }
+}
+
+class CurrentGomoku extends GomokuAi with SearchStats {
+  CurrentGomoku(Random random, this.depth, this.nodes, this.time)
+    : super(random: random);
+  final int depth, nodes;
+  final Duration time;
+  @override
+  Future<GomokuAiResult?> search(
+    GomokuSession source, {
+    GomokuAiLevel level = GomokuAiLevel.intermediate,
+    int? maxNodes,
+    int? maxDepth,
+    Duration? timeLimit,
+  }) async {
+    final sharedNodes = maxNodes == null
+        ? nodes
+        : min(nodes, max(1, nodes * maxNodes ~/ GomokuAiLevel.advanced.nodes));
+    final sharedTime = timeLimit == null
+        ? time
+        : Duration(
+            microseconds: min(
+              time.inMicroseconds,
+              time.inMicroseconds *
+                  timeLimit.inMicroseconds ~/
+                  Duration(
+                    milliseconds: GomokuAiLevel.advanced.milliseconds,
+                  ).inMicroseconds,
+            ),
+          );
+    final result = await super.search(
+      source,
+      level: level,
+      maxNodes: sharedNodes,
+      maxDepth: min(depth, maxDepth ?? depth),
+      timeLimit: sharedTime,
+    );
+    note(result);
+    return result;
+  }
+}
+
+class BaselineGomoku extends old_gomoku.GomokuAi with SearchStats {
+  BaselineGomoku(Random random, this.depth, this.nodes, this.time)
+    : super(random: random);
+  final int depth, nodes;
+  final Duration time;
+  @override
+  Future<old_gomoku.GomokuAiResult?> search(
+    GomokuSession source, {
+    GomokuAiLevel level = GomokuAiLevel.intermediate,
+    int? maxNodes,
+    int? maxDepth,
+    Duration? timeLimit,
+  }) async {
+    final result = await super.search(
+      source,
+      level: level,
+      maxNodes: min(nodes, maxNodes ?? nodes),
+      maxDepth: min(depth, maxDepth ?? depth),
+      timeLimit: timeLimit != null && timeLimit < time ? timeLimit : time,
+    );
+    note(result);
+    return result;
+  }
+}
+
+Future<void> main(List<String> args) async {
+  String option(String key, String fallback) {
+    final at = args.indexOf('--$key');
+    return at < 0 ? fallback : args[at + 1];
+  }
+
+  final metadata =
+      jsonDecode(
+            File(
+              '.dart_tool/advanced_ai_baseline/metadata.json',
+            ).readAsStringSync(),
+          )
+          as Map;
+  final pairs = int.parse(option('pairs', '3'));
+  final nodes = int.parse(option('nodes', '1500'));
+  final plies = int.parse(option('plies', '120'));
+  final game = option('game', 'all');
+  final productBudgets = args.contains('--product-budgets');
+  int nodeBudget(String game, bool current, int currentNodes) => !productBudgets
+      ? nodes
+      : current
+      ? currentNodes
+      : metadata[game]['nodes'] as int;
+  Duration deadline(String game, bool current, int currentMs) => Duration(
+    milliseconds: !productBudgets
+        ? 5000
+        : current
+        ? currentMs
+        : metadata[game]['milliseconds'] as int,
+  );
+  final records = <Map<String, Object?>>[];
+  final metrics = <String, List<int>>{};
+  final clock = Stopwatch()..start();
+  void measure(String engine, int depth, int count, int micros) {
+    final values = metrics.putIfAbsent(engine, () => [0, 0, 0, 0]);
+    values[0]++;
+    values[1] += depth;
+    values[2] += count;
+    values[3] += micros;
+  }
+
+  for (final name in ['gomoku', 'draughts']) {
+    if (game != 'all' && game != name) continue;
+    for (var pair = 0; pair < pairs; pair++) {
+      for (final side in Side.values) {
+        final seed = 1700 + pair;
+        final timer = Stopwatch();
+        String result;
+        String variant;
+        Map<String, Object?> saved;
+        if (name == 'gomoku') {
+          final session = GomokuSession();
+          final current = CurrentGomoku(
+            Random(seed),
+            GomokuAiLevel.advanced.depth,
+            nodeBudget(name, true, GomokuAiLevel.advanced.nodes),
+            deadline(name, true, GomokuAiLevel.advanced.milliseconds),
+          );
+          final baseline = BaselineGomoku(
+            Random(seed),
+            metadata['gomoku']['depth'] as int,
+            nodeBudget(name, false, 0),
+            deadline(name, false, 0),
+          );
+          while (!session.gameOver && session.moves.length < plies) {
+            final useNew = session.actor == side;
+            current.resetStats();
+            baseline.resetStats();
+            timer
+              ..reset()
+              ..start();
+            final action = useNew
+                ? await current.decide(session, level: GomokuAiLevel.advanced)
+                : await baseline.decide(session, level: GomokuAiLevel.advanced);
+            if (action == null) throw StateError('No Gomoku action');
+            final SearchStats selected = useNew ? current : baseline;
+            measure(
+              '$name/${useNew ? 'new' : 'baseline'}',
+              selected.searchedDepth,
+              selected.searchedNodes,
+              timer.elapsedMicroseconds,
+            );
+            if (!session.applyAction(action))
+              throw StateError('Illegal Gomoku action');
+          }
+          result = !session.gameOver
+              ? 'unfinished'
+              : session.winner == null
+              ? 'draw'
+              : session.winner == session.colorForPlayer(side)
+              ? 'new'
+              : 'baseline';
+          variant = session.variant.name;
+          saved = session.toJson();
+        } else {
+          final selected =
+              DraughtsVariant.values[pair % DraughtsVariant.values.length];
+          final session = DraughtsSession(DraughtsRules.forVariant(selected));
+          final opening = Random(seed);
+          for (var step = 0; step < 4 && !session.gameOver; step++) {
+            final moves = session.legalMoves();
+            session.applyMove(moves[opening.nextInt(moves.length)]);
+          }
+          final current = DraughtsAi(random: Random(seed));
+          final baseline = old_draughts.DraughtsAi(random: Random(seed));
+          while (!session.gameOver && session.moves.length < plies) {
+            final useNew = session.turn == side;
+            timer
+              ..reset()
+              ..start();
+            final dynamic move = useNew
+                ? await current.search(
+                    session,
+                    level: DraughtsAiLevel.advanced,
+                    maxNodes: nodeBudget(
+                      name,
+                      true,
+                      DraughtsAiLevel.advanced.nodes,
+                    ),
+                    timeLimit: deadline(
+                      name,
+                      true,
+                      DraughtsAiLevel.advanced.milliseconds,
+                    ),
+                  )
+                : await baseline.search(
+                    session,
+                    level: DraughtsAiLevel.advanced,
+                    maxDepth: metadata['draughts']['depth'] as int,
+                    maxNodes: nodeBudget(name, false, 0),
+                    timeLimit: deadline(name, false, 0),
+                  );
+            if (move == null) throw StateError('No Draughts move');
+            measure(
+              '$name/${useNew ? 'new' : 'baseline'}',
+              move.depth as int,
+              move.nodes as int,
+              timer.elapsedMicroseconds,
+            );
+            if (!session.applyMove(move.move))
+              throw StateError('Illegal Draughts move');
+          }
+          result = !session.gameOver
+              ? 'unfinished'
+              : session.result!.winner == null
+              ? 'draw'
+              : session.result!.winner == side
+              ? 'new'
+              : 'baseline';
+          variant = selected.name;
+          saved = session.toJson();
+        }
+        records.add({
+          'game': name,
+          'pair': pair,
+          'variant': variant,
+          'newSide': side.name,
+          'result': result,
+          'session': saved,
+        });
+        stdout.writeln('$name $pair ${side.name}: $result');
+      }
+    }
+  }
+  final report = <String, Object?>{
+    'baseline': metadata,
+    'mode': productBudgets ? 'product-budgets' : 'equal-nodes',
+    'nodes': productBudgets ? null : nodes,
+    'milliseconds': productBudgets ? null : 5000,
+    'advancedProfiles': {
+      'gomoku': {
+        'depth': GomokuAiLevel.advanced.depth,
+        'nodes': GomokuAiLevel.advanced.nodes,
+        'milliseconds': GomokuAiLevel.advanced.milliseconds,
+      },
+      'draughts': {
+        'depth': DraughtsAiLevel.advanced.depth,
+        'nodes': DraughtsAiLevel.advanced.nodes,
+        'milliseconds': DraughtsAiLevel.advanced.milliseconds,
+      },
+    },
+    'maxPlies': plies,
+    'elapsedMs': clock.elapsedMilliseconds,
+    'summary': {
+      for (final name in ['gomoku', 'draughts'])
+        name: {
+          for (final result in ['new', 'baseline', 'draw', 'unfinished'])
+            result: records
+                .where((r) => r['game'] == name && r['result'] == result)
+                .length,
+        },
+    },
+    'metrics': {
+      for (final entry in metrics.entries)
+        entry.key: {
+          'decisions': entry.value[0],
+          'averageDepth': entry.value[1] / entry.value[0],
+          'averageNodes': entry.value[2] / entry.value[0],
+          'averageMs': entry.value[3] / entry.value[0] / 1000,
+        },
+    },
+    'records': records,
+  };
+  File(
+    option('output', '/tmp/easyplay-advanced-benchmark.json'),
+  ).writeAsStringSync(const JsonEncoder.withIndent('  ').convert(report));
+  stdout.writeln(jsonEncode(report['summary']));
+}

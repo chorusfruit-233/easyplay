@@ -20,8 +20,8 @@ const root = path.resolve(__dirname, '../build/web');
     for (const scenario of [
       {name:'local keep colours phone', exchange:false, width:420},
       {name:'local exchange desktop', exchange:true, width:1280},
-      {name:'AI opening black', ai:true, human:'black', width:420},
-      {name:'AI opening white then exchange', ai:true, human:'white', exchange:true, width:1280},
+      {name:'advanced AI opening black', ai:true, human:'black', width:420},
+      {name:'advanced AI opening white then exchange', ai:true, human:'white', exchange:true, width:1280},
     ]) {
       const context = await browser.newContext({viewport:{width:scenario.width, height:scenario.width===420 ? 800 : 720}});
       const page = await context.newPage(), failures = [];
@@ -58,6 +58,8 @@ const root = path.resolve(__dirname, '../build/web');
         assert.equal(await page.getByText('标准五子棋', {exact:true}).count(),0);
         await button(new RegExp(`^${scenario.ai ? '人机对弈' : '本地双人'}`)).click();
         if (scenario.ai) {
+          await button(/^难度/).click();
+          await page.getByRole('menuitem',{name:'高级',exact:true}).click();
           if (scenario.human==='white') {
             await button(/^开局执棋方/).click();
             await page.getByRole('menuitem',{name:'白方',exact:true}).click();
