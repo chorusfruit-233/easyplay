@@ -25,6 +25,10 @@ class GomokuAi {
 
   void cancel() => _generation++;
 
+  T _choose<T>(List<T> choices) => choices.length == 1
+      ? choices.first
+      : choices[_random.nextInt(choices.length)];
+
   /// Opening actions belong to players, rather than the colour being placed.
   /// Normal play retains the tactical search and its cancellation budget.
   Future<GomokuAction?> decide(
@@ -46,15 +50,14 @@ class GomokuAi {
     await Future<void>.delayed(Duration.zero);
     if (generation != _generation) return null;
     if (session.phase == GomokuPhase.opening) {
-      const book = [Cell(7, 7), Cell(6, 7), Cell(6, 6)];
-      final preferred = book[session.moves.length];
-      if (session.canPlace(preferred)) return GomokuAction.place(preferred);
-      for (var row = 5; row <= 9; row++) {
-        for (var col = 5; col <= 9; col++) {
-          final cell = Cell(row, col);
-          if (session.canPlace(cell)) return GomokuAction.place(cell);
-        }
-      }
+      // The rule core retains B1 at the centre and the prescribed W2/B3
+      // regions. Derive each choice from the board, including resumed openings.
+      final choices = [
+        for (var row = 5; row <= 9; row++)
+          for (var col = 5; col <= 9; col++)
+            if (session.canPlace(Cell(row, col))) Cell(row, col),
+      ];
+      return choices.isEmpty ? null : GomokuAction.place(_choose(choices));
     }
     final position = _Position(session);
     int value(int index, Side side) => position.pattern(index, side).score;
@@ -74,7 +77,19 @@ class GomokuAi {
             Side.black,
           ).compareTo(value(b.row * 15 + b.col, Side.black)),
         );
-      return GomokuAction.place(choices.first);
+      final best = value(
+        choices.first.row * 15 + choices.first.col,
+        Side.black,
+      );
+      return GomokuAction.place(
+        _choose(
+          choices
+              .takeWhile(
+                (cell) => value(cell.row * 15 + cell.col, Side.black) == best,
+              )
+              .toList(),
+        ),
+      );
     }
     if (session.phase == GomokuPhase.proposals) {
       final candidates = position
@@ -87,7 +102,16 @@ class GomokuAi {
         ),
       );
       if (candidates.isNotEmpty) {
-        return GomokuAction.place(position.cell(candidates.first));
+        int score(int index) =>
+            value(index, Side.black) + value(index, Side.white);
+        final best = score(candidates.first);
+        return GomokuAction.place(
+          position.cell(
+            _choose(
+              candidates.takeWhile((index) => score(index) == best).toList(),
+            ),
+          ),
+        );
       }
     }
     return null;
@@ -120,6 +144,7 @@ class GomokuAi {
           : level == GomokuAiLevel.intermediate
           ? 6
           : 2,
+      varietyMargin: level == GomokuAiLevel.beginner ? 1500 : 0,
     );
     await Future<void>.delayed(Duration.zero);
     if (generation != _generation) return null;
@@ -127,15 +152,12 @@ class GomokuAi {
     if (generation != _generation) return null;
     if (search.noLegalMoves) failureReason = '棋盘上没有合法落点，可悔棋或认输';
     if (result == null) return null;
-    // Entry-level variety belongs only to quiet, searched-safe moves. A win,
-    // required block, forcing line or known losing reply is never randomized.
-    if (level == GomokuAiLevel.beginner &&
-        search.randomRoots.length > 1 &&
-        _random.nextDouble() < .75) {
+    // Stronger levels vary only proven equal scores from a completed iteration.
+    // Entry-level keeps its wider quiet-move margin. Tactical roots are excluded.
+    if (search.randomRoots.length > 1 &&
+        (level != GomokuAiLevel.beginner || _random.nextDouble() < .75)) {
       return GomokuAiResult(
-        position.cell(
-          search.randomRoots[_random.nextInt(search.randomRoots.length)],
-        ),
+        position.cell(_choose(search.randomRoots)),
         result.depth,
         result.nodes,
       );
@@ -201,11 +223,12 @@ class _Search {
     required this.timeLimit,
     required this.candidateLimit,
     required this.extension,
+    required this.varietyMargin,
   });
   static const win = 10000000;
   final _Position position;
   final bool Function() cancelled;
-  final int maxNodes, maxDepth, candidateLimit, extension;
+  final int maxNodes, maxDepth, candidateLimit, extension, varietyMargin;
   final Duration timeLimit;
   final clock = Stopwatch();
   final _table = <(int, int, Side), _Entry>{};
@@ -465,7 +488,15 @@ class _Search {
           try {
             value = won
                 ? win - 1
-                : -await _negamax(depth - 1, -win * 2, -score, 1, extension);
+                : -await _negamax(
+                    depth - 1,
+                    -win * 2,
+                    // A cutoff at -score can look tied while hiding a worse
+                    // reply. Search past the entire selectable score band.
+                    -score + varietyMargin + 1,
+                    1,
+                    extension,
+                  );
           } finally {
             position.undo();
           }
@@ -493,7 +524,7 @@ class _Search {
               .where(
                 (m) =>
                     lastScores[m.index] != null &&
-                    lastScores[m.index]! >= bestScore - 1500 &&
+                    lastScores[m.index]! >= bestScore - varietyMargin &&
                     lastScores[m.index]!.abs() < win - 1000,
               )
               .take(6)

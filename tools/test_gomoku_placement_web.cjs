@@ -51,6 +51,8 @@ const root = path.resolve(__dirname, '../build/web');
         await page.locator('flt-semantics-placeholder').waitFor({state:'attached',timeout:60000});
         await page.locator('flt-semantics-placeholder').dispatchEvent('click');
         await button(/^五子棋，/).click();
+        await page.getByText('15×15 · 竞技连珠', {exact:true}).waitFor();
+        await button(/^五子棋，/).waitFor({state:'hidden'});
         assert.equal(await button(/规则，/).count(), 0);
         assert.equal(await page.getByText('自由五子棋', {exact:true}).count(),0);
         assert.equal(await page.getByText('标准五子棋', {exact:true}).count(),0);
@@ -107,7 +109,10 @@ const root = path.resolve(__dirname, '../build/web');
         const humanWhite=scenario.ai && (scenario.human==='white')!==exchanged;
         if (!scenario.ai || humanWhite) {
           phase='white fourth move';
-          await confirm(8,8);
+          const occupied=new Set((await state()).moves.map(m=>`${m.row},${m.col}`));
+          const fourth=[[8,8],[8,9],[9,8]].find(([row,col])=>!occupied.has(`${row},${col}`));
+          assert.ok(fourth, 'a fourth-move point remains free across opening choices');
+          await confirm(...fourth);
         }
         await waitCount('moves',4);
         phase='two fifth-move proposals';

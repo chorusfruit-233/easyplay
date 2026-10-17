@@ -13,6 +13,99 @@ DraughtsPosition board(Map<Cell, DraughtsPiece> pieces) {
 }
 
 void main() {
+  for (final level in [
+    DraughtsAiLevel.intermediate,
+    DraughtsAiLevel.advanced,
+  ]) {
+    test('${level.label} varies equally scored opening moves', () async {
+      final session = DraughtsSession(
+        DraughtsRules.forVariant(DraughtsVariant.english),
+      );
+      final before = session.toJson();
+      final ai = DraughtsAi(random: Random(42));
+      final choices = <DraughtsMove>{};
+      for (var attempt = 0; attempt < 16; attempt++) {
+        final result = await ai.search(
+          session,
+          level: level,
+          maxDepth: 1,
+          maxNodes: 1000,
+          timeLimit: const Duration(seconds: 5),
+        );
+        expect(result!.depth, 1);
+        expect(session.legalMoves(), contains(result.move));
+        choices.add(result.move);
+      }
+      expect(choices.length, greaterThan(1));
+      expect(session.toJson(), before);
+    });
+
+    test(
+      '${level.label} keeps the unique defense across random seeds',
+      () async {
+        final session = DraughtsSession(
+          DraughtsRules.forVariant(DraughtsVariant.english),
+          position: board({
+            const Cell(2, 3): const DraughtsPiece(Side.black),
+            const Cell(4, 5): const DraughtsPiece(Side.white),
+          }),
+        );
+        for (var seed = 0; seed < 8; seed++) {
+          final result = await DraughtsAi(random: Random(seed)).search(
+            session,
+            level: level,
+            maxDepth: 2,
+            timeLimit: const Duration(seconds: 5),
+          );
+          expect(result!.move.to, const Cell(3, 2));
+        }
+        expect(session.moves, isEmpty);
+      },
+    );
+  }
+
+  for (final level in [
+    DraughtsAiLevel.intermediate,
+    DraughtsAiLevel.advanced,
+  ]) {
+    test(
+      '${level.label} excludes a cutoff bound that only looks tied',
+      () async {
+        final session = DraughtsSession(
+          DraughtsRules.forVariant(DraughtsVariant.english),
+          position: board({
+            const Cell(0, 5): const DraughtsPiece(
+              Side.white,
+              DraughtsRank.king,
+            ),
+            const Cell(2, 3): const DraughtsPiece(Side.white),
+            const Cell(6, 3): const DraughtsPiece(Side.black),
+            const Cell(7, 4): const DraughtsPiece(
+              Side.black,
+              DraughtsRank.king,
+            ),
+          }),
+        );
+        final before = session.toJson();
+        for (var seed = 0; seed < 8; seed++) {
+          final result = await DraughtsAi(random: Random(seed)).search(
+            session,
+            level: level,
+            maxDepth: 3,
+            maxNodes: 20000,
+            timeLimit: const Duration(seconds: 5),
+          );
+          // Promotion scores 118 at depth three; moving the king scores 116.
+          // The old root cutoff can report the king move as tied at 118.
+          expect(result!.depth, 3);
+          expect(result.move.from, const Cell(6, 3));
+          expect(result.move.to, const Cell(7, 2));
+        }
+        expect(session.toJson(), before);
+      },
+    );
+  }
+
   test('beginner overlooks an immediate loss that intermediate avoids', () async {
     final session = DraughtsSession(
       DraughtsRules.forVariant(DraughtsVariant.english),

@@ -55,6 +55,13 @@ class DraughtsAi {
         result.nodes,
       );
     }
+    if (level != DraughtsAiLevel.beginner && search.equalMoves.length > 1) {
+      return DraughtsAiResult(
+        search.equalMoves[_random.nextInt(search.equalMoves.length)],
+        result.depth,
+        result.nodes,
+      );
+    }
     return result;
   }
 }
@@ -78,6 +85,7 @@ class _Search {
   final Duration timeLimit;
   final int captureExtension;
   final Stopwatch clock = Stopwatch();
+  final equalMoves = <DraughtsMove>[];
   int nodes = 0;
   static const win = 100000;
 
@@ -106,6 +114,7 @@ class _Search {
     for (var depth = 1; depth <= maxDepth; depth++) {
       var score = -win * 2;
       var candidate = best;
+      final ties = <DraughtsMove>[];
       try {
         for (final move in _ordered(best)) {
           await _visit();
@@ -115,7 +124,9 @@ class _Search {
             value = -await _negamax(
               depth - 1,
               -win * 2,
-              -score,
+              // Equal-score alternatives must be exact, not a cutoff bound
+              // hiding an opponent's stronger reply.
+              -score + 1,
               1,
               captureExtension,
             );
@@ -125,13 +136,19 @@ class _Search {
           if (value > score) {
             score = value;
             candidate = move;
+            ties.clear();
           }
+          if (value == score) ties.add(move);
         }
       } on _SearchStopped {
         break;
       }
       best = candidate;
       completedDepth = depth;
+      // An interrupted deeper iteration retains the last completed choices.
+      equalMoves
+        ..clear()
+        ..addAll(ties);
       if (score.abs() >= win - 1000) break;
     }
     return DraughtsAiResult(best, completedDepth, nodes);
