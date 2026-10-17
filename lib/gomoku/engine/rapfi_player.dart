@@ -170,6 +170,7 @@ class RapfiPlayer implements GomokuPlayer {
     List<Cell>? allowed,
     int? milliseconds,
     bool fullStrength = false,
+    bool balance = false,
   }) async {
     await _ensure(generation);
     await _send(
@@ -196,7 +197,7 @@ class RapfiPlayer implements GomokuPlayer {
     final iterations = <int, Map<int, _Candidate>>{};
     List<_Candidate> completed = [];
     final line = await _request(
-      'YXNBEST $count',
+      balance ? 'YXBALANCEONE 0' : 'YXNBEST $count',
       (line) => RegExp(r'^\d+,\d+$').hasMatch(line),
       generation,
       observe: (line) {
@@ -343,6 +344,17 @@ class RapfiPlayer implements GomokuPlayer {
           );
           return GomokuAction.place(result.best);
         case GomokuPhase.fourth:
+          // The following player can swap again. Aim for a balanced W4 rather
+          // than a white advantage that the other player would simply take.
+          final result = await _query(
+            session,
+            level,
+            generation,
+            balance: true,
+            fullStrength: true,
+            milliseconds: max(500, level.milliseconds),
+          );
+          return GomokuAction.place(result.best);
         case GomokuPhase.normal:
           final legal = _legal(session);
           if (legal.isEmpty) {

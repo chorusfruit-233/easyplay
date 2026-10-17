@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:easyplay/game_session.dart' show Cell, Side;
 import 'package:easyplay/gomoku/engine/rapfi_io.dart';
@@ -7,11 +8,28 @@ import 'package:easyplay/gomoku/gomoku_ai_level.dart';
 import 'package:easyplay/gomoku/gomoku_session.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+class _ObservedProcess extends ProcessRapfiTransport {
+  _ObservedProcess({
+    required super.executable,
+    super.workingDirectory,
+    this.onSearch,
+  });
+  final void Function()? onSearch;
+  @override
+  Future<void> send(String command) {
+    if (command.startsWith('YXNBEST') || command.startsWith('YXBALANCEONE')) {
+      onSearch?.call();
+    }
+    return super.send(command);
+  }
+}
+
 void main() {
   final executable = Platform.environment['RAPFI_TEST_EXECUTABLE'];
-  RapfiPlayer engine() => RapfiPlayer(
-    transportFactory: () => ProcessRapfiTransport(
+  RapfiPlayer engine({void Function()? onSearch}) => RapfiPlayer(
+    transportFactory: () => _ObservedProcess(
       executable: executable!,
+      onSearch: onSearch,
       workingDirectory: '${Directory.current.path}/assets/rapfi',
     ),
   );
@@ -19,7 +37,13 @@ void main() {
   test(
     'real ARM64 Rapfi finishes Soosõrv-8 and resumes after cancellation/pass',
     () async {
-      final ai = engine();
+      final searchSent = Completer<void>();
+      var observeSearch = false;
+      final ai = engine(
+        onSearch: () {
+          if (observeSearch && !searchSent.isCompleted) searchSent.complete();
+        },
+      );
       addTearDown(ai.dispose);
       final session = GomokuSession();
       for (var i = 0; i < 24 && session.moves.length < 7; i++) {
@@ -36,13 +60,26 @@ void main() {
       final action = await ai.decide(restored, level: GomokuAiLevel.beginner);
       expect(action, isNotNull, reason: ai.failureReason);
       expect(restored.applyAction(action!), isTrue);
-      final cancelled = ai.decide(restored, level: GomokuAiLevel.advanced);
-      await Future<void>.delayed(const Duration(milliseconds: 30));
+      // Observe dispatch rather than sleeping: a proven move can complete in
+      // less than 30 ms, and the preceding passed position can already be won.
+      final cancellationPosition = GomokuSession(variant: GomokuVariant.renju)
+        ..place(const Cell(7, 7))
+        ..place(const Cell(6, 7));
+      observeSearch = true;
+      final cancelled = ai.decide(
+        cancellationPosition,
+        level: GomokuAiLevel.advanced,
+      );
+      await searchSent.future.timeout(const Duration(seconds: 15));
       ai.cancel();
       expect(await cancelled, isNull);
-      final resumed = await ai.decide(restored, level: GomokuAiLevel.beginner);
+      observeSearch = false;
+      final resumed = await ai.decide(
+        cancellationPosition,
+        level: GomokuAiLevel.beginner,
+      );
       expect(resumed, isNotNull, reason: ai.failureReason);
-      expect(restored.applyAction(resumed!), isTrue);
+      expect(cancellationPosition.applyAction(resumed!), isTrue);
     },
     skip: executable == null
         ? 'Set RAPFI_TEST_EXECUTABLE for real native engine'

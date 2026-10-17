@@ -27,6 +27,9 @@ class FakeRapfi implements RapfiTransport {
   Future<void> send(String command) async {
     commands.add(command);
     if (command.startsWith('START')) output.add('OK');
+    if (command.startsWith('YXBALANCEONE')) {
+      search?.call(this, 1);
+    }
     if (command.startsWith('YXNBEST')) {
       search?.call(this, int.parse(command.split(' ').last));
     }
@@ -72,6 +75,31 @@ void main() {
       expect(exchange?.exchange, isTrue); // Third candidate favours white.
       expect(transport.commands, contains('INFO RULE 4'));
       expect(transport.commands, contains('INFO STRENGTH 100'));
+    },
+  );
+
+  test(
+    'W4 uses balance search because black can take white in the second swap',
+    () async {
+      final t = FakeRapfi()
+        ..search = (t, _) {
+          t.candidates([(const Cell(8, 8), 0)]);
+          t.best(const Cell(8, 8));
+        };
+      final ai = RapfiPlayer(transportFactory: () => t);
+      addTearDown(ai.dispose);
+      final session = GomokuSession()
+        ..place(const Cell(7, 7))
+        ..place(const Cell(6, 7))
+        ..place(const Cell(6, 6))
+        ..exchangeColors(false);
+      final action = await ai.decide(session, level: GomokuAiLevel.beginner);
+      expect(action?.cell, const Cell(8, 8));
+      expect(t.commands, contains('YXBALANCEONE 0'));
+      expect(t.commands, isNot(contains('YXNBEST 1')));
+      expect(t.commands, contains('INFO STRENGTH 100'));
+      expect(t.commands, contains('INFO TIMEOUT_TURN 500'));
+      expect(session.moves, hasLength(3));
     },
   );
 
