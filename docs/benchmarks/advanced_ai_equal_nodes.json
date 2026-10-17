@@ -1,0 +1,191 @@
+{
+  "baseline": {
+    "revision": "ede5e794a62dcf607a3e6b33ac611d9760d847a7",
+    "gomoku": {
+      "depth": 5,
+      "nodes": 20000,
+      "milliseconds": 1600
+    },
+    "draughts": {
+      "depth": 8,
+      "nodes": 16000,
+      "milliseconds": 1800
+    }
+  },
+  "mode": "equal-nodes",
+  "nodes": 1200,
+  "milliseconds": 5000,
+  "advancedProfiles": {
+    "gomoku": {
+      "depth": 7,
+      "nodes": 48000,
+      "milliseconds": 2400
+    },
+    "draughts": {
+      "depth": 10,
+      "nodes": 32000,
+      "milliseconds": 2400
+    }
+  },
+  "maxPlies": 120,
+  "summary": {
+    "gomoku": {
+      "new": 3,
+      "baseline": 1,
+      "draw": 0,
+      "unfinished": 2
+    },
+    "draughts": {
+      "new": 1,
+      "baseline": 1,
+      "draw": 0,
+      "unfinished": 4
+    }
+  },
+  "metrics": {
+    "gomoku/new": {
+      "decisions": 218,
+      "averageDepth": 1.3211009174311927,
+      "averageNodes": 884.8256880733945,
+      "averageMs": 74.33200917431192
+    },
+    "gomoku/baseline": {
+      "decisions": 218,
+      "averageDepth": 1.5229357798165137,
+      "averageNodes": 906.9449541284404,
+      "averageMs": 90.52039908256882
+    },
+    "draughts/new": {
+      "decisions": 300,
+      "averageDepth": 4.463333333333333,
+      "averageNodes": 1182.69,
+      "averageMs": 25.899046666666667
+    },
+    "draughts/baseline": {
+      "decisions": 300,
+      "averageDepth": 4.296666666666667,
+      "averageNodes": 1175.4666666666667,
+      "averageMs": 24.716816666666666
+    }
+  },
+  "seed": "1700 + pair; each pair swaps initial player identity",
+  "sources": {
+    "lib/gomoku/gomoku_ai.dart": "e6ed2920b736b3a1a52c000d15276c61ac7f73bdb8c4fbb82692f136737c8597",
+    "lib/gomoku/gomoku_ai_level.dart": "e63de6579976bab6957b23f3de28e79890e6165126d388d9c023bd587ba05349",
+    "lib/gomoku/gomoku_ai_position.dart": "9628c32dd80ea7a697b4f67b19002b1faaaf6a3e50476827b3e357c403e96cd1",
+    "lib/draughts/draughts_ai.dart": "8a69f6d30172baea916f63952dd5ea1b88510a23df8524a344a911c83aefe3e4",
+    "lib/draughts/draughts_ai_level.dart": "447fec0f15a4147fca603f7b242c520d1593760a228767b5ac60d03e33e83d32"
+  },
+  "games": [
+    {
+      "game": "gomoku",
+      "pair": 0,
+      "variant": "professional",
+      "newSide": "black",
+      "result": "baseline",
+      "plies": 27,
+      "sessionSha256": "d4433fed88425bde80da22b567fb74fd56298702b2766b3710ba59c8c2480b6c"
+    },
+    {
+      "game": "gomoku",
+      "pair": 0,
+      "variant": "professional",
+      "newSide": "white",
+      "result": "new",
+      "plies": 51,
+      "sessionSha256": "a5e1192a2ad8ba0474e3bb16603cc7a4981ee44ebe6dfd84403e83ce787d804c"
+    },
+    {
+      "game": "gomoku",
+      "pair": 1,
+      "variant": "professional",
+      "newSide": "black",
+      "result": "new",
+      "plies": 50,
+      "sessionSha256": "b6098873ee550e35dcfd30b71a698017703f6214cda75213d75f6a112831be4f"
+    },
+    {
+      "game": "gomoku",
+      "pair": 1,
+      "variant": "professional",
+      "newSide": "white",
+      "result": "unfinished",
+      "plies": 120,
+      "sessionSha256": "09e1beb0977713a08e8b9998cfee5187302907edad2b0eff976baa64bacd787a"
+    },
+    {
+      "game": "gomoku",
+      "pair": 2,
+      "variant": "professional",
+      "newSide": "black",
+      "result": "new",
+      "plies": 50,
+      "sessionSha256": "87ef2eaf73532c48cb28d6911a4c2b72586ff1db1957bcac83c245692557eb26"
+    },
+    {
+      "game": "gomoku",
+      "pair": 2,
+      "variant": "professional",
+      "newSide": "white",
+      "result": "unfinished",
+      "plies": 120,
+      "sessionSha256": "0109e2edf3ddbb119ab7d91caacd2800faad407ed958e66f5a7b4f618837b215"
+    },
+    {
+      "game": "draughts",
+      "pair": 0,
+      "variant": "english",
+      "newSide": "black",
+      "result": "unfinished",
+      "plies": 120,
+      "sessionSha256": "042c896a64e8c703dc6d606de99584619d92010a3a45726c1b1f5b4301675877"
+    },
+    {
+      "game": "draughts",
+      "pair": 0,
+      "variant": "english",
+      "newSide": "white",
+      "result": "unfinished",
+      "plies": 120,
+      "sessionSha256": "1c3cc0f17918881ebe2770315c147adf1f77e54fedb8002967ceebdb28f10243"
+    },
+    {
+      "game": "draughts",
+      "pair": 1,
+      "variant": "international",
+      "newSide": "black",
+      "result": "unfinished",
+      "plies": 120,
+      "sessionSha256": "93f2d432ab384e2e302b2bb613be4e91e07f5ba292a90ae2004bc7d449998258"
+    },
+    {
+      "game": "draughts",
+      "pair": 1,
+      "variant": "international",
+      "newSide": "white",
+      "result": "unfinished",
+      "plies": 120,
+      "sessionSha256": "39250f9063fb76dd262e140daa03874e7844c84017ce7beae8dd93d2aa6a935f"
+    },
+    {
+      "game": "draughts",
+      "pair": 2,
+      "variant": "brazilian",
+      "newSide": "black",
+      "result": "new",
+      "plies": 82,
+      "sessionSha256": "2dd67e376d81d6982273c7887f6bfa8431d750fbab5d3da0e864f3fd70b7238f"
+    },
+    {
+      "game": "draughts",
+      "pair": 2,
+      "variant": "brazilian",
+      "newSide": "white",
+      "result": "baseline",
+      "plies": 62,
+      "sessionSha256": "07bd496a86502d08b1b9873f5498b8453c987e24384fc2c2b966bc08f433d142"
+    }
+  ],
+  "metricNote": "Per-decision maximum completed ordinary depth; threat extensions excluded. Opening bookkeeping actions have depth zero.",
+  "timingNote": "Non-isolated two-CPU quota environment; elapsed times are diagnostic, not a device latency benchmark."
+}
