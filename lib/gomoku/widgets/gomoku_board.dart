@@ -255,6 +255,7 @@ class _GomokuBoardState extends State<GomokuBoard> {
                   winningLine: List.of(widget.session.winningLine),
                   preview: _preview,
                   previewSide: widget.session.turn,
+                  proposals: widget.session.proposals,
                   accent: Theme.of(context).colorScheme.primary,
                   motion: motion,
                 ),
@@ -275,6 +276,7 @@ class _GomokuPainter extends CustomPainter {
     required this.winningLine,
     required this.preview,
     required this.previewSide,
+    required this.proposals,
     required this.accent,
     required this.motion,
   }) : super(repaint: motion);
@@ -284,6 +286,7 @@ class _GomokuPainter extends CustomPainter {
   final List<Cell> winningLine;
   final Cell? preview;
   final Side previewSide;
+  final List<Cell> proposals;
   final Color accent;
   final BoardMotionScene<Side> motion;
 
@@ -368,6 +371,30 @@ class _GomokuPainter extends CustomPainter {
           ..strokeWidth = step * .13
           ..strokeCap = StrokeCap.round,
       );
+    }
+    for (var i = 0; i < proposals.length; i++) {
+      final center = point(proposals[i]);
+      stone(center, Side.black, ghost: true);
+      canvas.drawCircle(
+        center,
+        step * .44,
+        Paint()
+          ..color = accent
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
+      final label = TextPainter(
+        text: TextSpan(
+          text: '${i + 1}',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: step * .5,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      label.paint(canvas, center - Offset(label.width / 2, label.height / 2));
     }
     if (preview != null) stone(point(preview!), previewSide, ghost: true);
   }

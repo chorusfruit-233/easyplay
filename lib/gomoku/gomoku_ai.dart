@@ -25,6 +25,74 @@ class GomokuAi {
 
   void cancel() => _generation++;
 
+  /// Opening actions belong to players, rather than the colour being placed.
+  /// Normal play retains the tactical search and its cancellation budget.
+  Future<GomokuAction?> decide(
+    GomokuSession source, {
+    GomokuAiLevel level = GomokuAiLevel.intermediate,
+  }) async {
+    if (source.gameOver) return null;
+    if (source.phase == GomokuPhase.normal ||
+        source.phase == GomokuPhase.fourth) {
+      final result = await search(source, level: level);
+      if (result != null) return GomokuAction.place(result.cell);
+      return failureReason != null && source.canPass
+          ? const GomokuAction.pass()
+          : null;
+    }
+    final generation = ++_generation;
+    failureReason = null;
+    final session = source.fork();
+    await Future<void>.delayed(Duration.zero);
+    if (generation != _generation) return null;
+    if (session.phase == GomokuPhase.opening) {
+      const book = [Cell(7, 7), Cell(6, 7), Cell(6, 6)];
+      final preferred = book[session.moves.length];
+      if (session.canPlace(preferred)) return GomokuAction.place(preferred);
+      for (var row = 5; row <= 9; row++) {
+        for (var col = 5; col <= 9; col++) {
+          final cell = Cell(row, col);
+          if (session.canPlace(cell)) return GomokuAction.place(cell);
+        }
+      }
+    }
+    final position = _Position(session);
+    int value(int index, Side side) => position.pattern(index, side).score;
+    if (session.phase == GomokuPhase.exchange) {
+      var black = 0, white = 0;
+      for (final index in position.nearbyCells()) {
+        black = max(black, value(index, Side.black));
+        white = max(white, value(index, Side.white));
+      }
+      return GomokuAction.exchange(black > white);
+    }
+    if (session.phase == GomokuPhase.selection) {
+      final choices = List<Cell>.of(session.proposals)
+        ..sort(
+          (a, b) => value(
+            a.row * 15 + a.col,
+            Side.black,
+          ).compareTo(value(b.row * 15 + b.col, Side.black)),
+        );
+      return GomokuAction.place(choices.first);
+    }
+    if (session.phase == GomokuPhase.proposals) {
+      final candidates = position
+          .candidateCells()
+          .where((i) => session.canPlace(position.cell(i)))
+          .toList();
+      candidates.sort(
+        (a, b) => (value(b, Side.black) + value(b, Side.white)).compareTo(
+          value(a, Side.black) + value(a, Side.white),
+        ),
+      );
+      if (candidates.isNotEmpty) {
+        return GomokuAction.place(position.cell(candidates.first));
+      }
+    }
+    return null;
+  }
+
   Future<GomokuAiResult?> search(
     GomokuSession source, {
     GomokuAiLevel level = GomokuAiLevel.intermediate,
@@ -195,7 +263,7 @@ class _Search {
       await _poll();
       var attack = position.pattern(index, position.turn);
       var defense = position.pattern(index, position.turn.opponent);
-      if (position.variant == GomokuVariant.renju &&
+      if (position.variant.hasForbiddenMoves &&
           position.turn == Side.black &&
           (attack.forcing || attack.threes >= 2) &&
           !position.analysis(index, Side.black, _check).legal) {
@@ -203,7 +271,7 @@ class _Search {
       }
       // A black Renju fork may itself be forbidden. Never spend a mandatory
       // defense on a point the opponent cannot legally play.
-      if (position.variant == GomokuVariant.renju &&
+      if (position.variant.hasForbiddenMoves &&
           position.turn == Side.white &&
           (defense.forcing || defense.threes >= 2) &&
           !position.analysis(index, Side.black, _check).legal) {
@@ -213,7 +281,7 @@ class _Search {
       if (defense.wins) enemyWins.add(index);
       danger |= defense.fork || attack.forcing;
       if (defense.fork) {
-        if (position.variant == GomokuVariant.renju &&
+        if (position.variant.hasForbiddenMoves &&
             position.turn == Side.white &&
             defense.threes >= 2) {
           stableDefenses = false;

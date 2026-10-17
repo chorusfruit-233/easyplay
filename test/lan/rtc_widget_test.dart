@@ -41,11 +41,11 @@ void main() {
       const MaterialApp(
         home: RtcLobbyPage(
           game: 'gomoku',
-          gomokuVariant: GomokuVariant.standard,
+          gomokuVariant: GomokuVariant.professional,
         ),
       ),
     );
-    expect(find.text('15×15 · 标准五子棋'), findsOneWidget);
+    expect(find.text('15×15 · 竞技连珠'), findsOneWidget);
     final invite = RtcInvitation.offer(
       'gomoku',
       'v=0\r\n',
@@ -55,7 +55,7 @@ void main() {
     await tester.ensureVisible(find.text('导入'));
     await tester.tap(find.text('导入'));
     await tester.pump();
-    expect(find.textContaining('棋种或规则与当前入口不一致'), findsOneWidget);
+    expect(find.textContaining('五子棋规则不支持或缺失'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());
   });
   testWidgets('manual signaling rejects bad input and offers cancellation', (

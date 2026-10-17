@@ -11,6 +11,8 @@ import 'package:easyplay/lan/lan_match_page.dart';
 import 'package:easyplay/lan/rtc_lobby_page.dart';
 import 'package:easyplay/draughts/draughts_variant.dart';
 import 'package:easyplay/gomoku/gomoku_variant.dart';
+import 'package:easyplay/gomoku/widgets/gomoku_board.dart';
+import 'package:easyplay/gomoku/widgets/gomoku_lan_pages.dart';
 import 'package:easyplay/lan/lan_protocol.dart';
 import 'package:easyplay/lan/rtc_manual_signaling.dart';
 import 'package:easyplay/lan/rtc_room.dart';
@@ -39,11 +41,7 @@ Future<String> action(String name) => _guard(() => _action(name));
 Future<void> accept(String text, {bool delayBinding = false}) =>
     _guard(() => _accept(text, delayBinding: delayBinding));
 Future<void> tick() => Future<void>.delayed(const Duration(milliseconds: 30));
-GomokuVariant gomokuVariantFor(String game) => game == 'gomoku-standard'
-    ? GomokuVariant.standard
-    : game == 'gomoku-renju'
-    ? GomokuVariant.renju
-    : GomokuVariant.freestyle;
+GomokuVariant gomokuVariantFor(String game) => GomokuVariant.professional;
 
 Future<String> _offer(String game) async {
   await _room?.close();
@@ -154,7 +152,7 @@ Future<String> _action(String name) async {
         };
       } else {
         move = {
-          'cell': [3, 3],
+          'cell': client.isGomoku ? [7, 7] : [3, 3],
         };
       }
       client.send(
@@ -310,6 +308,58 @@ String uiGoState() {
   });
 }
 
+String uiGomokuState() {
+  Element? element;
+  GomokuBoard? board;
+  GomokuLanMatchPage? page;
+  dynamic painter;
+  void visit(Element node) {
+    final widget = node.widget;
+    if (widget is GomokuLanMatchPage) page = widget;
+    if (widget is GomokuBoard) {
+      element = node;
+      board = widget;
+      void findPainter(Element child) {
+        final candidate = child.widget;
+        if (candidate is CustomPaint) painter = candidate.painter;
+        child.visitChildren(findPainter);
+      }
+
+      node.visitChildren(findPainter);
+    }
+    node.visitChildren(visit);
+  }
+
+  final root = WidgetsBinding.instance.rootElement;
+  if (root != null) visit(root);
+  final view = board, render = element?.findRenderObject();
+  if (view == null || page == null || render is! RenderBox || !render.hasSize) {
+    return jsonEncode({'ready': false});
+  }
+  final origin = render.localToGlobal(Offset.zero);
+  final dynamic preview = painter?.preview;
+  return jsonEncode({
+    'ready': true,
+    'routeReady': ModalRoute.of(element!)?.animation?.isCompleted != false,
+    'seq': page!.connection.gomokuReplica!.seq,
+    'side': page!.connection.side?.name,
+    'phase': view.session.phase.name,
+    'actor': view.session.actor.name,
+    'exchanged': view.session.exchanged,
+    'session': view.session.toJson(),
+    'proposals': [
+      for (final cell in view.session.proposals) [cell.row, cell.col],
+    ],
+    'preview': preview == null ? null : [preview.row, preview.col],
+    'bounds': {
+      'x': origin.dx,
+      'y': origin.dy,
+      'width': render.size.width,
+      'height': render.size.height,
+    },
+  });
+}
+
 // Optional live-network check: return only counts, never SDP or addresses.
 Future<String> stunProbe(String urls) async {
   final peer = RtcPeer(
@@ -380,6 +430,7 @@ void main() {
             ).then((s) => s.toJS).toJS).toJS,
             'state': (() => state().toJS).toJS,
             'uiGoState': (() => uiGoState().toJS).toJS,
+            'uiGomokuState': (() => uiGomokuState().toJS).toJS,
             'lastError': (() => _lastError.toJS).toJS,
           }.jsify()
           as JSObject;

@@ -69,7 +69,7 @@ void main() {
     });
   });
 
-  for (final variant in GomokuVariant.values) {
+  for (final variant in GomokuVariant.values.where((v) => !v.competitive)) {
     for (final isAi in [false, true]) {
       testWidgets('${variant.label} ${isAi ? '人机' : '本地双人'}默认先预览再确认落子', (
         tester,
@@ -128,18 +128,18 @@ void main() {
     await tester.tapAt(_point(tester, const Cell(7, 7)));
     await tester.pumpAndSettle();
     expect(page.session.pieceAt(const Cell(7, 7)), Side.black);
-    await tester.tapAt(_point(tester, const Cell(14, 14)));
+    await tester.tapAt(_point(tester, const Cell(7, 8)));
     await tester.pumpAndSettle();
-    expect(page.session.pieceAt(const Cell(14, 14)), Side.white);
+    expect(page.session.pieceAt(const Cell(7, 8)), Side.white);
     await tester.tap(find.text('悔棋'));
     await tester.pumpAndSettle();
     expect(page.session.moves.length, 1);
     await tester.pageBack();
     await tester.pumpAndSettle();
-    expect(find.text('自由五子棋 · 1 手'), findsOneWidget);
-    await tester.ensureVisible(find.text('自由五子棋 · 1 手'));
+    expect(find.text('竞技连珠 · 1 手'), findsOneWidget);
+    await tester.ensureVisible(find.text('竞技连珠 · 1 手'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('自由五子棋 · 1 手'));
+    await tester.tap(find.text('竞技连珠 · 1 手'));
     await tester.pumpAndSettle();
     final resumed = tester.widget<GomokuGamePage>(find.byType(GomokuGamePage));
     expect(resumed.session.pieceAt(const Cell(7, 7)), Side.black);
@@ -147,7 +147,7 @@ void main() {
     expect((await GomokuStorage.list()).single.moveCount, 1);
   });
 
-  for (final variant in GomokuVariant.values) {
+  for (final variant in GomokuVariant.values.where((v) => !v.competitive)) {
     testWidgets('本地双人 ${variant.label} 切换应用后双方仍可落子', (tester) async {
       final session = GomokuSession(variant: variant)..place(const Cell(7, 7));
       await _pump(tester, GomokuGamePage(session: session));
@@ -193,7 +193,7 @@ void main() {
   }
 
   testWidgets('人机对局在人类回合切换应用后仍可落子', (tester) async {
-    final session = GomokuSession();
+    final session = GomokuSession(variant: GomokuVariant.freestyle);
     final ai = _DelayedAi();
     await _pump(
       tester,
@@ -223,7 +223,7 @@ void main() {
   });
 
   testWidgets('AI 思考时切换应用会恢复搜索，迟到旧结果不会落子', (tester) async {
-    final session = GomokuSession();
+    final session = GomokuSession(variant: GomokuVariant.freestyle);
     final ai = _DelayedAi();
     await _pump(
       tester,
@@ -291,7 +291,8 @@ void main() {
   });
 
   testWidgets('确认认输与重开，保留旧局并保存新的对局', (tester) async {
-    final session = GomokuSession()..place(const Cell(7, 7));
+    final session = GomokuSession(variant: GomokuVariant.freestyle)
+      ..place(const Cell(7, 7));
     await _pump(tester, GomokuGamePage(session: session));
     await tester.pumpAndSettle();
     await tester.tap(find.text('认输'));
@@ -312,7 +313,7 @@ void main() {
   });
 
   testWidgets('AI 思考期间悔棋取消旧结果，回复不能落到新状态', (tester) async {
-    final session = GomokuSession();
+    final session = GomokuSession(variant: GomokuVariant.freestyle);
     final ai = _DelayedAi();
     await _pump(
       tester,
@@ -333,7 +334,7 @@ void main() {
   });
 
   testWidgets('AI 后手悔棋回到人类回合；AI 先手的首子受保护', (tester) async {
-    final session = GomokuSession();
+    final session = GomokuSession(variant: GomokuVariant.freestyle);
     final ai = _DelayedAi();
     await _pump(
       tester,
@@ -365,7 +366,7 @@ void main() {
   });
 
   testWidgets('退出页面后延迟 AI 结果不能改变对局', (tester) async {
-    final session = GomokuSession();
+    final session = GomokuSession(variant: GomokuVariant.freestyle);
     final ai = _DelayedAi();
     await _pump(
       tester,
@@ -385,7 +386,7 @@ void main() {
   });
 
   testWidgets('返回动画期间立即取消 AI，迟到回复不能落子或保存', (tester) async {
-    final session = GomokuSession();
+    final session = GomokuSession(variant: GomokuVariant.freestyle);
     final ai = _DelayedAi();
     await _pump(
       tester,
@@ -432,7 +433,12 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      await _pump(tester, GomokuGamePage(session: GomokuSession()));
+      await _pump(
+        tester,
+        GomokuGamePage(
+          session: GomokuSession(variant: GomokuVariant.freestyle),
+        ),
+      );
       await tester.pumpAndSettle();
       final board = tester.getRect(find.byType(GomokuBoard));
       expect(board.left, greaterThanOrEqualTo(0));
@@ -454,7 +460,10 @@ void main() {
           body: Center(
             child: SizedBox.square(
               dimension: dimension,
-              child: GomokuBoard(session: GomokuSession(), onCell: placed.add),
+              child: GomokuBoard(
+                session: GomokuSession(variant: GomokuVariant.freestyle),
+                onCell: placed.add,
+              ),
             ),
           ),
         ),
@@ -471,7 +480,7 @@ void main() {
   }
 
   testWidgets('棋盘二次确认、滑动确认和松手落子遵循设置', (tester) async {
-    final session = GomokuSession();
+    final session = GomokuSession(variant: GomokuVariant.freestyle);
     final placed = <Cell>[];
     Future<void> board(GoPlacementMode mode, {bool enabled = true}) => _pump(
       tester,
@@ -525,7 +534,7 @@ void main() {
     expect(placed, isEmpty);
   });
 
-  for (final variant in GomokuVariant.values) {
+  for (final variant in GomokuVariant.playable) {
     testWidgets('首页 ${variant.label} 规则传入本地、联机并随存档续局', (tester) async {
       GomokuVariant? requested;
       await _pump(
@@ -541,13 +550,10 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.byType(DropdownButtonFormField<GomokuVariant>));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(variant.label).last);
-      await tester.pumpAndSettle();
-      if (variant == GomokuVariant.renju) {
-        expect(find.textContaining('采用自由开局'), findsOneWidget);
-      }
+      expect(find.byType(DropdownButtonFormField<GomokuVariant>), findsNothing);
+      expect(find.textContaining('三手交换'), findsOneWidget);
+      expect(find.text('自由五子棋'), findsNothing);
+      expect(find.text('标准五子棋'), findsNothing);
       await tester.ensureVisible(find.text('联机对弈'));
       await tester.tap(find.text('联机对弈'));
       await tester.pumpAndSettle();

@@ -137,7 +137,7 @@ class _Position {
   _Pattern _pattern(int index, Side side) {
     final exact =
         variant == GomokuVariant.standard ||
-        (variant == GomokuVariant.renju && side == Side.black);
+        (variant.hasForbiddenMoves && side == Side.black);
     final row = index ~/ size, col = index % size;
     final wins = <int>{};
     var threes = 0, closedThrees = 0, twos = 0;

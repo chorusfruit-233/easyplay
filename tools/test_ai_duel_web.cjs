@@ -32,10 +32,10 @@ const capture = process.env.CAPTURE_AI_DUEL === '1';
         };
       });
       const records = () => page.evaluate(g => window.duelRecords(g), game);
-      const count = record => record?.session?.moves?.length ?? record?.moves?.length ?? 0;
+      const count = record => game === 'gomoku' ? record?.session?.actions?.length ?? 0 : record?.session?.moves?.length ?? record?.moves?.length ?? 0;
       const waitMoves = minimum => page.waitForFunction(({game, minimum}) => {
         const record = window.duelRecords(game)[0];
-        return (record?.session?.moves?.length ?? record?.moves?.length ?? 0) >= minimum;
+        return (game === 'gomoku' ? record?.session?.actions?.length ?? 0 : record?.session?.moves?.length ?? record?.moves?.length ?? 0) >= minimum;
       }, {game, minimum});
       const button = name => page.getByRole('button', {name, exact:typeof name === 'string'});
       const reveal = async locator => {
@@ -68,7 +68,7 @@ const capture = process.env.CAPTURE_AI_DUEL === '1';
       await button('悔棋').click();
       await page.waitForFunction(({game, expected}) => {
         const r = window.duelRecords(game)[0];
-        return (r?.session?.moves?.length ?? r?.moves?.length ?? 0) === expected;
+        return (game === 'gomoku' ? r?.session?.actions?.length ?? 0 : r?.session?.moves?.length ?? r?.moves?.length ?? 0) === expected;
       }, {game, expected:paused});
       await button('继续').click();
       await waitMoves(paused + 2);

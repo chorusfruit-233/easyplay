@@ -107,7 +107,7 @@ void main() {
     );
   }
 
-  for (final variant in GomokuVariant.values) {
+  for (final variant in GomokuVariant.values.where((v) => !v.competitive)) {
     test(
       '${variant.name} defends a four-three combination beyond the horizon',
       () async {

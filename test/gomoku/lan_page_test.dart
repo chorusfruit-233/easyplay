@@ -17,48 +17,49 @@ void main() {
     });
   });
 
-  for (final variant in GomokuVariant.values) {
-    for (final side in Side.values) {
-      testWidgets('${variant.label} 联机${side.name}自动模式确认后才发送落子', (
-        tester,
-      ) async {
-        SharedPreferences.setMockInitialValues({
-          GoPlacementPreferences.key: GoPlacementMode.automatic.name,
-        });
-        final connection = FakeLanConnection.gomoku(side, variant: variant);
-        await tester.pumpWidget(
-          MaterialApp(home: GomokuLanMatchPage(connection: connection)),
-        );
-        await tester.pumpAndSettle();
-        if (side == Side.white) {
-          connection.commit(Side.black, LanMessageType.move, {
-            'cell': [7, 7],
-          });
-          await tester.pumpAndSettle();
-        }
-        final bounds = tester.getRect(find.byType(GomokuBoard));
-        expect(bounds.width / 15, greaterThanOrEqualTo(24));
-        final point =
-            bounds.topLeft +
-            Offset(5.5 * bounds.width / 15, 6.5 * bounds.height / 15);
-        await tester.tapAt(point);
-        await tester.pump();
-        expect(connection.sent, isEmpty);
-        expect(
-          connection.gomokuReplica!.session.pieceAt(const Cell(6, 5)),
-          isNull,
-        );
-        await tester.tapAt(point);
-        await tester.pumpAndSettle();
-        expect(connection.sent.single.type, LanMessageType.move);
-        expect(
-          connection.gomokuReplica!.session.pieceAt(const Cell(6, 5)),
-          side,
-        );
-        await tester.pumpWidget(const SizedBox());
-        await connection.dispose();
+  for (final side in Side.values) {
+    testWidgets('竞技连珠联机 ${side.name} 首次点击不发送，确认后才落子', (tester) async {
+      SharedPreferences.setMockInitialValues({
+        GoPlacementPreferences.key: GoPlacementMode.automatic.name,
       });
-    }
+      final connection = FakeLanConnection.gomoku(side);
+      await tester.pumpWidget(
+        MaterialApp(home: GomokuLanMatchPage(connection: connection)),
+      );
+      await tester.pumpAndSettle();
+      if (side == Side.white) {
+        for (final cell in [
+          [7, 7],
+          [6, 7],
+          [6, 6],
+        ]) {
+          connection.commit(Side.black, LanMessageType.move, {'cell': cell});
+        }
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('不交换'));
+        await tester.tap(find.text('不交换'));
+        await tester.pumpAndSettle();
+        connection.sent.clear();
+      }
+      final cell = side == Side.black ? const Cell(7, 7) : const Cell(8, 8);
+      final bounds = tester.getRect(find.byType(GomokuBoard));
+      final point =
+          bounds.topLeft +
+          Offset(
+            (cell.col + .5) * bounds.width / 15,
+            (cell.row + .5) * bounds.height / 15,
+          );
+      await tester.tapAt(point);
+      await tester.pump();
+      expect(connection.sent, isEmpty);
+      expect(connection.gomokuReplica!.session.pieceAt(cell), isNull);
+      await tester.tapAt(point);
+      await tester.pumpAndSettle();
+      expect(connection.sent.single.type, LanMessageType.move);
+      expect(connection.gomokuReplica!.session.pieceAt(cell), side);
+      await tester.pumpWidget(const SizedBox());
+      await connection.dispose();
+    });
   }
 
   testWidgets('join still requires address, valid port and room token', (
@@ -96,7 +97,10 @@ void main() {
   testWidgets('LAN obeys placement confirmation and authenticated turn', (
     tester,
   ) async {
-    final connection = FakeLanConnection.gomoku(Side.black);
+    final connection = FakeLanConnection.gomoku(
+      Side.black,
+      variant: GomokuVariant.freestyle,
+    );
     await tester.pumpWidget(
       MaterialApp(home: GomokuLanMatchPage(connection: connection)),
     );
@@ -113,7 +117,7 @@ void main() {
       connection.gomokuReplica!.session.pieceAt(const Cell(7, 7)),
       Side.black,
     );
-    expect(find.text('轮到对手 · 白方'), findsOneWidget);
+    expect(find.text('轮到对手'), findsOneWidget);
     await tester.tapAt(centre + const Offset(25, 0));
     await tester.tapAt(centre + const Offset(25, 0));
     await tester.pumpAndSettle();

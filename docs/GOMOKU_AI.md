@@ -1,6 +1,6 @@
 # 五子棋 AI 搜索与强度验证
 
-五子棋的人机与双 AI 观战共用本地 Dart 搜索，无模型下载。防守重构保留三档原有的节点数、普通搜索深度和思考时间预算，重点改善同一预算内的战术判断。
+五子棋的人机与双 AI 观战使用竞技连珠，共用本地 Dart 搜索，无模型下载。开局决策通过 `GomokuAi.decide` 完成摆子、交换、给点和选点，正常行棋沿用下述战术搜索。防守重构保留三档原有的节点数、普通搜索深度和思考时间预算，重点改善同一预算内的战术判断。
 
 ## 搜索与防守
 
@@ -30,3 +30,5 @@ dart compile exe tools/benchmark_gomoku_ai.dart --output /tmp/gomoku-ai-benchmar
 ```
 
 默认输出为 `/tmp/gomoku-ai-benchmark.json`，可通过 `--output` 指定路径；`--variant` 支持 `freestyle`、`standard`、`renju` 或 `all`。完整应用回归仍包括 `flutter test`、`dart analyze lib test`、Web 构建和带局域网网页资源的 Android 打包。
+
+竞技开局及棋手身份的回归见 `test/gomoku/professional_test.dart` 和 `professional_page_test.dart`。新旧搜索对比工具保留自由、标准、旧连珠三种历史规则作为固定测试条件，以便复用v1.7.0基准；这些配置仅用于算法回归，不出现在新对局或联机入口。

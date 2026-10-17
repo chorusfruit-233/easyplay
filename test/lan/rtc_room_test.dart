@@ -14,8 +14,6 @@ void main() {
     'go',
     'chess',
     'gomoku',
-    'gomoku-standard',
-    'gomoku-renju',
     ...DraughtsVariant.values.map((v) => v.name),
   ]) {
     test(
@@ -30,11 +28,7 @@ void main() {
               : 'draughts',
           'v=0\r\n',
           variant: variant,
-          gomokuVariant: game == 'gomoku-standard'
-              ? GomokuVariant.standard
-              : game == 'gomoku-renju'
-              ? GomokuVariant.renju
-              : GomokuVariant.freestyle,
+          gomokuVariant: GomokuVariant.professional,
         );
         final room = RtcRoom.host(invite);
         final guest = RtcMatchClient(invite);
@@ -70,7 +64,7 @@ void main() {
           final Map<String, Object?> move;
           if (game == 'go' || game.startsWith('gomoku')) {
             move = {
-              'cell': [3, 3],
+              'cell': game == 'gomoku' ? [7, 7] : [3, 3],
             };
           } else if (game == 'chess') {
             move = {'move': 'e2e4'};
@@ -231,7 +225,7 @@ void main() {
       final invite = RtcInvitation.offer(
         'gomoku',
         'v=0\r\n',
-        gomokuVariant: GomokuVariant.renju,
+        gomokuVariant: GomokuVariant.professional,
       );
       final room = RtcRoom.host(invite);
       final guest = RtcMatchClient(
@@ -248,12 +242,15 @@ void main() {
         await room.prepareHost();
         final (server, peer) = MemoryTransport.pair();
         await room.attachPeer(server);
-        await expectLater(guest.bind(peer), throwsStateError);
+        await expectLater(guest.bind(peer), throwsFormatException);
         expect(room.coordinator!.playerCount, 1);
-        expect(room.client.gomokuReplica!.session.variant, GomokuVariant.renju);
+        expect(
+          room.client.gomokuReplica!.session.variant,
+          GomokuVariant.professional,
+        );
         expect(
           room.coordinator!.gomokuAuthority!.session.variant,
-          GomokuVariant.renju,
+          GomokuVariant.professional,
         );
       } finally {
         await guest.close();

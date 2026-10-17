@@ -15,7 +15,7 @@ import 'package:easyplay/lan/lan_transport.dart';
 class FakeLanConnection extends LanClientConnection {
   FakeLanConnection.gomoku(
     Side localSide, {
-    GomokuVariant variant = GomokuVariant.freestyle,
+    GomokuVariant variant = GomokuVariant.professional,
   }) : authority = LanHostServer(
          gomokuAuthority: GomokuLanAuthority(variant: variant),
          token: 'test',

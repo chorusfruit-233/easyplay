@@ -11,7 +11,7 @@ class GomokuNegotiation {
 
 /// The authenticated host validates every move with the local rules engine.
 class GomokuLanAuthority {
-  GomokuLanAuthority({this.variant = GomokuVariant.freestyle})
+  GomokuLanAuthority({this.variant = GomokuVariant.professional})
     : _state = _GomokuLanState(variant);
   final GomokuVariant variant;
   final _GomokuLanState _state;
@@ -69,7 +69,7 @@ class GomokuLanAuthority {
 }
 
 class GomokuLanReplica {
-  GomokuLanReplica({this.variant = GomokuVariant.freestyle})
+  GomokuLanReplica({this.variant = GomokuVariant.professional})
     : _state = _GomokuLanState(variant);
   final GomokuVariant variant;
   _GomokuLanState _state;
@@ -132,8 +132,8 @@ class _GomokuLanState {
 
   bool canRequestUndo(Side side) =>
       !session.gameOver &&
-      session.moves.isNotEmpty &&
-      session.turn != side &&
+      session.actionCount > 0 &&
+      session.lastActor == side &&
       undoRequest == null;
 
   String? apply(LanMessage event) {
@@ -143,17 +143,26 @@ class _GomokuLanState {
       case LanMessageType.move:
         if (session.gameOver) return '对局已经结束';
         if (undoRequest != null) return '请先处理悔棋请求';
-        if (session.turn != side) return '尚未轮到你落子';
+        if (session.actor != side) return '尚未轮到你操作';
         final cell = data['cell'];
         if (cell == null) return '缺少落子坐标';
         final coordinate = LanMessage.parseCell(cell);
         if (!session.place(coordinate)) {
           return session.rejectionReason(coordinate) ?? '该位置不能落子';
         }
+      case LanMessageType.gomokuExchange:
+        if (undoRequest != null) return '请先处理悔棋请求';
+        if (session.actor != side ||
+            !session.exchangeColors(data['exchange'] as bool)) {
+          return '当前不能选择交换';
+        }
+      case LanMessageType.pass:
+        if (undoRequest != null) return '请先处理悔棋请求';
+        if (session.actor != side || !session.pass()) return '当前不能停一手';
       case LanMessageType.resign:
         if (session.gameOver) return '对局已经结束';
         if (undoRequest != null) return '请先处理悔棋请求';
-        session.resign(side);
+        session.resign(session.colorForPlayer(side));
       case LanMessageType.undoRequest:
         if (!canRequestUndo(side)) return '只能悔自己刚走且对方尚未应手的一步';
         undoRequest = GomokuNegotiation(event.seq, side);

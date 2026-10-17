@@ -14,11 +14,15 @@ class AiDuelPage<M> extends StatefulWidget {
     required this.whiteLevel,
     required this.boardBuilder,
     required this.layoutBuilder,
+    this.rulesLabel,
+    this.playerLabel,
   });
 
   final AiDuelController<M> controller;
   final String title;
   final String rules;
+  final String Function()? rulesLabel;
+  final String Function(Side)? playerLabel;
   final String blackLevel;
   final String whiteLevel;
   final WidgetBuilder boardBuilder;
@@ -92,18 +96,20 @@ class _AiDuelPageState<M> extends State<AiDuelPage<M>>
         size: 18,
         color: active ? colors.primary : colors.onSurfaceVariant,
       ),
-      label: Text('${side.label} AI · $level'),
+      label: Text('${_label(side)} AI · $level'),
       backgroundColor: active ? colors.secondaryContainer : null,
     );
   }
+
+  String _label(Side side) => widget.playerLabel?.call(side) ?? side.label;
 
   String get _status {
     if (_controller.gameOver) return _controller.resultLabel;
     if (_controller.error != null) return _controller.error!;
     if (!_controller.foreground) return '应用已挂起';
-    if (_controller.thinking) return '${_controller.turn.label} AI 正在思考…';
-    if (_controller.paused) return '已暂停 · 轮到${_controller.turn.label} AI';
-    return '轮到${_controller.turn.label} AI';
+    if (_controller.thinking) return '${_label(_controller.turn)} AI 正在思考…';
+    if (_controller.paused) return '已暂停 · 轮到${_label(_controller.turn)} AI';
+    return '轮到${_label(_controller.turn)} AI';
   }
 
   @override
@@ -121,7 +127,7 @@ class _AiDuelPageState<M> extends State<AiDuelPage<M>>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  widget.rules,
+                  widget.rulesLabel?.call() ?? widget.rules,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 Wrap(

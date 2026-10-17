@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../game_session.dart' show Cell, Side, SideX;
@@ -7,6 +9,7 @@ import '../gomoku_placement.dart';
 import '../gomoku_session.dart';
 import '../gomoku_storage.dart';
 import 'gomoku_board.dart';
+import 'gomoku_opening_panel.dart';
 
 class GomokuGamePage extends StatefulWidget {
   const GomokuGamePage({
@@ -17,6 +20,7 @@ class GomokuGamePage extends StatefulWidget {
     this.aiLevel,
     this.humanSide = Side.black,
     this.ai,
+    this.readOnly = false,
   });
 
   final GomokuSession session;
@@ -25,6 +29,7 @@ class GomokuGamePage extends StatefulWidget {
   final GomokuAiLevel? aiLevel;
   final Side humanSide;
   final GomokuAi? ai;
+  final bool readOnly;
 
   @override
   State<GomokuGamePage> createState() => _GomokuGamePageState();
@@ -43,20 +48,27 @@ class _GomokuGamePageState extends State<GomokuGamePage>
   bool _leaving = false;
   String? _message;
   int _job = 0;
+  Timer? _aiTimer;
 
   GoPlacementMode get _effectivePlacementMode =>
       resolveGomokuPlacementMode(_placementMode);
 
-  bool get _isAi => widget.aiLevel != null;
-  int get _protectedOpening => _isAi && widget.humanSide == Side.white ? 1 : 0;
+  bool get _isAi => widget.aiLevel != null && !widget.readOnly;
+  Side get _humanColor => _session.colorForPlayer(widget.humanSide);
+  int get _protectedOpening => _isAi && widget.humanSide == Side.white
+      ? (_session.variant.competitive ? 3 : 1)
+      : 0;
   bool get _canUndo =>
-      _session.resigned || _session.moves.length > _protectedOpening;
-  bool get _canPlace =>
+      !widget.readOnly &&
+      (_session.resigned || _session.actionCount > _protectedOpening);
+  bool get _canAct =>
+      !widget.readOnly &&
       !_session.gameOver &&
       !_leaving &&
       !_modal &&
       !_suspended &&
-      (!_isAi || _session.turn == widget.humanSide);
+      (!_isAi || _session.actor == widget.humanSide);
+  bool get _canPlace => _canAct && _session.phase != GomokuPhase.exchange;
 
   static String _newId() => 'gomoku-${DateTime.now().microsecondsSinceEpoch}';
 
@@ -95,6 +107,8 @@ class _GomokuGamePageState extends State<GomokuGamePage>
   }
 
   void _cancelAi() {
+    _aiTimer?.cancel();
+    _aiTimer = null;
     _job++;
     _ai.cancel();
     _thinking = false;
@@ -108,14 +122,15 @@ class _GomokuGamePageState extends State<GomokuGamePage>
         _suspended ||
         _modal ||
         _session.gameOver ||
-        _session.turn == widget.humanSide) {
+        _session.actor == widget.humanSide) {
       return;
     }
     final job = ++_job;
     final revision = _session.revision;
+    var advanced = false;
     setState(() => _thinking = true);
     try {
-      final result = await _ai.search(_session, level: widget.aiLevel!);
+      final result = await _ai.decide(_session, level: widget.aiLevel!);
       if (!mounted ||
           job != _job ||
           revision != _session.revision ||
@@ -124,7 +139,8 @@ class _GomokuGamePageState extends State<GomokuGamePage>
           _session.gameOver) {
         return;
       }
-      if (result != null && _session.place(result.cell)) {
+      if (result != null && _session.applyAction(result)) {
+        advanced = true;
         setState(() {
           _thinking = false;
           _message = null;
@@ -139,7 +155,37 @@ class _GomokuGamePageState extends State<GomokuGamePage>
       }
     } finally {
       if (mounted && job == _job) setState(() => _thinking = false);
+      if (advanced &&
+          mounted &&
+          job == _job &&
+          !_session.gameOver &&
+          _session.actor != widget.humanSide) {
+        _aiTimer?.cancel();
+        _aiTimer = Timer(const Duration(milliseconds: 250), () {
+          _aiTimer = null;
+          if (mounted && job == _job) _driveAi();
+        });
+      }
     }
+  }
+
+  void _exchange(bool exchange) {
+    if (!_canAct || !_session.exchangeColors(exchange)) return;
+    setState(() => _message = null);
+    _persist();
+    _driveAi();
+  }
+
+  Future<void> _pass() async {
+    if (!_canAct || !_session.canPass) return;
+    final accepted = await _confirm('停一手', '确认放弃本次行棋权？双方连续停一手将判和棋。');
+    if (!mounted) return;
+    setState(() {});
+    if (accepted && _session.pass()) {
+      setState(() => _message = null);
+      await _persist();
+    }
+    _driveAi();
   }
 
   void _place(Cell cell) {
@@ -154,6 +200,7 @@ class _GomokuGamePageState extends State<GomokuGamePage>
   }
 
   Future<void> _persist() async {
+    if (widget.readOnly) return;
     final record = GomokuRecord(
       id: _recordId,
       createdAt: _createdAt,
@@ -173,8 +220,8 @@ class _GomokuGamePageState extends State<GomokuGamePage>
     _cancelAi();
     _session.undo();
     if (_isAi) {
-      while (_session.turn != widget.humanSide &&
-          _session.moves.length > _protectedOpening) {
+      while (_session.actor != widget.humanSide &&
+          _session.actionCount > _protectedOpening) {
         if (!_session.undo()) break;
       }
     }
@@ -208,7 +255,7 @@ class _GomokuGamePageState extends State<GomokuGamePage>
   }
 
   Future<void> _resign() async {
-    final side = _isAi ? widget.humanSide : _session.turn;
+    final side = _isAi ? _humanColor : _session.colorForPlayer(_session.actor);
     final accepted = await _confirm('认输', '${side.label}确认认输吗？');
     if (!mounted) return;
     if (accepted && _session.resign(side)) {
@@ -241,7 +288,9 @@ class _GomokuGamePageState extends State<GomokuGamePage>
       ? _session.resultLabel
       : _thinking
       ? 'AI 正在思考…'
-      : '轮到${_session.turn.label}${_isAi ? ' · ${_session.turn == widget.humanSide ? '你' : 'AI'}' : ''}';
+      : _session.variant.competitive
+      ? '${_session.phaseLabel}${_isAi ? ' · ${_session.actor == widget.humanSide ? '你' : 'AI'}' : ''}'
+      : '轮到${_session.turn.label}${_isAi ? ' · ${_session.actor == widget.humanSide ? '你' : 'AI'}' : ''}';
 
   @override
   Widget build(BuildContext context) => PopScope<void>(
@@ -268,7 +317,7 @@ class _GomokuGamePageState extends State<GomokuGamePage>
                   ),
                   if (_isAi)
                     Text(
-                      '人机 · ${widget.aiLevel!.label} · 你执${widget.humanSide.label}',
+                      '人机 · ${widget.aiLevel!.label} · 你执${_humanColor.label}${_session.exchanged ? '（已交换）' : ''}',
                     ),
                   if (_thinking) const LinearProgressIndicator(),
                   if (_message != null) Text(_message!),
@@ -285,39 +334,58 @@ class _GomokuGamePageState extends State<GomokuGamePage>
           footer: Column(
             children: [
               const SizedBox(height: 8),
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _canUndo && !_modal ? _undo : null,
-                    icon: const Icon(Icons.undo),
-                    label: const Text('悔棋'),
-                  ),
-                  TextButton.icon(
-                    onPressed: !_session.gameOver && !_modal ? _resign : null,
-                    icon: const Icon(Icons.flag_outlined),
-                    label: const Text('认输'),
-                  ),
-                  TextButton.icon(
-                    onPressed: !_modal ? _restart : null,
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('重开'),
-                  ),
-                  if (_isAi &&
-                      !_thinking &&
-                      _ai.failureReason == null &&
-                      !_session.gameOver &&
-                      _session.turn != widget.humanSide)
-                    TextButton(onPressed: _driveAi, child: const Text('重试 AI')),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                '自动保存 · 落子：${_effectivePlacementMode.label}\n${gomokuPlacementHint(_placementMode)}',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+              if (widget.readOnly)
+                const Text('旧规则存档 · 仅供查看')
+              else ...[
+                GomokuOpeningPanel(
+                  session: _session,
+                  enabled: _canAct,
+                  onExchange: _exchange,
+                ),
+                Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 8,
+                  children: [
+                    if (_session.variant.competitive)
+                      TextButton(
+                        onPressed: _canAct && _session.canPass ? _pass : null,
+                        child: const Text('停一手'),
+                      ),
+                    OutlinedButton.icon(
+                      onPressed: _canUndo && !_modal ? _undo : null,
+                      icon: const Icon(Icons.undo),
+                      label: const Text('悔棋'),
+                    ),
+                    TextButton.icon(
+                      onPressed: !_session.gameOver && !_modal ? _resign : null,
+                      icon: const Icon(Icons.flag_outlined),
+                      label: const Text('认输'),
+                    ),
+                    TextButton.icon(
+                      onPressed: !_modal ? _restart : null,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('重开'),
+                    ),
+                    if (_isAi &&
+                        !_thinking &&
+                        _ai.failureReason == null &&
+                        !_session.gameOver &&
+                        _session.actor != widget.humanSide)
+                      TextButton(
+                        onPressed: _driveAi,
+                        child: const Text('重试 AI'),
+                      ),
+                  ],
+                ),
+              ],
+              if (!widget.readOnly) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '自动保存 · 落子：${_effectivePlacementMode.label}\n${gomokuPlacementHint(_placementMode)}',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
             ],
           ),
         ),

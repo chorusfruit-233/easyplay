@@ -1,3 +1,4 @@
+import 'package:easyplay/gomoku/gomoku_variant.dart';
 import 'package:easyplay/board.dart';
 import 'package:easyplay/draughts/draughts.dart';
 import 'package:easyplay/draughts/widgets/draughts_board.dart';
@@ -141,7 +142,10 @@ void main() {
   testWidgets('LAN Gomoku animates local and remote stones, then undo snaps', (
     tester,
   ) async {
-    final connection = FakeLanConnection.gomoku(Side.black);
+    final connection = FakeLanConnection.gomoku(
+      Side.black,
+      variant: GomokuVariant.freestyle,
+    );
     await tester.pumpWidget(
       MaterialApp(home: GomokuLanMatchPage(connection: connection)),
     );

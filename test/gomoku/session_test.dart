@@ -19,7 +19,7 @@ GomokuSession blackPosition(
 
 void main() {
   test('black starts; occupied and outside cells leave state unchanged', () {
-    final session = GomokuSession();
+    final session = GomokuSession(variant: GomokuVariant.freestyle);
     expect(session.size, 15);
     expect(session.turn, Side.black);
     expect(session.undo(), isFalse);
@@ -76,7 +76,7 @@ void main() {
   });
 
   test('white can win; opposite edges do not wrap into a line', () {
-    final session = GomokuSession();
+    final session = GomokuSession(variant: GomokuVariant.freestyle);
     for (var step = 0; step < 5; step++) {
       expect(session.place(Cell(0, step * 2)), isTrue);
       expect(session.place(Cell(14, 10 + step)), isTrue);
@@ -101,7 +101,7 @@ void main() {
       }
     }
     expect(black.length, 113);
-    final session = GomokuSession();
+    final session = GomokuSession(variant: GomokuVariant.freestyle);
     for (var index = 0; index < black.length; index++) {
       expect(session.place(black[index]), isTrue);
       if (index < white.length) expect(session.place(white[index]), isTrue);
@@ -117,7 +117,8 @@ void main() {
   });
 
   test('resignation, undo, independent fork and reset', () {
-    final session = GomokuSession()..place(const Cell(7, 7));
+    final session = GomokuSession(variant: GomokuVariant.freestyle)
+      ..place(const Cell(7, 7));
     final copy = session.fork();
     expect(copy.toJson(), session.toJson());
     expect(copy.resign(Side.black), isTrue);
@@ -138,7 +139,8 @@ void main() {
   });
 
   test('JSON round trips live, undone, reset, won and resigned records', () {
-    final session = GomokuSession()..place(const Cell(7, 7));
+    final session = GomokuSession(variant: GomokuVariant.freestyle)
+      ..place(const Cell(7, 7));
     void roundTrip(GomokuSession value) {
       final restored = GomokuSession.fromJson(value.toJson());
       expect(restored.toJson(), value.toJson());
@@ -166,7 +168,9 @@ void main() {
   });
 
   test('JSON rejects forged metadata and illegal replay', () {
-    final valid = (GomokuSession()..place(const Cell(7, 7))).toJson();
+    final valid = (GomokuSession(
+      variant: GomokuVariant.freestyle,
+    )..place(const Cell(7, 7))).toJson();
     final bad = <Object?>[
       null,
       {},
@@ -271,7 +275,7 @@ void main() {
   });
 
   test('variant survives undo, fork, reset and serialized restore', () {
-    for (final variant in GomokuVariant.values) {
+    for (final variant in GomokuVariant.values.where((v) => !v.competitive)) {
       final session = GomokuSession(variant: variant);
       session.place(const Cell(7, 7));
       session.place(const Cell(8, 8));
@@ -291,7 +295,9 @@ void main() {
   test(
     'version 1 migrates only to freestyle; version 2 requires known variant',
     () {
-      final valid = (GomokuSession()..place(const Cell(7, 7))).toJson();
+      final valid = (GomokuSession(
+        variant: GomokuVariant.freestyle,
+      )..place(const Cell(7, 7))).toJson();
       final legacy = {...valid, 'version': 1}..remove('variant');
       final restored = GomokuSession.fromJson(legacy);
       expect(restored.variant, GomokuVariant.freestyle);

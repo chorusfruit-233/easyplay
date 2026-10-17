@@ -30,7 +30,7 @@ Future<void> main(List<String> args) async {
   final maxPlies = int.parse(option('plies', '225'));
   final selected = option('variant', 'all');
   final variants = GomokuVariant.values.where(
-    (v) => selected == 'all' || v.name == selected,
+    (v) => !v.competitive && (selected == 'all' || v.name == selected),
   );
   if (pairs < 1 || variants.isEmpty) {
     throw ArgumentError('Invalid pairs or variant');
@@ -61,7 +61,11 @@ Future<Map<String, Object?>> benchmarkGomokuAi({
   int maxDepth = 3,
   int milliseconds = 5000,
   int maxPlies = 225,
-  List<GomokuVariant> variants = GomokuVariant.values,
+  List<GomokuVariant> variants = const [
+    GomokuVariant.freestyle,
+    GomokuVariant.standard,
+    GomokuVariant.renju,
+  ],
   GomokuAiLevel level = GomokuAiLevel.intermediate,
   void Function(String)? onProgress,
 }) async {
