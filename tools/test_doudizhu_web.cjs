@@ -19,6 +19,30 @@ const root = path.resolve(__dirname, '../build/doudizhu-smoke');
   try {
     browser = await chromium.launch({headless:true,args:['--no-sandbox'],executablePath:process.env.CHROME_PATH || undefined});
     const pages = await Promise.all([0,1,2].map(async () => (await browser.newContext({viewport:{width:390,height:844}})).newPage()));
+    await Promise.all(pages.map(p => p.addInitScript(() => {
+      // A newly open channel can lose its first application message. Negotiate
+      // retries with new hosts; leave legacy DataChannel subprotocols untouched.
+      const nativeSend = RTCDataChannel.prototype.send;
+      const dropped = new WeakSet();
+      window.__easyplayDroppedHellos = 0;
+      RTCDataChannel.prototype.send = function(raw) {
+        if (this.protocol === 'easyplay-hello-v1' && !dropped.has(this) &&
+            window.__easyplayDroppedHellos < 2 && typeof raw === 'string') {
+          try {
+            const frame = JSON.parse(raw);
+            if (frame.total === 1) {
+              const message = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(frame.data), c => c.charCodeAt(0))));
+              if (message.type === 'hello' || (message.type === 'card' && message.action === 'hello')) {
+                dropped.add(this);
+                window.__easyplayDroppedHellos++;
+                return;
+              }
+            }
+          } catch (_) { /* Other channel traffic is sent unchanged. */ }
+        }
+        return nativeSend.call(this, raw);
+      };
+    })));
     const failures=[];
     pages.forEach((p,i) => { p.on('pageerror',e => failures.push(`page ${i}: ${e.message}`));p.on('console',m => {if(m.type()==='error' && /overflowed|Exception caught/.test(m.text())) failures.push(m.text());}); });
     const url = `http://127.0.0.1:${server.address().port}/easyplay/`;
@@ -66,11 +90,16 @@ const root = path.resolve(__dirname, '../build/doudizhu-smoke');
     assert.equal(new Set(dealt.flatMap(s=>s.view.hand)).size,51);
     await action(pages[0],'bid');await synced();await action(pages[0],'play');await synced();await privacy();
     console.log('Reconnect guest 1 while guest 2 stays alive');
-    const before=await state(pages[1]);await pages[1].evaluate(() => easyplayDoudizhuSmoke.disconnect());
-    await pages[0].waitForFunction(() => !JSON.parse(easyplayDoudizhuSmoke.state()).seats[1].connected);
-    await connect(1);await synced();assert.deepEqual((await state(pages[1])).view.hand,before.view.hand);
-    assert.deepEqual((await state(pages[1])).view.public.history,before.view.public.history);
-    assert.equal((await state(pages[2])).connected,true);await privacy();
+    const before=await state(pages[1]);
+    for(let round=0;round<3;round++) {
+      await pages[1].evaluate(() => easyplayDoudizhuSmoke.disconnect());
+      await pages[0].waitForFunction(() => !JSON.parse(easyplayDoudizhuSmoke.state()).seats[1].connected);
+      await connect(1);await synced();
+      assert.deepEqual((await state(pages[1])).view.hand,before.view.hand);
+      assert.deepEqual((await state(pages[1])).view.public.history,before.view.public.history);
+      assert.equal((await state(pages[2])).connected,true);
+      await privacy();
+    }
     for(let n=0;n<400;n++) {
       const s=await state(pages[0]);if(s.view.public.phase==='finished') break;
       await action(pages[s.view.public.turn],'auto');await synced();
@@ -154,6 +183,7 @@ const root = path.resolve(__dirname, '../build/doudizhu-smoke');
     await pages[0].setViewportSize({width:568,height:320});
     await pages[0].waitForTimeout(300);
     await pages[0].screenshot({path:'build/doudizhu-smoke/history-landscape.png'});
+    for(const p of pages.slice(1)) assert.ok(await p.evaluate(() => window.__easyplayDroppedHellos > 0), 'First HELLO loss must be exercised');
     assert.deepEqual(failures,[]);console.log('DOUDIZHU RTC PASS: private deal, public plays, reconnect, rematch, mixed AI, responsive UI, real lobby controls');
   } finally {await browser?.close();await new Promise(r=>server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1;});

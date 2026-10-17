@@ -7,8 +7,45 @@ import 'package:easyplay/doudizhu/multiplayer/card_room_coordinator.dart';
 import 'package:easyplay/doudizhu/multiplayer/card_room_protocol.dart';
 import 'package:easyplay/doudizhu/multiplayer/doudizhu_replica.dart';
 import 'test_support.dart';
+import '../support/drop_first_hello.dart';
 
 void main() {
+  test(
+    'negotiated HELLO retry recovers loss and duplicates preserve seat/seq',
+    () async {
+      final room = CardRoomCoordinator(password: 'retry-room');
+      final client = DouDizhuReplica();
+      addTearDown(() async {
+        await client.close();
+        await room.close();
+      });
+      final (server, endpoint) = MemoryTransport.pair();
+      final transport = DropFirstHelloTransport(endpoint);
+      final incoming = <LanMessage>[];
+      client.onWireMessage = (raw) => incoming.add(LanMessage.decode(raw));
+      room.attach(server, fixedSeat: PlayerSeat.seat1);
+      await client.bind(transport, token: room.password);
+      expect(transport.attempts, 2);
+      expect(client.connected, isTrue);
+      expect(client.view!.seat, PlayerSeat.seat1);
+      final seq = room.seq;
+      transport.inner.send(transport.hello!);
+      await until(
+        () => incoming.where((m) => m.body['action'] == 'welcome').length == 2,
+      );
+      expect(room.seq, seq);
+      expect(room.playerCount, 1);
+      expect(client.error, isNull);
+      transport.inner.send(
+        cardMessage('hello', 0, {'token': 'other-identity'}),
+      );
+      await until(() => client.error != null);
+      expect(client.error, contains('身份已经绑定'));
+      expect(room.seq, seq);
+      expect(client.view!.seat, PlayerSeat.seat1);
+    },
+  );
+
   test(
     'three authenticated recipients only receive their own serialized hand',
     () async {

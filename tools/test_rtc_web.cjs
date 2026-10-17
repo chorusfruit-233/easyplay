@@ -32,6 +32,29 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
       const onDataChannel = Object.getOwnPropertyDescriptor(NativePeer.prototype, 'ondatachannel');
       window.__easyplayTestPeers = [];
       window.__easyplayTestOpenedChannels = 0;
+      // A newly open channel can lose its first application message. Negotiate
+      // retries with new hosts; leave legacy DataChannel subprotocols untouched.
+      const nativeSend = RTCDataChannel.prototype.send;
+      const dropped = new WeakSet();
+      window.__easyplayDroppedHellos = 0;
+      RTCDataChannel.prototype.send = function(raw) {
+        if (this.protocol === 'easyplay-hello-v1' && !dropped.has(this) &&
+            window.__easyplayDroppedHellos < 2 && typeof raw === 'string') {
+          try {
+            const frame = JSON.parse(raw);
+            if (frame.total === 1) {
+              const message = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(frame.data), c => c.charCodeAt(0))));
+              if (message.type === 'hello' || (message.type === 'card' && message.action === 'hello')) {
+                dropped.add(this);
+                window.__easyplayDroppedHellos++;
+                return;
+              }
+            }
+          } catch (_) { /* Other channel traffic is sent unchanged. */ }
+        }
+        return nativeSend.call(this, raw);
+      };
+
       window.RTCPeerConnection = new Proxy(NativePeer, {
         construct(target, args) {
           const peer = new target(...args);
@@ -342,6 +365,7 @@ const root = path.resolve(__dirname, '../build/rtc-smoke');
       }
     }
     assert.ok(await guest.evaluate(() => window.__easyplayTestOpenedChannels > 0), 'already-open receiver channels were exercised');
+    assert.ok(await guest.evaluate(() => window.__easyplayDroppedHellos > 0), 'First HELLO loss must be exercised');
     console.log('Already-open DataChannel handoff: authenticated transport and all Flutter lobbies passed');
     await Promise.all(contexts.map(c => c.close()));
   } finally {

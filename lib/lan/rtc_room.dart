@@ -68,6 +68,8 @@ class RtcMatchClient extends LanClientConnection {
     await _transport?.close();
     _transport = transport;
     final ready = Completer<void>();
+    var welcomed = false;
+    HelloRetry? helloRetry;
     unawaited(ready.future.then<void>((_) {}, onError: (Object _) {}));
     _subscription = transport.messages.listen(
       (message) {
@@ -85,6 +87,8 @@ class RtcMatchClient extends LanClientConnection {
           if (message.type == LanMessageType.helloAck) {
             side = LanMessage.parseSide(message.body['assignedSide']);
             started = message.body['started'] as bool;
+            welcomed = true;
+            helloRetry?.cancel();
           } else if (message.type == LanMessageType.matchStart) {
             started = true;
           } else if (message.type == LanMessageType.rejected &&
@@ -136,15 +140,26 @@ class RtcMatchClient extends LanClientConnection {
       if (!_lost.isClosed) _lost.add(null);
       if (!ready.isCompleted) ready.completeError(StateError('对手已断开'));
     });
-    transport.send(
-      LanMessage(LanMessageType.hello, 0, {
-        'roomVersion': lanProtocolVersion,
-        ...invitation.configuration,
-        'token': token ?? invitation.token,
-        if (side != null) 'resumeSide': LanMessage.sideCode(side!),
-      }),
-    );
+    final hello = LanMessage(LanMessageType.hello, 0, {
+      'roomVersion': lanProtocolVersion,
+      ...invitation.configuration,
+      'token': token ?? invitation.token,
+      if (side != null) 'resumeSide': LanMessage.sideCode(side!),
+    });
     try {
+      transport.send(hello);
+      helloRetry = HelloRetry(
+        transport,
+        hello,
+        pending: () =>
+            !ready.isCompleted &&
+            !welcomed &&
+            !_closed &&
+            identical(_transport, transport),
+        onError: (error) {
+          if (!ready.isCompleted) ready.completeError(error);
+        },
+      );
       await ready.future.timeout(const Duration(seconds: 10));
       _heartbeat?.cancel();
       _heartbeat = Timer.periodic(const Duration(seconds: 5), (_) {
@@ -164,6 +179,8 @@ class RtcMatchClient extends LanClientConnection {
     } catch (_) {
       await transport.close();
       rethrow;
+    } finally {
+      helloRetry?.cancel();
     }
   }
 

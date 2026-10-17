@@ -70,7 +70,10 @@ class RtcPeer {
       data,
       () => _pc.sctp?.maxMessageSize.toInt() ?? rtcMaxFrameBytes,
     );
-    _transport = RtcMessageTransport(_channel!);
+    _transport = RtcMessageTransport(
+      _channel!,
+      supportsHelloRetry: data.protocol == rtcHelloRetryProtocol,
+    );
     void opened() {
       if (_closed || _opened.isCompleted || data.readyState != 'open') return;
       _state = '通道已打开，正在握手/同步';
@@ -132,7 +135,7 @@ class RtcPeer {
     _bind(
       _pc.createDataChannel(
         'easyplay-game',
-        web.RTCDataChannelInit(ordered: true),
+        web.RTCDataChannelInit(ordered: true, protocol: rtcHelloRetryProtocol),
       ),
     );
     return _gather((await _pc.createOffer().toDart)!);
