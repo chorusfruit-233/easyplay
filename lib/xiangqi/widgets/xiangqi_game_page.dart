@@ -327,7 +327,7 @@ class _XiangqiGamePageState extends State<XiangqiGamePage>
             const SizedBox(height: 6),
             if (widget.mode != XiangqiGameMode.local)
               Text(
-                '你执${_side.label} ${widget.mode == XiangqiGameMode.ai ? '· ${widget.level.label}' : ''}',
+                '你执${_side.label} ${widget.mode == XiangqiGameMode.ai ? '· ${widget.level.displayLabel}' : ''}',
                 textAlign: TextAlign.center,
               ),
             const SizedBox(height: 16),

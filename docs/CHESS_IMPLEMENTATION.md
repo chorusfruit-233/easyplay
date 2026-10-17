@@ -35,6 +35,9 @@ removed, and its obsolete tests are replaced by independent rules/widget tests.
   network than Android, so equal difficulty levels are not identical strength.
 - Both default to one thread, 16 MiB hash, and bounded thinking time. Six levels
   map centrally to Skill Level and movetime, with no technical tuning in the UI.
+- Difficulty selection and the game page show approximate reference Elo from
+  Stockfish 19's official Skill mapping. Full strength is shown as uncalibrated;
+  these are not measured app or human ratings. See [strength labels](ENGINE_STRENGTH.md).
 - `tools/prepare_stockfish.py` pins and checks SHA-256 for every engine artifact.
   Large binaries are fetched at build time instead of checked into Git.
   Source, licenses and build instructions are linked in the app's About page.

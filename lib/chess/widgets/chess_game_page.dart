@@ -363,7 +363,7 @@ class _ChessGamePageState extends State<ChessGamePage>
             const SizedBox(height: 6),
             if (widget.mode != ChessGameMode.local)
               Text(
-                '你执${_side.label} ${widget.mode == ChessGameMode.ai ? '· ${widget.level.label}' : ''}',
+                '你执${_side.label} ${widget.mode == ChessGameMode.ai ? '· ${widget.level.displayLabel}' : ''}',
                 textAlign: TextAlign.center,
               ),
             const SizedBox(height: 16),
