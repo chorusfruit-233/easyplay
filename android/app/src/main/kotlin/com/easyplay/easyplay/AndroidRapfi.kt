@@ -7,7 +7,6 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 
 /** Native Gomocup process, with command IO and reader threads off the UI thread. */
 class AndroidRapfi(private val context: android.content.Context) : EventChannel.StreamHandler {
@@ -99,7 +98,7 @@ class AndroidRapfi(private val context: android.content.Context) : EventChannel.
         val child = process ?: return
         process = null
         // Single-threaded search cannot read a queued END while thinking.
-        child.destroyForcibly()
+        child.destroy() // Also available on the app's minimum Android API 24.
         child.waitFor()
     }
 
