@@ -14,6 +14,11 @@ docs/licenses/KataGo-third-party/half-2.2.0/LICENSE.txt -text
 *.sh text eol=lf
 *.bat -text
 
+# Rapfi verifies these exact bytes on every build, including Windows checkouts.
+assets/rapfi/config.toml text eol=lf
+web/rapfi/*.js text eol=lf
+assets/rapfi/MODEL-LICENSE.txt -text
+
 # Binary payloads: never diff, never merge, never normalize.
 *.gz binary
 *.so binary
