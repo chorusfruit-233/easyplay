@@ -166,9 +166,16 @@ const root = path.resolve(__dirname, '../build/doudizhu-smoke');
     await Promise.all(pages.map((p,i) => p.getByText(`玩家 ${i+1} · 17 张`,{exact:true}).waitFor()));
     await pages[0].getByRole('button',{name:'叫 3 分',exact:true}).click();
     await pages[0].getByText('玩家 1 · 地主 · 20 张',{exact:true}).waitFor();
+    assert.equal(await pages[0].getByRole('button',{name:'提示',exact:true}).count(),0,'No hint on the initial lead');
     await pages[0].getByRole('button',{name:/[♠♥♣♦]/}).first().click();
     await pages[0].getByRole('button',{name:'出牌',exact:true}).click();
     await pages[0].getByText('玩家 1 · 地主 · 19 张',{exact:true}).waitFor();
+    const tablePlay = (p,seat,complete=false) => p.getByText(new RegExp(`^玩家 ${seat+1}${complete?'上轮':'本轮'}出牌：`));
+    for (const p of pages) {
+      await tablePlay(p,0).waitFor();
+      await p.getByRole('button',{name:'提示',exact:true}).waitFor();
+    }
+    const firstPlay = await tablePlay(pages[0],0).textContent();
     for (const p of pages) {
       await p.getByRole('button',{name:'历史出牌',exact:true}).click();
       await p.getByText('1 · 玩家 1 · 地主 · 单牌',{exact:false}).waitFor();
@@ -183,7 +190,31 @@ const root = path.resolve(__dirname, '../build/doudizhu-smoke');
     await pages[0].setViewportSize({width:568,height:320});
     await pages[0].waitForTimeout(300);
     await pages[0].screenshot({path:'build/doudizhu-smoke/history-landscape.png'});
+    await pages[0].getByRole('button',{name:'关闭历史出牌',exact:true}).click();
+    for (const p of pages) {
+      for (const seat of [0,1,2]) await tablePlay(p,seat,true).waitFor();
+      assert.equal(await tablePlay(p,0,true).textContent(),firstPlay.replace('本轮','上轮'),'Two passes retain the played card');
+      await p.getByRole('button',{name:'提示',exact:true}).waitFor({state:'detached'});
+    }
+    await pages[0].setViewportSize({width:390,height:844});
+    await scroll(pages[0],-1600);
+    await pages[0].screenshot({path:'build/doudizhu-smoke/table-portrait.png'});
+    await scroll(pages[1],-1600);
+    await pages[1].screenshot({path:'build/doudizhu-smoke/table-guest-portrait.png'});
+    await pages[1].setViewportSize({width:568,height:320});
+    await pages[1].evaluate(() => new Promise(requestAnimationFrame).then(() => new Promise(requestAnimationFrame)));
+    await pages[1].mouse.move(550,200);await pages[1].mouse.wheel(0,-1600);
+    await pages[1].screenshot({path:'build/doudizhu-smoke/table-landscape.png'});
+    await pages[0].getByRole('button',{name:/[♠♥♣♦]/}).first().click();
+    await pages[0].getByRole('button',{name:'出牌',exact:true}).click();
+    await pages[0].getByText('玩家 1 · 地主 · 18 张',{exact:true}).waitFor();
+    for (const p of pages) {
+      await tablePlay(p,0).waitFor();
+      assert.notEqual(await tablePlay(p,0).textContent(),firstPlay,'A new lead replaces the previous card');
+      assert.equal(await tablePlay(p,1,true).count(),0,'New lead clears the old round');
+      assert.equal(await tablePlay(p,2,true).count(),0,'New lead clears the old round');
+    }
     for(const p of pages.slice(1)) assert.ok(await p.evaluate(() => window.__easyplayDroppedHellos > 0), 'First HELLO loss must be exercised');
-    assert.deepEqual(failures,[]);console.log('DOUDIZHU RTC PASS: private deal, public plays, reconnect, rematch, mixed AI, responsive UI, real lobby controls');
+    assert.deepEqual(failures,[]);console.log('DOUDIZHU RTC PASS: private deal, public plays, reconnect, rematch, mixed AI, responsive UI, real lobby controls, retained table cards and lead hints');
   } finally {await browser?.close();await new Promise(r=>server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1;});

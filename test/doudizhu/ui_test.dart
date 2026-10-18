@@ -6,6 +6,8 @@ import 'package:easyplay/doudizhu/widgets/doudizhu_home_page.dart';
 import 'package:easyplay/doudizhu/widgets/doudizhu_game_page.dart';
 import 'package:easyplay/doudizhu/widgets/doudizhu_hand.dart';
 import 'package:easyplay/doudizhu/widgets/bidding_panel.dart';
+import 'package:easyplay/doudizhu/widgets/doudizhu_card.dart';
+import 'package:easyplay/doudizhu/widgets/doudizhu_played_cards.dart';
 import 'package:easyplay/game_session.dart';
 import 'package:easyplay/lan/lan_quick_join.dart';
 import 'package:easyplay/doudizhu/widgets/doudizhu_lobby_page.dart';
@@ -15,6 +17,71 @@ import 'package:easyplay/doudizhu/multiplayer/card_room_coordinator.dart';
 import 'test_support.dart';
 
 void main() {
+  testWidgets(
+    'played cards stay by their player and hints are hidden on leads',
+    (tester) async {
+      final controller = DouDizhuMatchController.hotseat();
+      addTearDown(controller.dispose);
+      controller.reveal();
+      controller.act('bid', {'score': 3});
+      controller.reveal();
+      await tester.pumpWidget(
+        MaterialApp(home: DouDizhuGamePage(controller: controller)),
+      );
+      expect(find.text('提示'), findsNothing);
+      final card = controller.view!.hand.first;
+      controller.act('play', {
+        'cards': [card],
+      });
+      await tester.pump();
+      expect(find.byType(DouDizhuHand), findsNothing);
+      final played = find.byKey(ValueKey('played-card-0-$card'));
+      expect(played, findsOneWidget);
+      final widget = tester.widget<DouDizhuCard>(played);
+      expect(widget.compact, isTrue);
+      expect(tester.getSize(played), const Size(24, 34));
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('doudizhu-player-0')),
+          matching: played,
+        ),
+        findsOneWidget,
+      );
+      controller.reveal();
+      await tester.pump();
+      expect(find.text('提示'), findsOneWidget);
+      controller.act('pass');
+      controller.reveal();
+      await tester.pump();
+      expect(find.text('提示'), findsOneWidget);
+      controller.act('pass');
+      controller.reveal();
+      await tester.pump();
+      expect(find.text('提示'), findsNothing);
+      expect(played, findsOneWidget);
+      expect(
+        tester
+            .widget<DouDizhuPlayedCards>(
+              find.byKey(const ValueKey('doudizhu-play-0')),
+            )
+            .complete,
+        isTrue,
+      );
+      final next = controller.view!.hand.first;
+      controller.act('play', {
+        'cards': [next],
+      });
+      await tester.pump();
+      expect(played, findsNothing);
+      expect(find.byKey(ValueKey('played-card-0-$next')), findsOneWidget);
+      expect(find.byKey(const ValueKey('doudizhu-play-1')), findsNothing);
+      expect(find.byKey(const ValueKey('doudizhu-play-2')), findsNothing);
+      controller.act('rematch');
+      await tester.pump();
+      expect(find.byType(DouDizhuPlayedCards), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
   testWidgets('history is public while covered, updates live and resets', (
     tester,
   ) async {

@@ -90,6 +90,7 @@ dart analyze lib test
 - [棋力标注](docs/ENGINE_STRENGTH.md)：Stockfish 参考 Elo 与 Pikafish 相对强度
 - [AI 对抗观战](docs/AI_DUEL.md)：五子棋、跳棋双 AI 自动对弈与暂停、单步控制
 - [斗地主说明](docs/DOUDIZHU.md)：固定规则、三人房间、手牌隐私与重连
+- [AlphaDou 接入评估](docs/ALPHADOU.md)：权重公开情况、规则适配与移动端 / Web 路线
 - [中国象棋说明](docs/XIANGQI.md)：固定规则、Pikafish、构建与模型许可
 - [WebRTC 联机说明](docs/WEBRTC_MULTIPLAYER.md)：邀请流程、STUN 与网络限制
 
