@@ -108,7 +108,22 @@ jobs:
             ~/.gradle/wrapper/dists
           key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}
           restore-keys: ${{ runner.os }}-gradle-
-      - run: python3 tools/package_lan_android.py --debug --network-retries 2
+      - name: Build and verify minified Android APK
+        run: |
+          # CI-only signing: exercise release R8 without production credentials.
+          CI_KEYSTORE="$RUNNER_TEMP/easyplay-r8-check.jks"
+          trap 'rm -f android/key.properties "$CI_KEYSTORE"' EXIT
+          keytool -genkeypair -noprompt -keystore "$CI_KEYSTORE" \
+            -storepass android -keypass android -alias ci -keyalg RSA \
+            -keysize 2048 -validity 1 -dname "CN=EasyPlay CI"
+          cat > android/key.properties <<EOF
+          storeFile=$CI_KEYSTORE
+          storePassword=android
+          keyAlias=ci
+          keyPassword=android
+          EOF
+          python3 tools/package_lan_android.py --network-retries 2
+          python3 tools/check_douzero_android.py build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
       - name: DouZero native JNI references
         working-directory: android
         run: ./gradlew :app:testDebugUnitTest --no-daemon
