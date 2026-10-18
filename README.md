@@ -22,9 +22,9 @@
 | 跳棋 | 八种规则、PDN 棋谱库、完整行棋轨迹、AI 对抗观战 | 自研本地搜索，三档难度 |
 | 五子棋 | 15×15 索索夫-8、黑方禁手、SGF/JSON 棋谱导出、AI 对抗观战 | Rapfi，三档难度 |
 | 中国象棋 | 马腿、象眼、炮架、将帅照面、将死与困毙；固定亚洲长将/长捉配置 | Pikafish，六档难度 |
-| 斗地主 | 54 张牌、叫分、全部常用牌型、地主与农民阵营；三人对战 | Dart 本地启发式 AI，仅使用自己的手牌 |
+| 斗地主 | 54 张牌、叫分、全部常用牌型、地主与农民阵营；三人对战 | 本地 DouZero-WP，仅使用自己的手牌与公开信息 |
 
-棋类游戏支持本地双人、AI 与联机。斗地主支持经典三人规则、同机遮挡交接、设备本地 AI、三人 LAN / WebRTC 和两名真人加 AI 补位，详见 [斗地主说明](docs/DOUDIZHU.md)。中国象棋的着法历史仅用于当前对局的规则、悔棋、搜索和重连，不持久化保存棋谱；规则范围见 [中国象棋说明](docs/XIANGQI.md)。
+棋类游戏支持本地双人、AI 与联机。斗地主支持经典三人规则、同机遮挡交接、本地 DouZero-WP AI、三人 LAN / WebRTC 和两名真人加 AI 补位，详见 [斗地主说明](docs/DOUDIZHU.md)。中国象棋的着法历史仅用于当前对局的规则、悔棋、搜索和重连，不持久化保存棋谱；规则范围见 [中国象棋说明](docs/XIANGQI.md)。
 
 五种棋类支持落子、移动和吃子动画，兼容系统减少动态效果设置，预览与细节见 [行棋动画](docs/BOARD_ANIMATIONS.md)。
 
@@ -57,6 +57,7 @@ flutter pub get
 python3 tools/prepare_stockfish.py
 python3 tools/prepare_pikafish.py
 python3 tools/prepare_rapfi.py
+python3 tools/prepare_douzero.py
 flutter run -d chrome
 ```
 
@@ -90,6 +91,7 @@ dart analyze lib test
 - [棋力标注](docs/ENGINE_STRENGTH.md)：Stockfish 参考 Elo 与 Pikafish 相对强度
 - [AI 对抗观战](docs/AI_DUEL.md)：五子棋、跳棋双 AI 自动对弈与暂停、单步控制
 - [斗地主说明](docs/DOUDIZHU.md)：固定规则、三人房间、手牌隐私与重连
+- [DouZero 接入](docs/DOUZERO.md)：WP 模型、设备本地推理、合法动作、许可与转换复现
 - [AlphaDou 接入评估](docs/ALPHADOU.md)：权重公开情况、规则适配与移动端 / Web 路线
 - [中国象棋说明](docs/XIANGQI.md)：固定规则、Pikafish、构建与模型许可
 - [WebRTC 联机说明](docs/WEBRTC_MULTIPLAYER.md)：邀请流程、STUN 与网络限制
@@ -134,6 +136,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 | Pikafish NNUE 权重 | 单独授权，未经许可不得商业使用 | 中国象棋 AI 网络，见 [模型许可](assets/pikafish/NNUE-License.md) |
 | [Rapfi](https://github.com/dhbloo/rapfi) | GPL-3.0-or-later | 五子棋引擎，Android ARM64 与 WebAssembly Worker |
 | [Rapfi 连珠网络](https://github.com/dhbloo/rapfi-networks) | CC0-1.0（公有领域） | 连珠黑、白网络及 classical 模型，见 [Rapfi 说明](docs/RAPFI.md) |
+| [DouZero](https://github.com/kwai/DouZero) / DouZero-WP 模型镜像 | Apache-2.0 | 斗地主三个身份模型，来源与哈希见 [DouZero 说明](docs/DOUZERO.md) |
+| [ONNX Runtime](https://github.com/microsoft/onnxruntime) | MIT / 第三方组件许可 | DouZero Android CPU 与 Web WASM 推理 |
 | cpp-httplib、half、filesystem 等 | Apache-2.0 / BSD / MIT 等 | KataGo 依赖，原文见 `assets/katago/THIRD-PARTY-LICENSES/` |
 
-许可证及来源归档在 `assets/katago/`、`assets/licenses/`、`assets/pikafish/`、`assets/rapfi/`、`docs/licenses/`、`web/stockfish/` 和 `web/rapfi/`。应用内「关于与许可证」页面提供引擎与模型的许可信息。
+许可证及来源归档在 `assets/katago/`、`assets/licenses/`、`assets/pikafish/`、`assets/rapfi/`、`assets/douzero/`、`docs/licenses/`、`web/stockfish/`、`web/rapfi/` 和 `web/douzero/`。应用内「关于与许可证」页面提供引擎与模型的许可信息。

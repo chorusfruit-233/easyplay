@@ -77,7 +77,7 @@ class CardLanServer {
                   .split('.')
                   .last) {
                 'html' => ContentType.html,
-                'js' => ContentType('application', 'javascript'),
+                'js' || 'mjs' => ContentType('application', 'javascript'),
                 'json' => ContentType.json,
                 'wasm' => ContentType('application', 'wasm'),
                 'png' => ContentType('image', 'png'),

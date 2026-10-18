@@ -11,9 +11,15 @@ import 'package:easyplay/doudizhu/doudizhu_match_controller.dart';
 import 'package:easyplay/doudizhu/multiplayer/card_rtc_room.dart';
 import 'package:easyplay/doudizhu/widgets/doudizhu_game_page.dart';
 import 'package:easyplay/doudizhu/widgets/doudizhu_lobby_page.dart';
+import 'package:easyplay/doudizhu/widgets/doudizhu_home_page.dart';
+import 'package:easyplay/doudizhu/ai/douzero_factory.dart';
+import 'package:easyplay/doudizhu/ai/douzero_features.dart';
+import 'package:easyplay/doudizhu/ai/douzero_runtime.dart';
+import 'package:crypto/crypto.dart';
 
 CardRtcRoom? room;
 DouDizhuMatchController? controller;
+DouZeroRuntime? oracleRuntime;
 final wires = <String>[];
 Future<void> until(bool Function() condition) async {
   final end = DateTime.now().add(const Duration(seconds: 20));
@@ -48,6 +54,8 @@ void main() {
     'seats': room?.replica.seats,
     'rematch': room?.replica.rematch,
     'error': room?.replica.error,
+    'aiWarning': DouDizhuAi.warning.value,
+    'aiEngine': DouDizhuAi.engineLabel,
   }).toJS).toJS;
   bridge['action'] = ((JSString name) => _action(
     name.toDart,
@@ -56,11 +64,21 @@ void main() {
       (() => room!.replica.disconnect().then((_) => ''.toJS).toJS).toJS;
   bridge['wire'] = (() => jsonEncode(wires).toJS).toJS;
   bridge['close'] = (() => _close().then((_) => ''.toJS).toJS).toJS;
+  bridge['oracle'] = ((JSString input) => _oracle(input.toDart).toJS).toJS;
+  bridge['resetOracle'] = (() => _resetOracle().then((_) => ''.toJS).toJS).toJS;
   bridge['lobby'] = (() {
     runApp(
       const MaterialApp(
         key: ValueKey('doudizhu-lobby'),
         home: DouDizhuLobbyPage(rtc: true),
+      ),
+    );
+  }).toJS;
+  bridge['home'] = (() {
+    runApp(
+      const MaterialApp(
+        key: ValueKey('doudizhu-home'),
+        home: DouDizhuHomePage(),
       ),
     );
   }).toJS;
@@ -75,6 +93,26 @@ void main() {
     );
   }).toJS;
   web.window.setProperty('easyplayDoudizhuSmoke'.toJS, bridge);
+}
+
+Future<JSString> _oracle(String input) async {
+  final view = DouDizhuPlayerView.fromWire(
+    Map<String, Object?>.from(jsonDecode(input) as Map),
+  );
+  final features = DouZeroFeatures.fromView(view);
+  final runtime = oracleRuntime ??= createDouZeroRuntime();
+  final values = await runtime.score(features.role, features.x, features.z);
+  return jsonEncode({
+    'role': features.role,
+    'xSha256': sha256.convert(features.x.buffer.asUint8List()).toString(),
+    'z': features.z.map((v) => v.toInt()).join(),
+    'values': values.toList(),
+  }).toJS;
+}
+
+Future<void> _resetOracle() async {
+  await oracleRuntime?.reset();
+  oracleRuntime = null;
 }
 
 void capture() {
@@ -130,6 +168,7 @@ Future<void> _action(String action) async {
 }
 
 Future<void> _close() async {
+  await _resetOracle();
   controller?.dispose();
   controller = null;
   await room?.close();

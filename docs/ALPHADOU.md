@@ -1,6 +1,6 @@
 # AlphaDou 接入评估
 
-评估日期：2026-10-18。当前斗地主仍使用 EasyPlay 的本地 Dart AI；单人、房间 AI 补位和跟牌提示均未接入 AlphaDou。
+评估日期：2026-10-18。当前斗地主已改用本地 [DouZero-WP](DOUZERO.md)；单人、房间 AI 补位和跟牌提示均未接入 AlphaDou。
 
 ## 结论与来源
 
@@ -35,4 +35,4 @@ EasyPlay 的 `DouDizhuAi.chooseAsync(view)` 只接收本座位手牌与公开信
 3. Android 评估原生 CPU 推理，Web 评估 Worker 中的 WASM 推理。核查动态候选动作批次、算子支持、包体、峰值内存、单步延迟和取消过期回合的行为。目前没有移动端实测或成功导出的模型，不承诺速度与棋力。
 4. 用同一组观察量检查 Python、Android、Web 的输出一致性，再做固定发牌、角色轮换与当前 AI 的对照对局；加入合法性、手牌隐私、农民协作和联机重连验证。
 
-在权重和跨平台验证完成前，保留现有本地 AI；如改用公开的 DouZero 模型，应独立评估并按实际引擎命名。
+后续已独立评估并接入公开的 DouZero-WP 模型，按实际引擎命名；其权重来源与跨平台验证见 [DouZero 接入](DOUZERO.md)。AlphaDou 仍须先解决上述权重缺口。

@@ -1,6 +1,8 @@
 # AI 引擎与模型
 
-五子棋使用设备本地 Rapfi 引擎与连珠模型，人机及 AI 观战提供三档难度；索索夫-8开局和规则校验由应用管理。搜索预算、取消行为、源码和模型许可见 [Rapfi 集成](RAPFI.md) 与 [五子棋说明](GOMOKU.md)。Stockfish 和 Pikafish 的难度刻度见 [棋力标注](ENGINE_STRENGTH.md)。以下章节说明 KataGo 围棋引擎。
+五子棋使用设备本地 Rapfi 引擎与连珠模型，人机及 AI 观战提供三档难度；索索夫-8开局和规则校验由应用管理。搜索预算、取消行为、源码和模型许可见 [Rapfi 集成](RAPFI.md) 与 [五子棋说明](GOMOKU.md)。Stockfish 和 Pikafish 的难度刻度见 [棋力标注](ENGINE_STRENGTH.md)。
+
+斗地主的出牌、AI 补位与跟牌提示使用本地 DouZero-WP，Android 为 ONNX Runtime CPU，Web 为 WASM Worker；叫分保留手牌评估策略。模型来源、合法动作约束、容错和转换复现见 [DouZero 接入](DOUZERO.md)。以下章节说明 KataGo 围棋引擎。
 
 ## 支持范围
 

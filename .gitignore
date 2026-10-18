@@ -80,3 +80,8 @@ app.*.map.json
 /assets/rapfi/*.bin
 /assets/rapfi/*.bin.lz4
 /web/rapfi/*.data
+
+# Checksum-pinned ONNX Runtime files, fetched by prepare_douzero.py.
+/web/douzero/ort.wasm.min.js
+/web/douzero/ort-wasm-simd-threaded.mjs
+/web/douzero/ort-wasm-simd-threaded.wasm

@@ -619,6 +619,8 @@ Android 构建过程中的 Java 25 restricted-method warning 不影响上述 APK
 
 斗地主使用独立 `lib/doudizhu/` 规则、Session、AI 与三座位房间；不扩展棋类 `Side` 或双人 `RoomCoordinator`。私有快照按认证收件人投影，客户端不持有完整 Session 或权威事件日志。LAN 与 WebRTC 复用底层传输，新增三人浏览器 smoke 在 CI 单独执行。规则边界、模式、隐私与验证命令见 [斗地主说明](DOUDIZHU.md)。
 
+出牌与跟牌提示默认调用 DouZero-WP 三身份模型，叫分沿用 `BiddingPolicy`。构建前运行 `python3 tools/prepare_douzero.py` 校验模型及固定 Web 推理文件；Android 与 LAN 打包入口自动执行。观察量、上游回放对照、JNI / WASM 验证、合法动作和失败回退见 [DouZero 接入](DOUZERO.md)。
+
 ## 行棋动画
 
 五种棋盘使用 `lib/widgets/board_motion.dart` 的显示快照与路径过渡，不改变 Session 提交、AI 或网络同步时序。减少动态效果、后台停用、快速更新与恢复局面的行为，以及实际棋盘预览和浏览器验证命令见 [行棋动画说明](BOARD_ANIMATIONS.md)。

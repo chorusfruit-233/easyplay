@@ -43,6 +43,9 @@ jobs:
       - name: Verify Rapfi assets
         run: python3 tools/prepare_rapfi.py --web-only
 
+      - name: Verify DouZero models and runtime
+        run: python3 tools/prepare_douzero.py --web-only
+
       - name: Install dependencies
         run: flutter pub get
 

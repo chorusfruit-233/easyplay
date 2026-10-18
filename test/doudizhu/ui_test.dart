@@ -17,6 +17,26 @@ import 'package:easyplay/doudizhu/multiplayer/card_room_coordinator.dart';
 import 'test_support.dart';
 
 void main() {
+  testWidgets('AI fallback is visible and retry keeps hotseat hands covered', (
+    tester,
+  ) async {
+    final controller = DouDizhuMatchController.hotseat();
+    addTearDown(controller.dispose);
+    addTearDown(() => DouDizhuAi.warning.value = null);
+    DouDizhuAi.warning.value = 'DouZero 暂不可用，已使用本地兼容策略';
+    await tester.pumpWidget(
+      MaterialApp(home: DouDizhuGamePage(controller: controller)),
+    );
+    expect(find.text('DouZero 暂不可用，已使用本地兼容策略'), findsOneWidget);
+    expect(find.byType(DouDizhuHand), findsNothing);
+    await tester.ensureVisible(find.text('重试 DouZero'));
+    await tester.tap(find.text('重试 DouZero'));
+    await tester.pumpAndSettle();
+    expect(DouDizhuAi.warning.value, isNull);
+    expect(controller.covered, isTrue);
+    expect(find.byType(DouDizhuHand), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+  });
   testWidgets(
     'played cards stay by their player and hints are hidden on leads',
     (tester) async {

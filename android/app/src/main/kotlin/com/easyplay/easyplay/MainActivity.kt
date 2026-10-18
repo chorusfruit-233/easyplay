@@ -14,6 +14,7 @@ class MainActivity : FlutterActivity() {
     private lateinit var rapfi: AndroidRapfi
     private lateinit var pikafish: AndroidPikafish
     private lateinit var stockfish: AndroidStockfish
+    private lateinit var douZero: AndroidDouZero
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -41,6 +42,9 @@ class MainActivity : FlutterActivity() {
                     result.error("color_scheme", error.message, null)
                 }
             }
+        douZero = AndroidDouZero(applicationContext)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "easyplay/douzero")
+            .setMethodCallHandler { call, result -> douZero.execute(call, result) }
         rapfi = AndroidRapfi(applicationContext)
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, "easyplay/rapfi/output").setStreamHandler(rapfi)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "easyplay/rapfi").setMethodCallHandler { call, result -> rapfi.execute(call, result) }
@@ -75,6 +79,7 @@ class MainActivity : FlutterActivity() {
     override fun onDestroy() {
         colorExecutor.shutdownNow()
         if (::rapfi.isInitialized) rapfi.close()
+        if (::douZero.isInitialized) douZero.close()
         if (::pikafish.isInitialized) pikafish.close()
         if (::stockfish.isInitialized) stockfish.close()
         if (::kataGo.isInitialized) kataGo.close()

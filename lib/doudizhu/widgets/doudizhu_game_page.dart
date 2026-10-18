@@ -251,6 +251,22 @@ class _DouDizhuGamePageState extends State<DouDizhuGamePage> {
                           ),
                         ],
                         const SizedBox(height: 18),
+                        if (controller.aiWarning case final warning?)
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  Text(warning),
+                                  TextButton(
+                                    onPressed: controller.retryAi,
+                                    child: const Text('重试 DouZero'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         if (!controller.canAct) ...[
                           Text(
                             controller.error ?? '等待离线玩家恢复连接',
