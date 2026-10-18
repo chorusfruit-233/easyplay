@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import '../ai/ai_duel_config.dart';
 import '../ai/ai_duel_controller.dart';
 import '../game_session.dart' show Side;
-import 'gomoku_ai.dart';
+import 'gomoku_ai_level.dart';
+import 'gomoku_player.dart';
+import 'engine/rapfi_player.dart';
 import 'gomoku_session.dart';
 import 'gomoku_storage.dart';
 
@@ -9,19 +13,19 @@ class GomokuAiDuelController extends AiDuelController<GomokuAction> {
   GomokuAiDuelController({
     required this.session,
     required this.config,
-    GomokuAi? ai,
+    GomokuPlayer? ai,
     String? recordId,
     DateTime? createdAt,
     super.initiallyPaused,
     super.moveInterval,
-  }) : _ai = ai ?? GomokuAi(),
+  }) : _ai = ai ?? RapfiPlayer(),
        createdAt = createdAt ?? DateTime.now().toUtc(),
        recordId =
            recordId ?? 'gomoku-duel-${DateTime.now().microsecondsSinceEpoch}';
 
   final GomokuSession session;
   final AiDuelConfig<GomokuAiLevel> config;
-  final GomokuAi _ai;
+  final GomokuPlayer _ai;
   String recordId;
   DateTime createdAt;
 
@@ -37,11 +41,22 @@ class GomokuAiDuelController extends AiDuelController<GomokuAction> {
   String get resultLabel => session.resultLabel;
 
   @override
-  Future<GomokuAction?> search() =>
-      _ai.decide(session, level: config.levelFor(turn));
+  Future<GomokuAction?> search() async {
+    final action = await _ai.decide(session, level: config.levelFor(turn));
+    if (action == null && _ai.failureReason != null) {
+      throw StateError(_ai.failureReason!);
+    }
+    return action;
+  }
 
   @override
   void cancelSearch() => _ai.cancel();
+  @override
+  void dispose() {
+    super.dispose();
+    unawaited(_ai.dispose());
+  }
+
   @override
   bool applyMove(GomokuAction move) => session.applyAction(move);
   @override

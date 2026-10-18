@@ -4,6 +4,7 @@ import '../game_session.dart' show Cell, Side, SideX;
 import 'gomoku_ai_level.dart';
 import 'gomoku_rules.dart';
 import 'gomoku_session.dart';
+import 'gomoku_player.dart';
 
 export 'gomoku_ai_level.dart';
 part 'gomoku_ai_position.dart';
@@ -21,13 +22,18 @@ class GomokuAiResult {
 
 /// Bounded local search with mandatory defense, forcing-line extensions and a
 /// per-search transposition table. The live session is never used as scratch.
-class GomokuAi {
+class GomokuAi implements GomokuPlayer {
   GomokuAi({Random? random}) : _random = random ?? Random();
   final Random _random;
   int _generation = 0;
+  @override
   String? failureReason;
 
+  @override
   void cancel() => _generation++;
+
+  @override
+  Future<void> dispose() async => cancel();
 
   T _choose<T>(List<T> choices) => choices.length == 1
       ? choices.first
@@ -35,6 +41,7 @@ class GomokuAi {
 
   /// Opening actions belong to players, rather than the colour being placed.
   /// Normal play retains the tactical search and its cancellation budget.
+  @override
   Future<GomokuAction?> decide(
     GomokuSession source, {
     GomokuAiLevel level = GomokuAiLevel.intermediate,

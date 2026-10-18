@@ -188,7 +188,7 @@ class _GameCardState extends State<GameCard> {
     GameType.go => '布局与收官，一步一步来',
     GameType.chess => '战术攻防，将军与将杀',
     GameType.checkers => '多种规则，连跳与升王',
-    GameType.gomoku => '标准五子棋与连珠规则',
+    GameType.gomoku => '索索夫-8连珠 · Rapfi AI',
     GameType.xiangqi => '楚河汉界，将帅交锋',
     GameType.doudizhu => '经典三人，叫分与出牌',
   };

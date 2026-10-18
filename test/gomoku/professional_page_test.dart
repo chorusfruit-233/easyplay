@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:easyplay/ai/ai_duel_config.dart';
 import 'package:easyplay/game_session.dart' show Cell, Side;
 import 'package:easyplay/gomoku/gomoku_ai.dart';
 import 'package:easyplay/gomoku/gomoku_session.dart';
@@ -90,6 +91,8 @@ void main() {
         await button(tester, exchange ? '交换执棋' : '不交换');
         expect(session.exchanged, exchange);
         await tapCell(tester, const Cell(8, 8));
+        await button(tester, '2打');
+        await button(tester, '不交换');
         await tapCell(tester, const Cell(8, 7));
         await tapCell(tester, const Cell(7, 8));
         expect(session.proposals, hasLength(2));
@@ -138,6 +141,11 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('你执白方（已交换）'), findsOneWidget);
       await tapCell(tester, const Cell(8, 8));
+      await button(tester, '2打');
+      expect(ai.positions.last.phase, GomokuPhase.secondExchange);
+      ai.requests.last.complete(const GomokuAction.exchange(false));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       expect(ai.positions.last.phase, GomokuPhase.proposals);
       ai.requests.last.complete(const GomokuAction.place(Cell(8, 7)));
       await tester.pump();
@@ -149,10 +157,10 @@ void main() {
       expect(session.actor, Side.black);
       await tapCell(tester, const Cell(7, 8));
       expect(session.moves, hasLength(5));
-      expect(ai.requests, hasLength(3));
+      expect(ai.requests, hasLength(4));
       await tapCell(tester, const Cell(8, 7));
       expect(session.moves, hasLength(6));
-      expect(ai.requests, hasLength(4));
+      expect(ai.requests, hasLength(5));
       expect(ai.positions.last.turn, Side.black);
       await tester.pumpWidget(const SizedBox());
       ai.requests.last.complete(null);
@@ -223,6 +231,11 @@ void main() {
       await tapCell(tester, const Cell(8, 8));
       await tester.pumpAndSettle();
       expect(connection.sent.last.body['side'], 'B');
+      await button(tester, '2打');
+      connection.commit(Side.white, LanMessageType.gomokuExchange, {
+        'exchange': false,
+      });
+      await tester.pumpAndSettle();
       for (final cell in [
         [8, 7],
         [7, 8],
@@ -248,6 +261,38 @@ void main() {
       await connection.dispose();
     },
   );
+
+  testWidgets('v3 five-hand-two AI-duel record opens read-only', (
+    tester,
+  ) async {
+    final session = GomokuSession(variant: GomokuVariant.professional)
+      ..place(const Cell(7, 7));
+    await GomokuStorage.save(
+      GomokuRecord(
+        id: 'v3',
+        createdAt: DateTime.utc(2026),
+        session: session,
+        aiDuel: const AiDuelConfig(
+          blackLevel: GomokuAiLevel.advanced,
+          whiteLevel: GomokuAiLevel.beginner,
+        ),
+      ),
+    );
+    final before = (await GomokuStorage.list()).single.toJson();
+    await tester.pumpWidget(const MaterialApp(home: GomokuHomePage()));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('竞技连珠 · 1 手'), 200);
+    await tester.tap(find.text('竞技连珠 · 1 手'));
+    await tester.pumpAndSettle();
+    expect(find.text('旧规则存档 · 仅供查看'), findsOneWidget);
+    expect(find.text('重开'), findsNothing);
+    expect(
+      tester.widget<GomokuBoard>(find.byType(GomokuBoard)).enabled,
+      isFalse,
+    );
+    expect((await GomokuStorage.list()).single.toJson(), before);
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets(
     'legacy entertainment records open read-only without changing saved data',

@@ -59,6 +59,10 @@ jobs:
         if: steps.version.outputs.publish == 'true'
         run: python3 tools/prepare_stockfish.py
 
+      - name: Verify Rapfi assets
+        if: steps.version.outputs.publish == 'true'
+        run: python3 tools/prepare_rapfi.py
+
       - name: Install dependencies
         if: steps.version.outputs.publish == 'true'
         run: flutter pub get

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:easyplay/game_session.dart';
 import 'package:easyplay/draughts/draughts_variant.dart';
@@ -6,10 +7,108 @@ import 'package:easyplay/lan/lan_protocol.dart';
 import 'package:easyplay/lan/message_transport.dart';
 import 'package:easyplay/lan/rtc_manual_signaling.dart';
 import 'package:easyplay/lan/rtc_room.dart';
+import '../support/drop_first_hello.dart';
+
+class _DelayedHandshakeTransport implements MessageTransport {
+  _DelayedHandshakeTransport(this.inner);
+  final MessageTransport inner;
+  final timers = <Timer>[];
+  @override
+  Stream<LanMessage> get messages => inner.messages;
+  @override
+  Stream<void> get disconnections => inner.disconnections;
+  @override
+  void send(LanMessage message) {
+    timers.add(
+      Timer(const Duration(milliseconds: 1200), () => inner.send(message)),
+    );
+  }
+
+  @override
+  Future<void> close() async {
+    for (final timer in timers) {
+      timer.cancel();
+    }
+    await inner.close();
+  }
+}
 
 Future<void> drain() => Future<void>.delayed(const Duration(milliseconds: 5));
 
 void main() {
+  test(
+    'legacy transport sends one HELLO even when its response takes over a second',
+    () async {
+      final invite = RtcInvitation.offer('gomoku', 'v=0');
+      final room = RtcRoom.host(invite), guest = RtcMatchClient(invite);
+      addTearDown(() async {
+        await guest.close();
+        await room.close();
+      });
+      await room.prepareHost();
+      final (server, client) = MemoryTransport.pair();
+      var hellos = 0;
+      final subscription = server.messages.listen((message) {
+        if (message.type == LanMessageType.hello) hellos++;
+      });
+      addTearDown(subscription.cancel);
+      await room.attachPeer(_DelayedHandshakeTransport(server));
+      await guest.bind(client);
+      expect(hellos, 1);
+      expect(guest.side, Side.white);
+      expect(room.coordinator!.playerCount, 2);
+    },
+  );
+
+  test(
+    'RTC HELLO retry and duplicate response do not allocate another seat',
+    () async {
+      final invite = RtcInvitation.offer('gomoku', 'v=0');
+      final room = RtcRoom.host(invite), guest = RtcMatchClient(invite);
+      addTearDown(() async {
+        await guest.close();
+        await room.close();
+      });
+      await room.prepareHost();
+      final (server, endpoint) = MemoryTransport.pair();
+      await room.attachPeer(server);
+      final transport = DropFirstHelloTransport(endpoint);
+      final messages = <LanMessage>[];
+      final subscription = guest.messages.listen(messages.add);
+      addTearDown(subscription.cancel);
+      await guest.bind(transport);
+      await drain();
+      expect(transport.attempts, 2);
+      expect(guest.side, Side.white);
+      expect(room.coordinator!.playerCount, 2);
+      final seq = room.coordinator!.seq;
+      final response = guest.messages.firstWhere(
+        (m) => m.type == LanMessageType.stateSync,
+      );
+      transport.inner.send(transport.hello!);
+      await response.timeout(const Duration(seconds: 2));
+      await drain();
+      expect(
+        messages.where((m) => m.type == LanMessageType.helloAck),
+        hasLength(2),
+      );
+      expect(room.coordinator!.seq, seq);
+      expect(room.coordinator!.playerCount, 2);
+      final rejected = guest.messages.firstWhere(
+        (m) => m.type == LanMessageType.rejected,
+      );
+      transport.inner.send(
+        LanMessage(LanMessageType.hello, 0, {
+          ...transport.hello!.body,
+          'token': 'other-identity',
+        }),
+      );
+      expect((await rejected).body['reason'], contains('身份'));
+      expect(room.coordinator!.playerCount, 2);
+      expect(guest.side, Side.white);
+    },
+  );
+
   for (final game in [
     'go',
     'chess',
@@ -28,7 +127,7 @@ void main() {
               : 'draughts',
           'v=0\r\n',
           variant: variant,
-          gomokuVariant: GomokuVariant.professional,
+          gomokuVariant: GomokuVariant.soosyrv8,
         );
         final room = RtcRoom.host(invite);
         final guest = RtcMatchClient(invite);
@@ -225,7 +324,7 @@ void main() {
       final invite = RtcInvitation.offer(
         'gomoku',
         'v=0\r\n',
-        gomokuVariant: GomokuVariant.professional,
+        gomokuVariant: GomokuVariant.soosyrv8,
       );
       final room = RtcRoom.host(invite);
       final guest = RtcMatchClient(
@@ -246,11 +345,11 @@ void main() {
         expect(room.coordinator!.playerCount, 1);
         expect(
           room.client.gomokuReplica!.session.variant,
-          GomokuVariant.professional,
+          GomokuVariant.soosyrv8,
         );
         expect(
           room.coordinator!.gomokuAuthority!.session.variant,
-          GomokuVariant.professional,
+          GomokuVariant.soosyrv8,
         );
       } finally {
         await guest.close();

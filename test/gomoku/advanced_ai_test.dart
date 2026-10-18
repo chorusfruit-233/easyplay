@@ -36,13 +36,13 @@ class DelayedOpeningAi extends GomokuAi {
   }) => pending.future;
 }
 
-GomokuSession opening() => GomokuSession()
+GomokuSession opening() => GomokuSession(variant: GomokuVariant.professional)
   ..place(const Cell(7, 7))
   ..place(const Cell(6, 7))
   ..place(const Cell(6, 6));
 
 GomokuSession sevenEmptyPoints() {
-  final session = GomokuSession();
+  final session = GomokuSession(variant: GomokuVariant.professional);
   for (final cell in const [Cell(7, 7), Cell(6, 6), Cell(5, 6)]) {
     expect(session.place(cell), isTrue);
   }
@@ -204,7 +204,8 @@ void main() {
   test(
     'advanced principal-variation search can be cancelled without changing the board',
     () async {
-      final session = GomokuSession()..place(const Cell(7, 7));
+      final session = GomokuSession(variant: GomokuVariant.professional)
+        ..place(const Cell(7, 7));
       final before = session.toJson();
       final ai = GomokuAi();
       final pending = ai.search(

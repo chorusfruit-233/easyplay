@@ -6,6 +6,7 @@ import '../../game_session.dart' show Side, SideX;
 import '../gomoku_ai_duel.dart';
 import '../gomoku_ai_level.dart';
 import '../gomoku_session.dart';
+import '../gomoku_player.dart';
 import 'gomoku_board.dart';
 
 class GomokuAiDuelPage extends StatefulWidget {
@@ -16,6 +17,7 @@ class GomokuAiDuelPage extends StatefulWidget {
     this.recordId,
     this.createdAt,
     this.initiallyPaused = false,
+    this.ai,
   });
 
   final GomokuSession session;
@@ -23,6 +25,7 @@ class GomokuAiDuelPage extends StatefulWidget {
   final String? recordId;
   final DateTime? createdAt;
   final bool initiallyPaused;
+  final GomokuPlayer? ai;
 
   @override
   State<GomokuAiDuelPage> createState() => _GomokuAiDuelPageState();
@@ -31,6 +34,7 @@ class GomokuAiDuelPage extends StatefulWidget {
 class _GomokuAiDuelPageState extends State<GomokuAiDuelPage> {
   late final _controller = GomokuAiDuelController(
     session: widget.session,
+    ai: widget.ai,
     config: widget.config,
     recordId: widget.recordId,
     createdAt: widget.createdAt,
@@ -41,7 +45,7 @@ class _GomokuAiDuelPageState extends State<GomokuAiDuelPage> {
   Widget build(BuildContext context) => AiDuelPage<GomokuAction>(
     controller: _controller,
     title: '五子棋',
-    rules: _controller.session.variant.label,
+    rules: 'Rapfi · ${_controller.session.variant.label}',
     rulesLabel: () =>
         '${_controller.session.variant.label} · ${_controller.session.gameOver ? _controller.session.resultLabel : _controller.session.phaseLabel}',
     playerLabel: _controller.session.variant.competitive

@@ -247,6 +247,7 @@ class _RoomPeer {
   StreamSubscription<void>? _disconnects;
   final String remoteAddress;
   Side? side;
+  String? _helloSignature;
   bool _closed = false;
   StreamSubscription<Object?>? _subscription;
   Timer? _heartbeat;
@@ -360,21 +361,16 @@ class _RoomPeer {
             );
           }
         });
-        _sendEncoded(
-          LanMessage(LanMessageType.helloAck, server.seq, {
-            'assignedSide': LanMessage.sideCode(side!),
-            'started': server.started,
-          }).encode(),
-        );
-        _sendEncoded(
-          server
-              .sync(
-                LanMessage(LanMessageType.stateRequest, server.seq, {
-                  'lastSeq': 0,
-                }),
-              )
-              .encode(),
-        );
+        _helloSignature = message.encode();
+        _sendHandshake();
+        return;
+      }
+      if (message.type == LanMessageType.hello) {
+        if (message.encode() != _helloSignature ||
+            !server._clients.contains(this)) {
+          throw const FormatException('不能更改已绑定的玩家身份');
+        }
+        _sendHandshake();
         return;
       }
       if (message.type == LanMessageType.stateRequest) {
@@ -420,6 +416,22 @@ class _RoomPeer {
         }).encode(),
       );
     }
+  }
+
+  void _sendHandshake() {
+    _sendEncoded(
+      LanMessage(LanMessageType.helloAck, server.seq, {
+        'assignedSide': LanMessage.sideCode(side!),
+        'started': server.started,
+      }).encode(),
+    );
+    _sendEncoded(
+      server
+          .sync(
+            LanMessage(LanMessageType.stateRequest, server.seq, {'lastSeq': 0}),
+          )
+          .encode(),
+    );
   }
 
   Future<void> close() async {

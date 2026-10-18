@@ -18,8 +18,8 @@ const root = path.resolve(__dirname, '../build/web');
   try {
     browser = await chromium.launch({headless:true, args:['--no-sandbox'], executablePath:process.env.CHROME_PATH || undefined});
     for (const scenario of [
-      {name:'local keep colours phone', exchange:false, width:420},
-      {name:'local exchange desktop', exchange:true, width:1280},
+      {name:'local keep colours phone', exchange:false, second:false, count:1, width:420},
+      {name:'local double exchange desktop', exchange:true, second:true, count:8, width:1280},
       {name:'advanced AI opening black', ai:true, human:'black', width:420},
       {name:'advanced AI opening white then exchange', ai:true, human:'white', exchange:true, width:1280},
     ]) {
@@ -51,7 +51,7 @@ const root = path.resolve(__dirname, '../build/web');
         await page.locator('flt-semantics-placeholder').waitFor({state:'attached',timeout:60000});
         await page.locator('flt-semantics-placeholder').dispatchEvent('click');
         await button(/^五子棋，/).click();
-        await page.getByText('15×15 · 竞技连珠', {exact:true}).waitFor();
+        await page.getByText('15×15 · 索索夫-8', {exact:true}).waitFor();
         await button(/^五子棋，/).waitFor({state:'hidden'});
         assert.equal(await button(/规则，/).count(), 0);
         assert.equal(await page.getByText('自由五子棋', {exact:true}).count(),0);
@@ -66,7 +66,7 @@ const root = path.resolve(__dirname, '../build/web');
           }
           await button('开始对局').click();
         }
-        const board = page.getByText('竞技连珠棋盘，15 行 15 列', {exact:true}).locator('xpath=ancestor-or-self::flt-semantics[1]');
+        const board = page.getByText('索索夫-8棋盘，15 行 15 列', {exact:true}).locator('xpath=ancestor-or-self::flt-semantics[1]');
         await board.waitFor();
         await page.waitForLoadState('networkidle');
         await page.waitForFunction(() => !!window.gomokuSession());
@@ -108,73 +108,100 @@ const root = path.resolve(__dirname, '../build/web');
         await page.waitForFunction(() => window.gomokuSession()?.actions?.length>=4);
         let current=await state();
         const exchanged=current.actions[3].exchange;
-        const humanWhite=scenario.ai && (scenario.human==='white')!==exchanged;
+        let humanWhite=scenario.ai && (scenario.human==='white')!==exchanged;
         if (!scenario.ai || humanWhite) {
           phase='white fourth move';
           const occupied=new Set((await state()).moves.map(m=>`${m.row},${m.col}`));
           const fourth=[[8,8],[8,9],[9,8]].find(([row,col])=>!occupied.has(`${row},${col}`));
-          assert.ok(fourth, 'a fourth-move point remains free across opening choices');
+          assert.ok(fourth);
           await confirm(...fourth);
         }
         await waitCount('moves',4);
-        phase='two fifth-move proposals';
+        phase='white declares 1–8 fifth proposals';
+        if (!scenario.ai || humanWhite) {
+          const label=`${scenario.count || 3}打`;
+          await reveal(button(label));
+          if (process.env.CAPTURE_GOMOKU_PLACEMENT==='1' && !scenario.ai && scenario.width===420) {
+            await page.screenshot({path:path.resolve(__dirname,'../docs/images/gomoku-soosyrv8-declaration.png')});
+          }
+          await button(label).click();
+        }
+        await page.waitForFunction(() => window.gomokuSession()?.actions?.length>=6);
+        current=await state();
+        const count=current.actions[5].count;
+        assert.ok(count>=1 && count<=8);
+        phase='second swap after W4 and declaration';
         if (!scenario.ai || !humanWhite) {
-          // AI's fourth move is free, so choose unoccupied, non-equivalent points.
-          current=await state();
+          const choice=scenario.second ? '交换执棋' : '不交换';
+          await reveal(button(choice));
+          await button(choice).click();
+        }
+        await page.waitForFunction(() => window.gomokuSession()?.actions?.length>=7);
+        current=await state();
+        const finalExchange=exchanged!==current.actions[6].exchange;
+        humanWhite=scenario.ai && (scenario.human==='white')!==finalExchange;
+        phase=`black gives ${count} inequivalent fifth proposals`;
+        if (!scenario.ai || !humanWhite) {
           const occupied=new Set(current.moves.map(m=>`${m.row},${m.col}`));
           let added=0;
-          for (const [r,c] of [[8,7],[7,8],[9,8],[8,9],[5,6],[9,5]]) {
+          const points=[];
+          for (let r=4;r<=10;r++) for (let c=4;c<=10;c++) points.push([r,c]);
+          for (const [r,c] of points) {
             if (occupied.has(`${r},${c}`)) continue;
             const n=(await state()).actions.length;
             await click(r,c); await frame();
             assert.equal((await state()).actions.length,n);
             await click(r,c); await frame();
-            await page.waitForTimeout(100);
+            await page.waitForTimeout(60);
             if ((await state()).actions.length>n) added++;
-            if (added===2) break;
+            if (added===count) break;
           }
-          assert.equal(added,2);
+          assert.equal(added,count);
         }
-        await page.waitForFunction(() => window.gomokuSession()?.actions?.length>=7);
+        await page.waitForFunction(n => window.gomokuSession()?.actions?.length>=7+n,count);
         if (!scenario.ai || humanWhite) {
           current=await state();
           assert.equal(current.moves.length,4,'proposals must not be committed moves');
-          const proposal=current.actions[5];
-          if (process.env.CAPTURE_GOMOKU_PLACEMENT==='1' && !scenario.ai && scenario.width===420) {
-            await page.screenshot({path:path.resolve(__dirname,'../docs/images/gomoku-professional-opening.png')});
+          const proposal=current.actions[7];
+          if (process.env.CAPTURE_GOMOKU_PLACEMENT==='1' && !scenario.ai && scenario.width===1280) {
+            await page.screenshot({path:path.resolve(__dirname,'../docs/images/gomoku-soosyrv8-eight.png')});
           }
           phase='white chooses the fifth and places the sixth';
           await confirm(proposal.row,proposal.col);
           current=await state();
-          const rejected=current.actions[6];
-          assert.equal(current.moves[4].row,proposal.row);
-          assert.equal(current.moves[4].col,proposal.col);
-          assert.equal(current.moves[4].side,'black');
-          await confirm(rejected.row,rejected.col);
+          assert.deepEqual(current.moves[4], {row:proposal.row,col:proposal.col,side:'black'});
+          const occupied=new Set(current.moves.map(m=>`${m.row},${m.col}`));
+          const sixth=[[8,7],[7,8],[10,10],[11,11]].find(([r,c])=>!occupied.has(`${r},${c}`));
+          await confirm(...sixth);
         }
         await page.waitForFunction(() => window.gomokuSession()?.moves?.length>=6);
         current=await state();
-        assert.equal(current.variant,'professional');
-        assert.equal(current.version,3);
+        assert.equal(current.variant,'soosyrv8');
+        assert.equal(current.version,4);
         assert.deepEqual(current.moves.slice(0,3).map(m=>m.side),['black','white','black']);
         assert.equal(current.actions[3].player,'white');
-        assert.equal(current.actions[4].player,exchanged ? 'black' : 'white');
-        assert.equal(current.actions[5].player,exchanged ? 'white' : 'black');
-        assert.equal(current.actions[6].player,current.actions[5].player);
-        assert.equal(current.actions[7].player,exchanged ? 'black' : 'white');
-        assert.equal(current.actions[8].player,current.actions[7].player);
+        const whiteBefore=exchanged ? 'black' : 'white';
+        const blackBefore=exchanged ? 'white' : 'black';
+        const whiteAfter=finalExchange ? 'black' : 'white';
+        const blackAfter=finalExchange ? 'white' : 'black';
+        assert.equal(current.actions[4].player,whiteBefore);
+        assert.equal(current.actions[5].player,whiteBefore);
+        assert.equal(current.actions[6].player,blackBefore);
+        for (const proposal of current.actions.slice(7,7+count)) assert.equal(proposal.player,blackAfter);
+        assert.equal(current.actions[7+count].player,whiteAfter);
+        assert.equal(current.actions[8+count].player,whiteAfter);
         assert.deepEqual(current.moves.slice(3,6).map(m=>m.side),['white','black','white']);
         if (!scenario.ai) {
-          phase='resume competitive record';
+          phase='resume Soosõrv-8 record';
           const saved=current;
           await button('Back').click();
-          const record=button(/^竞技连珠 · 6 手/);
+          const record=button(/^索索夫-8 · 6 手/);
           await reveal(record); await record.click();
           await board.waitFor();
           assert.deepEqual(await state(),saved);
         }
         assert.deepEqual(failures,[]);
-        console.log(`PASS ${scenario.name}: confirmed opening, exchange, two proposals, selection, W6${scenario.ai ? ' and AI identities' : ' and resume'}`);
+        console.log(`PASS ${scenario.name}: confirmed Soosõrv-8 opening, both swaps, N=${count} proposals, selection, W6${scenario.ai ? ' and AI identities' : ' and resume'}`);
       } catch (error) {
         console.error(`${scenario.name} / ${phase}: ${error.message}`);
         await page.screenshot({path:`/tmp/easyplay-professional-${scenario.name.replaceAll(' ','-')}.png`});

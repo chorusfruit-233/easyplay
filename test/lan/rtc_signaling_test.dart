@@ -24,7 +24,7 @@ void main() {
               : 'draughts',
           'v=0\r\n',
           variant: variant,
-          gomokuVariant: GomokuVariant.professional,
+          gomokuVariant: GomokuVariant.soosyrv8,
         );
         final restored = RtcInvitation.decode(
           offer.encode(),
@@ -55,7 +55,7 @@ void main() {
       final offer = RtcInvitation.offer(
         'gomoku',
         'v=0\r\n',
-        gomokuVariant: GomokuVariant.professional,
+        gomokuVariant: GomokuVariant.soosyrv8,
       );
       final wrong = RtcInvitation(
         sessionId: offer.sessionId,
@@ -67,7 +67,7 @@ void main() {
         createdAt: offer.createdAt,
       );
       expect(() => offer.validateAnswer(wrong), throwsFormatException);
-      expect(offer.answer('v=0\r\n').gomokuVariant, GomokuVariant.professional);
+      expect(offer.answer('v=0\r\n').gomokuVariant, GomokuVariant.soosyrv8);
     },
   );
   test('reject stale, future, oversized, invalid type and unknown rules', () {

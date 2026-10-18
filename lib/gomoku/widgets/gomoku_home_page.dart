@@ -21,7 +21,7 @@ class GomokuHomePage extends StatefulWidget {
 
 class _GomokuHomePageState extends State<GomokuHomePage> {
   late Future<List<GomokuRecord>> _records = GomokuStorage.list();
-  static const _variant = GomokuVariant.professional;
+  static const _variant = GomokuVariant.soosyrv8;
 
   void _reload() {
     if (mounted) {
@@ -116,7 +116,7 @@ class _GomokuHomePageState extends State<GomokuHomePage> {
     try {
       final aiDuel = record.aiDuel;
       _open(
-        record.variant.competitive && aiDuel != null
+        record.variant.playableRule && aiDuel != null
             ? GomokuAiDuelPage(
                 session: record.restore(),
                 config: aiDuel,
@@ -130,7 +130,7 @@ class _GomokuHomePageState extends State<GomokuHomePage> {
                 createdAt: record.createdAt,
                 aiLevel: record.aiLevel,
                 humanSide: record.humanSide,
-                readOnly: !record.variant.competitive,
+                readOnly: !record.variant.playableRule,
               ),
       );
     } on FormatException catch (error) {
@@ -165,12 +165,12 @@ class _GomokuHomePageState extends State<GomokuHomePage> {
       children: [
         Text('GOMOKU', style: Theme.of(context).textTheme.headlineMedium),
         const SizedBox(height: 8),
-        const Text('15×15 · 竞技连珠'),
+        const Text('15×15 · 索索夫-8'),
         const SizedBox(height: 12),
         const Card(
           child: Padding(
             padding: EdgeInsets.all(16),
-            child: Text('26种指定开局 · 三手交换 · 五手两打\n黑方禁长连、四四、三三，禁手判负；五连优先获胜。'),
+            child: Text('26种指定开局 · 两次交换 · 五手1–8打\n黑方禁长连、四四、三三，禁手判负；五连优先获胜。'),
           ),
         ),
         const SizedBox(height: 16),
@@ -181,7 +181,7 @@ class _GomokuHomePageState extends State<GomokuHomePage> {
           () =>
               _open(GomokuGamePage(session: GomokuSession(variant: _variant))),
         ),
-        _entry('人机对弈', '选择初级、中级或高级及执棋方', Icons.smart_toy_outlined, _startAi),
+        _entry('人机对弈', 'Rapfi 三档难度及开局执棋方', Icons.smart_toy_outlined, _startAi),
         _entry(
           'AI 对抗',
           '两名 AI 自动对弈，暂停或单步观战',
@@ -238,7 +238,7 @@ class _GomokuHomePageState extends State<GomokuHomePage> {
                               ? 'AI 对抗 · 黑${record.aiDuel!.blackLevel.label} / 白${record.aiDuel!.whiteLevel.label}'
                               : record.aiLevel == null
                               ? '本地双人'
-                              : '人机 · ${record.aiLevel!.label}'} · ${!record.variant.competitive
+                              : '人机 · ${record.aiLevel!.label}'} · ${!record.variant.playableRule
                               ? '旧规则 · 仅供查看'
                               : record.gameOver
                               ? record.resultLabel

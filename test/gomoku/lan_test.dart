@@ -57,8 +57,8 @@ void main() {
   test(
     'sync rejects missing, unknown, old and mismatched rules atomically',
     () {
-      final host = GomokuLanAuthority(variant: GomokuVariant.professional);
-      final client = GomokuLanReplica(variant: GomokuVariant.professional);
+      final host = GomokuLanAuthority(variant: GomokuVariant.soosyrv8);
+      final client = GomokuLanReplica(variant: GomokuVariant.soosyrv8);
       final event = host.submit(Side.black, move(1, 'B', const Cell(7, 7)));
       expect(client.receive(event), isTrue);
       final before = client.session.toJson();
@@ -193,8 +193,39 @@ void main() {
         ),
         isTrue,
       );
+      for (final (side, type, body) in [
+        (
+          Side.white,
+          LanMessageType.move,
+          <String, Object?>{
+            'cell': [8, 8],
+          },
+        ),
+        (
+          Side.white,
+          LanMessageType.gomokuDeclare,
+          <String, Object?>{'count': 2},
+        ),
+        (
+          Side.black,
+          LanMessageType.gomokuExchange,
+          <String, Object?>{'exchange': false},
+        ),
+      ]) {
+        expect(
+          client.receive(
+            host.submit(
+              side,
+              LanMessage(type, host.seq + 1, {
+                'side': LanMessage.sideCode(side),
+                ...body,
+              }),
+            ),
+          ),
+          isTrue,
+        );
+      }
       for (final (side, cell) in [
-        (Side.white, const Cell(8, 8)),
         (Side.black, const Cell(8, 7)),
         (Side.black, const Cell(7, 8)),
         (Side.white, const Cell(7, 8)),
@@ -274,7 +305,7 @@ void main() {
       'game': 'gomoku',
       'boardSize': 15,
       'rulesVersion': gomokuRulesVersion,
-      'variant': GomokuVariant.professional.name,
+      'variant': GomokuVariant.soosyrv8.name,
       'events': [
         move(1, 'B', const Cell(7, 7)).toWire(),
         move(2, 'W', const Cell(7, 7)).toWire(),

@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 
 import '../../game_session.dart' show Cell, Side, SideX;
 import '../../go_placement.dart';
-import '../gomoku_ai.dart';
+import '../gomoku_ai_level.dart';
+import '../gomoku_player.dart';
+import '../engine/rapfi_player.dart';
 import '../gomoku_placement.dart';
 import '../gomoku_session.dart';
 import '../gomoku_storage.dart';
@@ -28,7 +30,7 @@ class GomokuGamePage extends StatefulWidget {
   final DateTime? createdAt;
   final GomokuAiLevel? aiLevel;
   final Side humanSide;
-  final GomokuAi? ai;
+  final GomokuPlayer? ai;
   final bool readOnly;
 
   @override
@@ -38,7 +40,7 @@ class GomokuGamePage extends StatefulWidget {
 class _GomokuGamePageState extends State<GomokuGamePage>
     with WidgetsBindingObserver {
   late final GomokuSession _session = widget.session;
-  late final GomokuAi _ai = widget.ai ?? GomokuAi();
+  late final GomokuPlayer _ai = widget.ai ?? RapfiPlayer();
   late String _recordId = widget.recordId ?? _newId();
   late DateTime _createdAt = widget.createdAt ?? DateTime.now().toUtc();
   GoPlacementMode _placementMode = GoPlacementMode.automatic;
@@ -68,7 +70,7 @@ class _GomokuGamePageState extends State<GomokuGamePage>
       !_modal &&
       !_suspended &&
       (!_isAi || _session.actor == widget.humanSide);
-  bool get _canPlace => _canAct && _session.phase != GomokuPhase.exchange;
+  bool get _canPlace => _canAct && _session.acceptsPlacement;
 
   static String _newId() => 'gomoku-${DateTime.now().microsecondsSinceEpoch}';
 
@@ -93,6 +95,7 @@ class _GomokuGamePageState extends State<GomokuGamePage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _cancelAi();
+    unawaited(_ai.dispose());
     super.dispose();
   }
 
@@ -171,6 +174,13 @@ class _GomokuGamePageState extends State<GomokuGamePage>
 
   void _exchange(bool exchange) {
     if (!_canAct || !_session.exchangeColors(exchange)) return;
+    setState(() => _message = null);
+    _persist();
+    _driveAi();
+  }
+
+  void _declare(int count) {
+    if (!_canAct || !_session.declareProposals(count)) return;
     setState(() => _message = null);
     _persist();
     _driveAi();
@@ -317,7 +327,7 @@ class _GomokuGamePageState extends State<GomokuGamePage>
                   ),
                   if (_isAi)
                     Text(
-                      '人机 · ${widget.aiLevel!.label} · 你执${_humanColor.label}${_session.exchanged ? '（已交换）' : ''}',
+                      'Rapfi · ${widget.aiLevel!.label} · 你执${_humanColor.label}${_session.exchanged ? '（已交换）' : ''}',
                     ),
                   if (_thinking) const LinearProgressIndicator(),
                   if (_message != null) Text(_message!),
@@ -341,6 +351,7 @@ class _GomokuGamePageState extends State<GomokuGamePage>
                   session: _session,
                   enabled: _canAct,
                   onExchange: _exchange,
+                  onDeclare: _declare,
                 ),
                 Wrap(
                   alignment: WrapAlignment.center,
@@ -368,7 +379,6 @@ class _GomokuGamePageState extends State<GomokuGamePage>
                     ),
                     if (_isAi &&
                         !_thinking &&
-                        _ai.failureReason == null &&
                         !_session.gameOver &&
                         _session.actor != widget.humanSide)
                       TextButton(

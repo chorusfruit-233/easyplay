@@ -8,4 +8,10 @@ enum GomokuAiLevel {
   final int depth;
   final int nodes;
   final int milliseconds;
+
+  int get rapfiStrength => switch (this) {
+    beginner => 10,
+    intermediate => 60,
+    advanced => 100,
+  };
 }

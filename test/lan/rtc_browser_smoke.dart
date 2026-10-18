@@ -41,7 +41,7 @@ Future<String> action(String name) => _guard(() => _action(name));
 Future<void> accept(String text, {bool delayBinding = false}) =>
     _guard(() => _accept(text, delayBinding: delayBinding));
 Future<void> tick() => Future<void>.delayed(const Duration(milliseconds: 30));
-GomokuVariant gomokuVariantFor(String game) => GomokuVariant.professional;
+GomokuVariant gomokuVariantFor(String game) => GomokuVariant.soosyrv8;
 
 Future<String> _offer(String game) async {
   await _room?.close();

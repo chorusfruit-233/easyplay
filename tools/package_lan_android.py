@@ -53,6 +53,12 @@ def excluded(path: Path) -> bool:
     name = path.name
     return (
         path.as_posix() == "assets/assets/pikafish/pikafish.nnue"
+        or (
+            path.parent.as_posix() == "assets/assets/rapfi" and name in {
+                "model210901.bin", "mix9svqrenju_bs15_black.bin.lz4",
+                "mix9svqrenju_bs15_white.bin.lz4",
+            }
+        )
         or name == ".last_build_id"
         or name.endswith(".symbols")
         or name.startswith(("skwasm", "wimp"))
@@ -72,6 +78,7 @@ def main() -> None:
     args = parser.parse_args()
     subprocess.run(["python3", "tools/prepare_stockfish.py"], cwd=ROOT, check=True)
     subprocess.run(["python3", "tools/prepare_pikafish.py"], cwd=ROOT, check=True)
+    subprocess.run(["python3", "tools/prepare_rapfi.py"], cwd=ROOT, check=True)
     command = ["flutter", "build", "appbundle" if args.appbundle else "apk"]
     command += ["--debug"] if args.debug else ["--release"]
     if not args.debug and not args.appbundle:

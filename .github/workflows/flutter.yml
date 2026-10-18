@@ -31,6 +31,9 @@ jobs:
       - name: Verify Stockfish assets
         run: python3 tools/prepare_stockfish.py
 
+      - name: Verify Rapfi assets
+        run: python3 tools/prepare_rapfi.py
+
       - run: flutter pub get
       - name: Android packaging retry tests
         run: python3 -m unittest discover -s tools/tests
@@ -47,6 +50,11 @@ jobs:
           printf '#!/bin/sh\nexec qemu-aarch64 "%s"\n' "$PWD/android/app/src/main/jniLibs/arm64-v8a/libpikafish.so" > "$RUNNER_TEMP/pikafish-test"
           chmod +x "$RUNNER_TEMP/pikafish-test"
           echo "PIKAFISH_TEST_EXECUTABLE=$RUNNER_TEMP/pikafish-test" >> "$GITHUB_ENV"
+      - name: Native Rapfi smoke setup
+        run: |
+          printf '#!/bin/sh\nexec qemu-aarch64 "%s"\n' "$PWD/android/app/src/main/jniLibs/arm64-v8a/librapfi.so" > "$RUNNER_TEMP/rapfi-test"
+          chmod +x "$RUNNER_TEMP/rapfi-test"
+          echo "RAPFI_TEST_EXECUTABLE=$RUNNER_TEMP/rapfi-test" >> "$GITHUB_ENV"
       - name: Pinned Asian rule reference cases
         run: python3 tools/test_pikafish_rules.py
       - run: flutter test
@@ -65,6 +73,7 @@ jobs:
           npx playwright install --with-deps chromium
           node tools/test_stockfish_web.cjs
           node tools/test_pikafish_web.cjs
+          node tools/test_rapfi_web.cjs
       - name: WebRTC production transport browser smoke
         run: |
           flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/lan/rtc_browser_smoke.dart --output build/rtc-smoke
@@ -82,7 +91,7 @@ jobs:
           flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/board_motion_browser_smoke.dart --output build/board-motion-smoke
           node tools/test_board_motion_web.cjs
       - run: flutter build web --no-wasm-dry-run
-      - name: Competitive Renju opening and confirmation browser smoke
+      - name: Soosyrv-8 opening and confirmation browser smoke
         run: node tools/test_gomoku_placement_web.cjs
       - name: Gomoku and Draughts AI duel browser smoke
         run: node tools/test_ai_duel_web.cjs

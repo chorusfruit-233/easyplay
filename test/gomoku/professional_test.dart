@@ -32,7 +32,7 @@ class _OpeningAi extends GomokuAi {
 }
 
 GomokuSession professionalOpening({bool exchange = false}) {
-  final session = GomokuSession();
+  final session = GomokuSession(variant: GomokuVariant.professional);
   for (final cell in [const Cell(7, 7), const Cell(6, 7), const Cell(6, 6)]) {
     expect(session.place(cell), isTrue);
   }
@@ -51,12 +51,12 @@ GomokuSession professionalNormal({bool exchange = false}) {
 
 void main() {
   test('only competitive Renju is offered for new games', () {
-    expect(GomokuVariant.playable, [GomokuVariant.professional]);
-    expect(GomokuSession().variant, GomokuVariant.professional);
+    expect(GomokuVariant.playable, [GomokuVariant.soosyrv8]);
+    expect(GomokuSession().variant, GomokuVariant.soosyrv8);
   });
 
   test('one opening player places B1 W2 B3 within the 26-pattern regions', () {
-    final session = GomokuSession();
+    final session = GomokuSession(variant: GomokuVariant.professional);
     expect(session.actor, Side.black);
     expect(session.place(const Cell(6, 7)), isFalse);
     expect(session.moves, isEmpty);
@@ -83,7 +83,7 @@ void main() {
     'opening regions produce exactly 13 direct and 13 indirect patterns',
     () {
       for (final second in [const Cell(6, 7), const Cell(6, 6)]) {
-        final session = GomokuSession()
+        final session = GomokuSession(variant: GomokuVariant.professional)
           ..place(const Cell(7, 7))
           ..place(second);
         final representatives = <Cell>[];
@@ -142,7 +142,7 @@ void main() {
   test(
     'two fifth proposals cannot be duplicate or symmetric in the four-stone board',
     () {
-      final session = GomokuSession()
+      final session = GomokuSession(variant: GomokuVariant.professional)
         ..place(const Cell(7, 7))
         ..place(const Cell(6, 7))
         ..place(const Cell(5, 7))
@@ -159,7 +159,7 @@ void main() {
   );
 
   test('an asymmetric fourth stone breaks an earlier proposal symmetry', () {
-    final session = GomokuSession()
+    final session = GomokuSession(variant: GomokuVariant.professional)
       ..place(const Cell(7, 7))
       ..place(const Cell(6, 7))
       ..place(const Cell(5, 7))
@@ -172,7 +172,7 @@ void main() {
   test(
     'every opening action round-trips and undoes including exchange and proposals',
     () {
-      final session = GomokuSession();
+      final session = GomokuSession(variant: GomokuVariant.professional);
       final snapshots = [session.toJson()];
       const actions = [
         GomokuAction.place(Cell(7, 7)),
@@ -275,7 +275,7 @@ void main() {
   test(
     'AI completes the opening legally for both identities without mutating search input',
     () async {
-      final session = GomokuSession();
+      final session = GomokuSession(variant: GomokuVariant.professional);
       final ai = GomokuAi();
       for (var i = 0; i < 10; i++) {
         final before = session.toJson();
@@ -293,7 +293,9 @@ void main() {
 
   test('cancelled opening decision cannot return an action', () async {
     final ai = GomokuAi();
-    final decision = ai.decide(GomokuSession());
+    final decision = ai.decide(
+      GomokuSession(variant: GomokuVariant.professional),
+    );
     ai.cancel();
     expect(await decision, isNull);
   });
@@ -308,7 +310,7 @@ void main() {
         whiteLevel: GomokuAiLevel.beginner,
       );
       final duel = GomokuAiDuelController(
-        session: GomokuSession(),
+        session: GomokuSession(variant: GomokuVariant.professional),
         config: config,
         ai: ai,
         initiallyPaused: true,

@@ -71,6 +71,10 @@ void main() {
         final whitePlayer = exchanged ? Side.black : Side.white;
         reject(Side.white, LanMessageType.gomokuExchange, {'exchange': true});
         place(whitePlayer, const Cell(8, 8));
+        reject(blackPlayer, LanMessageType.gomokuDeclare, {'count': 2});
+        commit(whitePlayer, LanMessageType.gomokuDeclare, {'count': 2});
+        reject(whitePlayer, LanMessageType.gomokuExchange, {'exchange': true});
+        commit(blackPlayer, LanMessageType.gomokuExchange, {'exchange': false});
         reject(whitePlayer, LanMessageType.move, {
           'cell': [8, 7],
         });
@@ -118,7 +122,9 @@ void main() {
         }),
         throwsFormatException,
       );
-      for (final variant in GomokuVariant.values.where((v) => !v.competitive)) {
+      for (final variant in GomokuVariant.values.where(
+        (v) => !v.playableRule,
+      )) {
         expect(
           () => LanMessage(LanMessageType.hello, 0, {
             'game': 'gomoku',

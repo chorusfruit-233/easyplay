@@ -28,6 +28,8 @@ class DouDizhuReplica extends ChangeNotifier {
     _transport = transport;
     _preserveError = false;
     final ready = Completer<void>();
+    var welcomed = false;
+    HelloRetry? helloRetry;
     unawaited(ready.future.then<void>((_) {}, onError: (Object _) {}));
     _messages = transport.messages.listen(
       (m) {
@@ -54,6 +56,8 @@ class DouDizhuReplica extends ChangeNotifier {
               _seat = PlayerSeat.values[assigned];
               roomId = p['roomId'] as String;
               _resume = p['resume'] as String;
+              welcomed = true;
+              helloRetry?.cancel();
             case 'snapshot':
               if (p['roomId'] != roomId || m.seq < seq) return;
               final next = DouDizhuPlayerView.fromWire(
@@ -122,18 +126,31 @@ class DouDizhuReplica extends ChangeNotifier {
       if (!ready.isCompleted) ready.completeError(StateError(error!));
       if (!_closed) notifyListeners();
     });
-    transport.send(
-      cardMessage('hello', 0, {
-        'token': token,
-        if (_resume != null) 'resume': _resume,
-        if (roomId != null) 'roomId': roomId,
-      }),
-    );
+    final hello = cardMessage('hello', 0, {
+      'token': token,
+      if (_resume != null) 'resume': _resume,
+      if (roomId != null) 'roomId': roomId,
+    });
     try {
+      transport.send(hello);
+      helloRetry = HelloRetry(
+        transport,
+        hello,
+        pending: () =>
+            !ready.isCompleted &&
+            !welcomed &&
+            !_closed &&
+            identical(_transport, transport),
+        onError: (error) {
+          if (!ready.isCompleted) ready.completeError(error);
+        },
+      );
       await ready.future.timeout(const Duration(seconds: 10));
     } catch (_) {
       await transport.close();
       rethrow;
+    } finally {
+      helloRetry?.cancel();
     }
   }
 

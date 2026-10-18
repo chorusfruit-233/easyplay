@@ -20,6 +20,7 @@ class _Connection {
   _Connection(this.transport);
   final MessageTransport transport;
   PlayerSeat? seat;
+  String? helloSignature;
   StreamSubscription<LanMessage>? messages;
   StreamSubscription<void>? lost;
   DateTime lastSeen = DateTime.now();
@@ -109,8 +110,16 @@ class CardRoomCoordinator extends ChangeNotifier {
           if (m.type != LanMessageType.card) throw StateError('协议不匹配');
           final p = cardPayload(m), action = m.body['action'];
           if (action == 'hello') {
-            if (c.seat != null) throw StateError('身份已经绑定');
-            _hello(c, p, fixedSeat, invitationCredential);
+            if (c.seat != null) {
+              if (m.encode() != c.helloSignature ||
+                  !identical(_seats[c.seat!.index].connection, c)) {
+                throw StateError('身份已经绑定');
+              }
+              _welcome(c);
+              _snapshot(c);
+              return;
+            }
+            _hello(c, p, fixedSeat, invitationCredential, m.encode());
             return;
           }
           if (c.seat == null ||
@@ -160,6 +169,7 @@ class CardRoomCoordinator extends ChangeNotifier {
     Map<String, Object?> p,
     PlayerSeat? fixed,
     String? invite,
+    String helloSignature,
   ) {
     PlayerSeat? seat;
     if (p['resume'] is String) {
@@ -195,7 +205,14 @@ class CardRoomCoordinator extends ChangeNotifier {
       _seats[seat.index].credential = cardSecret();
     }
     c.seat = seat;
+    c.helloSignature = helloSignature;
     _seats[seat.index].connection = c;
+    _welcome(c);
+    _changed();
+  }
+
+  void _welcome(_Connection c) {
+    final seat = c.seat!;
     _send(
       c,
       cardMessage('welcome', seq, {
@@ -204,7 +221,6 @@ class CardRoomCoordinator extends ChangeNotifier {
         'resume': _seats[seat.index].credential,
       }),
     );
-    _changed();
   }
 
   void _submit(

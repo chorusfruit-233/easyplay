@@ -6,7 +6,7 @@ import 'gomoku_opening.dart';
 export 'gomoku_variant.dart';
 export 'gomoku_opening.dart';
 
-const gomokuRulesVersion = 3;
+const gomokuRulesVersion = 4;
 const gomokuBoardSize = 15;
 
 class GomokuMove {
@@ -36,13 +36,15 @@ class GomokuSession {
   List<Cell> _winningLine = [];
   int _revision = 0;
   bool _exchangeDecided = false;
+  bool _secondExchangeDecided = false;
+  int? _declaredProposals;
   bool _exchanged = false;
   final List<Cell> _proposals = [];
   final List<(Side, GomokuAction)> _actions = [];
   int _passes = 0;
   GomokuForbidden? _forbiddenLoss;
 
-  GomokuSession({this.variant = GomokuVariant.professional});
+  GomokuSession({this.variant = GomokuVariant.soosyrv8});
 
   final GomokuVariant variant;
 
@@ -53,6 +55,13 @@ class GomokuSession {
   bool get resigned => _resignedSide != null;
   int get revision => _revision;
   bool get exchanged => _exchanged;
+  int? get declaredProposals => _declaredProposals;
+  int get proposalCount =>
+      variant == GomokuVariant.soosyrv8 ? (_declaredProposals ?? 0) : 2;
+  bool get awaitingExchange =>
+      phase == GomokuPhase.exchange || phase == GomokuPhase.secondExchange;
+  bool get acceptsPlacement =>
+      !awaitingExchange && phase != GomokuPhase.declaration;
   int get actionCount => variant.competitive ? _actions.length : _moves.length;
   Side? get lastActor =>
       variant.competitive ? _actions.lastOrNull?.$1 : _moves.lastOrNull?.side;
@@ -64,7 +73,11 @@ class GomokuSession {
     if (!_exchangeDecided) return GomokuPhase.exchange;
     if (_moves.length == 3) return GomokuPhase.fourth;
     if (_moves.length == 4) {
-      return _proposals.length < 2
+      if (variant == GomokuVariant.soosyrv8) {
+        if (_declaredProposals == null) return GomokuPhase.declaration;
+        if (!_secondExchangeDecided) return GomokuPhase.secondExchange;
+      }
+      return _proposals.length < proposalCount
           ? GomokuPhase.proposals
           : GomokuPhase.selection;
     }
@@ -76,6 +89,8 @@ class GomokuSession {
   Side get actor => switch (phase) {
     GomokuPhase.opening => Side.black,
     GomokuPhase.exchange => Side.white,
+    GomokuPhase.declaration => playerForColor(Side.white),
+    GomokuPhase.secondExchange => playerForColor(Side.black),
     GomokuPhase.selection => playerForColor(Side.white),
     _ => playerForColor(_turn),
   };
@@ -85,8 +100,11 @@ class GomokuSession {
     GomokuPhase.opening => '指定开局 · 由开局执黑者摆第${_moves.length + 1}子',
     GomokuPhase.exchange => '三手交换 · 开局执白者选择是否交换',
     GomokuPhase.fourth => '第四手 · 白方落子',
-    GomokuPhase.proposals => '五手两打 · 黑方给出第${_proposals.length + 1}个候选点',
-    GomokuPhase.selection => '五手两打 · 白方选择保留一个黑5',
+    GomokuPhase.declaration => '五手打点数 · 白方声明1–8个候选点',
+    GomokuPhase.secondExchange => '第二次交换 · 黑方选择是否交换（五手$proposalCount打）',
+    GomokuPhase.proposals =>
+      '五手$proposalCount打 · 黑方给出第${_proposals.length + 1}个候选点',
+    GomokuPhase.selection => '五手$proposalCount打 · 白方选择保留一个黑5',
     GomokuPhase.normal => '${_turn.label}落子',
   };
   String get phaseHint => switch (phase) {
@@ -96,8 +114,10 @@ class GomokuSession {
       _ => '摆黑3：落在中心5×5区域的空点。',
     },
     GomokuPhase.exchange => '选择交换将互换执棋颜色；接下来由白方下第四子。',
-    GomokuPhase.proposals => '给出两个不同形的黑5候选点，候选点不计入正式棋步。',
-    GomokuPhase.selection => '点击候选点预览，再次确认保留；另一个候选点移除，白方继续下第六子。',
+    GomokuPhase.declaration => '白方已下第四子。声明候选数量后，当前黑方有一次交换机会。8是上限，可选择1–8。',
+    GomokuPhase.secondExchange => '已知白4和候选数量，再决定是否交换；最终黑方给出候选点，白方挑选。',
+    GomokuPhase.proposals => '给出$proposalCount个互不重复且不同形的合法黑5候选点，候选点不计入正式棋步。',
+    GomokuPhase.selection => '点击候选点预览，再次确认保留；其余候选点移除，白方继续下第六子。',
     _ => '黑方禁长连、四四、三三；五连优先获胜。',
   };
   List<GomokuMove> get moves => List.unmodifiable(_moves);
@@ -127,11 +147,12 @@ class GomokuSession {
         GomokuMoveAnalysis(legal: false, reason: reason);
     if (_gameOver) return reject('对局已结束');
     if (!inside(cell)) return reject('落子超出棋盘');
-    if (phase == GomokuPhase.exchange) return reject('请先选择是否交换执棋');
+    if (awaitingExchange) return reject('请先选择是否交换执棋');
+    if (phase == GomokuPhase.declaration) return reject('请先声明五手候选数量');
     if (phase == GomokuPhase.selection) {
       return _proposals.contains(cell)
           ? const GomokuMoveAnalysis(legal: true)
-          : reject('请从两个黑5候选点中选择');
+          : reject('请从黑5候选点中选择');
     }
     if (pieceAt(cell) != null) return reject('该位置已有棋子');
     if (phase == GomokuPhase.opening) {
@@ -145,9 +166,10 @@ class GomokuSession {
       }
     }
     if (phase == GomokuPhase.proposals &&
-        _proposals.isNotEmpty &&
-        gomokuEquivalentProposals(board, _proposals.single, cell)) {
-      return reject('两个黑5候选点不能重复或同形');
+        _proposals.any(
+          (other) => gomokuEquivalentProposals(board, other, cell),
+        )) {
+      return reject('黑5候选点不能重复或同形');
     }
     final result = analyzeGomokuMove(_board, cell, _turn, variant: variant);
     // The app adjudicates a committed forbidden black move immediately. Search
@@ -198,10 +220,28 @@ class GomokuSession {
   }
 
   bool exchangeColors(bool exchange) {
-    if (gameOver || phase != GomokuPhase.exchange) return false;
-    _exchangeDecided = true;
-    _exchanged = exchange;
-    _actions.add((Side.white, GomokuAction.exchange(exchange)));
+    if (gameOver || !awaitingExchange) return false;
+    final actingPlayer = actor;
+    if (phase == GomokuPhase.exchange) {
+      _exchangeDecided = true;
+    } else {
+      _secondExchangeDecided = true;
+    }
+    if (exchange) _exchanged = !_exchanged;
+    _actions.add((actingPlayer, GomokuAction.exchange(exchange)));
+    _revision++;
+    return true;
+  }
+
+  bool declareProposals(int count) {
+    if (gameOver ||
+        phase != GomokuPhase.declaration ||
+        count < 1 ||
+        count > 8) {
+      return false;
+    }
+    _actions.add((actor, GomokuAction.declare(count)));
+    _declaredProposals = count;
     _revision++;
     return true;
   }
@@ -219,6 +259,7 @@ class GomokuSession {
   bool applyAction(GomokuAction action) => switch (action.type) {
     GomokuActionType.place => place(action.cell!),
     GomokuActionType.exchange => exchangeColors(action.exchange!),
+    GomokuActionType.declare => declareProposals(action.count!),
     GomokuActionType.pass => pass(),
   };
 
@@ -268,6 +309,8 @@ class GomokuSession {
     _resignedSide = null;
     _winningLine = [];
     _exchangeDecided = false;
+    _secondExchangeDecided = false;
+    _declaredProposals = null;
     _exchanged = false;
     _proposals.clear();
     _actions.clear();
@@ -287,6 +330,8 @@ class GomokuSession {
     copy._winningLine = List.of(_winningLine);
     copy._revision = _revision;
     copy._exchangeDecided = _exchangeDecided;
+    copy._secondExchangeDecided = _secondExchangeDecided;
+    copy._declaredProposals = _declaredProposals;
     copy._exchanged = _exchanged;
     copy._proposals.addAll(_proposals);
     copy._actions.addAll(_actions);
@@ -296,7 +341,11 @@ class GomokuSession {
   }
 
   Map<String, Object?> toJson() => {
-    'version': variant.competitive ? gomokuRulesVersion : 2,
+    'version': variant == GomokuVariant.soosyrv8
+        ? gomokuRulesVersion
+        : variant.competitive
+        ? 3
+        : 2,
     'variant': variant.name,
     'size': size,
     'moves': _moves.map((move) => move.toJson()).toList(),
@@ -318,7 +367,7 @@ class GomokuSession {
   factory GomokuSession.fromJson(Object? json) {
     if (json is! Map ||
         json['version'] is! int ||
-        ![1, 2, gomokuRulesVersion].contains(json['version']) ||
+        ![1, 2, 3, gomokuRulesVersion].contains(json['version']) ||
         json['size'] is! int ||
         json['size'] != boardSize ||
         json['moves'] is! List ||
@@ -331,13 +380,20 @@ class GomokuSession {
     final GomokuVariant variant;
     if (json['version'] == 1 && !json.containsKey('variant')) {
       variant = GomokuVariant.freestyle;
-    } else if (json['version'] == 2 || json['version'] == gomokuRulesVersion) {
+    } else if ([2, 3, gomokuRulesVersion].contains(json['version'])) {
       variant = GomokuVariant.fromName(json['variant']);
     } else {
       throw const FormatException('旧版五子棋棋谱不能包含规则字段');
     }
     final session = GomokuSession(variant: variant);
-    if (variant.competitive != (json['version'] == gomokuRulesVersion)) {
+    final expectedVersion = variant == GomokuVariant.soosyrv8
+        ? gomokuRulesVersion
+        : variant.competitive
+        ? 3
+        : json['version'] == 1
+        ? 1
+        : 2;
+    if (expectedVersion != json['version']) {
       throw const FormatException('五子棋规则与棋谱版本不一致');
     }
     final records = json['moves'] as List;

@@ -20,10 +20,7 @@ import 'gomoku_board.dart';
 import 'gomoku_opening_panel.dart';
 
 class GomokuLanLobbyPage extends StatelessWidget {
-  const GomokuLanLobbyPage({
-    super.key,
-    this.variant = GomokuVariant.professional,
-  });
+  const GomokuLanLobbyPage({super.key, this.variant = GomokuVariant.soosyrv8});
   final GomokuVariant variant;
 
   @override
@@ -68,10 +65,7 @@ class GomokuLanLobbyPage extends StatelessWidget {
 }
 
 class GomokuLanRoomPage extends StatefulWidget {
-  const GomokuLanRoomPage({
-    super.key,
-    this.variant = GomokuVariant.professional,
-  });
+  const GomokuLanRoomPage({super.key, this.variant = GomokuVariant.soosyrv8});
   final GomokuVariant variant;
 
   @override
@@ -241,10 +235,7 @@ class _GomokuLanRoomPageState extends State<GomokuLanRoomPage> {
 }
 
 class GomokuLanJoinPage extends StatefulWidget {
-  const GomokuLanJoinPage({
-    super.key,
-    this.variant = GomokuVariant.professional,
-  });
+  const GomokuLanJoinPage({super.key, this.variant = GomokuVariant.soosyrv8});
   final GomokuVariant variant;
 
   @override
@@ -795,7 +786,7 @@ class _GomokuLanMatchPageState extends State<GomokuLanMatchPage>
           ),
           board: GomokuBoard(
             session: session,
-            enabled: _myTurn && session.phase != GomokuPhase.exchange,
+            enabled: _myTurn && session.acceptsPlacement,
             placementMode: _effectivePlacementMode,
             onCell: _onCell,
           ),
@@ -805,6 +796,8 @@ class _GomokuLanMatchPageState extends State<GomokuLanMatchPage>
               GomokuOpeningPanel(
                 session: session,
                 enabled: _myTurn,
+                onDeclare: (count) =>
+                    _send(LanMessageType.gomokuDeclare, {'count': count}),
                 onExchange: (exchange) => _send(LanMessageType.gomokuExchange, {
                   'exchange': exchange,
                 }),

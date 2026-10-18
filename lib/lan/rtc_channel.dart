@@ -6,6 +6,8 @@ import 'lan_protocol.dart';
 import 'message_transport.dart';
 import 'rtc_framing.dart';
 
+const rtcHelloRetryProtocol = 'easyplay-hello-v1';
+
 abstract interface class RtcTextChannel {
   Stream<String> get incoming;
   Stream<void> get disconnections;
@@ -15,8 +17,8 @@ abstract interface class RtcTextChannel {
 }
 
 /// One fragment per scheduling turn lets small control messages pass a sync.
-class RtcMessageTransport implements MessageTransport {
-  RtcMessageTransport(this.channel) {
+class RtcMessageTransport implements HelloRetryTransport {
+  RtcMessageTransport(this.channel, {this.supportsHelloRetry = false}) {
     _incoming = channel.incoming.listen((raw) {
       try {
         final message = _assembler.receive(raw);
@@ -35,6 +37,8 @@ class RtcMessageTransport implements MessageTransport {
     });
   }
   final RtcTextChannel channel;
+  @override
+  final bool supportsHelloRetry;
   final _assembler = RtcReassembler();
   late final _messages = StreamController<LanMessage>.broadcast(
     onListen: _attachReceiver,

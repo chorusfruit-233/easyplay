@@ -174,7 +174,7 @@ class CardRtcRoom {
     // The answer must be exchanged before the DataChannel can open.
     peer.transport.then(
       (transport) async {
-        if (_closed) {
+        if (_closed || !identical(_guestPeer, peer)) {
           await transport.close();
           return;
         }
@@ -184,13 +184,13 @@ class CardRtcRoom {
             replica.send('ready');
           }
         } catch (_) {
-          if (!_closed) {
+          if (!_closed && identical(_guestPeer, peer)) {
             replica.reportError('连接失败，请交换新的邀请');
           }
         }
       },
       onError: (Object _) {
-        if (!_closed) {
+        if (!_closed && identical(_guestPeer, peer)) {
           replica.reportError('网络无法直连，请重试或切换 STUN');
         }
       },
