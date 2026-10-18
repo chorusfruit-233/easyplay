@@ -4,14 +4,23 @@
 
 [下载 Android APK](https://github.com/chorusfruit-233/easyplay/releases/latest) · [打开 Web 版](https://chorusfruit-233.github.io/easyplay/)
 
+## v1.7.4
+
+- **五子棋**：采用索索夫-8竞技规则，支持26种指定开局、两次交换和五手1–8打；人机与 AI 观战使用 Rapfi，提供初级、中级、高级三档难度。
+- **棋谱库**：跳棋和五子棋保存全部对局，可继续、确认删除和导出。跳棋导出 PDN，五子棋导出 SGF 或保留完整开局决策的 JSON；旧五子棋规则棋谱只读保留。
+- **跳棋轨迹**：显示上一手的完整方向与全部连吃落点，支持翻转棋盘、悔棋和恢复棋谱。
+- **棋力标注与联机**：Stockfish 难度显示参考 Elo，Pikafish 显示相对强度 1–6（非 Elo）；改进 WebRTC 首次连接和重连握手。
+
+[完整更新记录](https://github.com/chorusfruit-233/easyplay/compare/v1.7.3...v1.7.4) · [v1.7.4 下载与说明](https://github.com/chorusfruit-233/easyplay/releases/tag/v1.7.4)
+
 ## 支持的游戏
 
 | 游戏 | 规则与功能 | AI |
 | --- | --- | --- |
 | 围棋 | 多套规则、SGF 棋谱、死子与计分、选点分析 | KataGo CPU；内置 b6，Android 可管理其他模型 |
 | 国际象棋 | 标准规则、将军与终局判定 | Stockfish 19 |
-| 跳棋 | 英式/美式、国际、巴西、俄罗斯、Pool、意大利、西班牙、土耳其八种规则 | 自研本地搜索 |
-| 五子棋 | 15×15 索索夫-8：26种开局、两次交换、五手1–8打与黑方禁手 | Rapfi，三档难度 |
+| 跳棋 | 八种规则、PDN 棋谱库、完整行棋轨迹、AI 对抗观战 | 自研本地搜索，三档难度 |
+| 五子棋 | 15×15 索索夫-8、黑方禁手、SGF/JSON 棋谱导出、AI 对抗观战 | Rapfi，三档难度 |
 | 中国象棋 | 马腿、象眼、炮架、将帅照面、将死与困毙；固定亚洲长将/长捉配置 | Pikafish，六档难度 |
 | 斗地主 | 54 张牌、叫分、全部常用牌型、地主与农民阵营；三人对战 | Dart 本地启发式 AI，仅使用自己的手牌 |
 
@@ -19,7 +28,19 @@
 
 五种棋类支持落子、移动和吃子动画，兼容系统减少动态效果设置，预览与细节见 [行棋动画](docs/BOARD_ANIMATIONS.md)。
 
-跳棋和五子棋提供独立[棋谱库](docs/RECORD_LIBRARIES.md)，可继续保存的对局、删除或导出文件。跳棋导出 PDN，并在棋盘上保留上一手的完整行棋轨迹；五子棋导出 SGF 或保留完整开局操作的 JSON。
+跳棋支持英式/美式、国际、巴西、俄罗斯、Pool、意大利、西班牙、土耳其八种规则。跳棋和五子棋的 [AI 对抗观战](docs/AI_DUEL.md) 提供暂停、单步、悔棋和继续控制。
+
+两种游戏的独立[棋谱库](docs/RECORD_LIBRARIES.md)保留全部对局，不按数量自动淘汰。跳棋支持 PDN 导入与导出；五子棋 SGF 用于交流正式落子和停着，JSON 保留交换、候选点等完整开局操作，当前尚无五子棋文件导入。
+
+## 界面预览
+
+<img src="docs/images/gomoku-soosyrv8-declaration.png" width="280" alt="索索夫-8开局与五手1–8打" /> <img src="docs/images/gomoku-record-library.png" width="280" alt="五子棋棋谱库与导出菜单" /> <img src="docs/images/checkers-last-move-trail.png" width="280" alt="跳棋连续吃子的完整轨迹" />
+
+## 安装与使用
+
+- **Android**：从 Release 下载 `app-arm64-v8a-release.apk`，适用于 ARM64 设备；正式包沿用已有签名，可覆盖更新。v1.7.4 的构建号为20，ARM64 APK 的 versionCode 为2020。
+- **Web**：直接打开上方 Web 版。AI 在浏览器本地运行，首次使用需要加载同源引擎和模型；围棋的跨源隔离由部署的 service worker 提供。
+- **棋力刻度**：Stockfish 参考 Elo 和 Pikafish 相对档位的适用范围见 [棋力说明](docs/ENGINE_STRENGTH.md)，实际表现随设备、局面和思考时间变化。
 
 ## 联机
 
@@ -29,12 +50,13 @@
 
 ## 开发与构建
 
-安装 Flutter 及 Python 3；准备 Pikafish 发布资源还需要 `7z` 或 `7zz`。首次准备引擎时需要联网下载固定版本，脚本会校验 SHA-256。
+使用 Flutter **3.44.0 / Dart 3.12.0** 及 Python 3；准备 Pikafish 发布资源还需要 `7z` 或 `7zz`。首次准备引擎时需要联网下载固定版本，脚本会校验 SHA-256。
 
 ```bash
 flutter pub get
 python3 tools/prepare_stockfish.py
 python3 tools/prepare_pikafish.py
+python3 tools/prepare_rapfi.py
 flutter run -d chrome
 ```
 
@@ -45,13 +67,13 @@ flutter build web --no-wasm-dry-run
 python3 tools/serve_web.py --port 8080
 ```
 
-构建包含三个引擎和 LAN Web 客户端的 Android 测试包：
+构建包含四个引擎和 LAN Web 客户端的 Android 测试包：
 
 ```bash
 python3 tools/package_lan_android.py --debug
 ```
 
-Android Studio / Gradle 构建也会自动准备 Stockfish、Pikafish 和内置网页。原生引擎目标为 Android ARM64；KataGo 与 Web 构建的工具链说明见开发文档。
+Android Studio / Gradle 构建也会自动准备 Stockfish、Pikafish、Rapfi 和内置网页。原生引擎目标为 Android ARM64；KataGo 与 Web 构建的工具链说明见开发文档。正式 APK 使用 `python3 tools/package_lan_android.py` 构建，并须配置正式签名；仓库的发布工作流从 GitHub Secrets 读取签名配置。
 
 ```bash
 flutter test
@@ -63,6 +85,9 @@ dart analyze lib test
 - [开发文档](docs/DEVELOPMENT.md)：结构、规则、平台构建与测试约定
 - [AI 引擎与模型](docs/AI_ENGINES.md)：KataGo CPU、配置和模型管理
 - [五子棋说明](docs/GOMOKU.md)：规则、AI、存储与联机
+- [Rapfi 集成](docs/RAPFI.md)：固定引擎、模型、搜索预算与构建复现
+- [棋谱库与导出](docs/RECORD_LIBRARIES.md)：PDN、SGF、完整 JSON 与跳棋轨迹
+- [棋力标注](docs/ENGINE_STRENGTH.md)：Stockfish 参考 Elo 与 Pikafish 相对强度
 - [AI 对抗观战](docs/AI_DUEL.md)：五子棋、跳棋双 AI 自动对弈与暂停、单步控制
 - [斗地主说明](docs/DOUDIZHU.md)：固定规则、三人房间、手牌隐私与重连
 - [中国象棋说明](docs/XIANGQI.md)：固定规则、Pikafish、构建与模型许可
@@ -106,6 +131,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 | [Stockfish 19](https://github.com/official-stockfish/Stockfish) | GPL-3.0 | 国际象棋引擎，Android ARM64 与 Web Worker |
 | [Pikafish](https://github.com/official-pikafish/Pikafish) | GPL-3.0-or-later | 中国象棋引擎，Android ARM64 与 WebAssembly Worker |
 | Pikafish NNUE 权重 | 单独授权，未经许可不得商业使用 | 中国象棋 AI 网络，见 [模型许可](assets/pikafish/NNUE-License.md) |
+| [Rapfi](https://github.com/dhbloo/rapfi) | GPL-3.0-or-later | 五子棋引擎，Android ARM64 与 WebAssembly Worker |
+| [Rapfi 连珠网络](https://github.com/dhbloo/rapfi-networks) | CC0-1.0（公有领域） | 连珠黑、白网络及 classical 模型，见 [Rapfi 说明](docs/RAPFI.md) |
 | cpp-httplib、half、filesystem 等 | Apache-2.0 / BSD / MIT 等 | KataGo 依赖，原文见 `assets/katago/THIRD-PARTY-LICENSES/` |
 
-许可证及来源归档在 `assets/katago/`、`assets/licenses/`、`assets/pikafish/`、`docs/licenses/` 和 `web/stockfish/`。应用内「关于与许可证」页面提供引擎与模型的许可信息。
+许可证及来源归档在 `assets/katago/`、`assets/licenses/`、`assets/pikafish/`、`assets/rapfi/`、`docs/licenses/`、`web/stockfish/` 和 `web/rapfi/`。应用内「关于与许可证」页面提供引擎与模型的许可信息。
