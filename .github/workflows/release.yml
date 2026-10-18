@@ -114,6 +114,10 @@ jobs:
         if: steps.version.outputs.publish == 'true'
         run: python3 tools/package_lan_android.py --network-retries 2
 
+      - name: Verify minified ONNX JNI classes
+        if: steps.version.outputs.publish == 'true'
+        run: python3 tools/check_douzero_android.py build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+
       - name: Publish verified tag and APK
         if: steps.version.outputs.publish == 'true'
         env:
