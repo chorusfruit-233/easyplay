@@ -178,6 +178,14 @@ const root = path.resolve(__dirname, '../build/doudizhu-smoke');
     await scroll(pages[0], 1400);
     await pages[0].getByRole('button',{name:'三人准备后开始',exact:true}).click();
     await Promise.all(pages.map((p,i) => p.getByText(`玩家 ${i+1} · 17 张`,{exact:true}).waitFor()));
+    // Every private view puts its next player on the right, including guests.
+    for (const [i,p] of pages.entries()) {
+      const own = await p.getByText(`玩家 ${i+1} · 17 张`,{exact:true}).boundingBox({timeout:10000});
+      const left = await p.getByText(new RegExp(`^玩家 ${(i+2)%3+1}\\s+剩余 17 张`)).boundingBox({timeout:10000});
+      const right = await p.getByText(new RegExp(`^玩家 ${(i+1)%3+1}\\s+剩余 17 张`)).boundingBox({timeout:10000});
+      assert.ok(left && right && own,`Seat ${i}: all three players are displayed`);
+      assert.ok(left.x < right.x && left.y < own.y && right.y < own.y,`Seat ${i}: bottom -> right -> left is counterclockwise`);
+    }
     await pages[0].getByRole('button',{name:'叫 3 分',exact:true}).click();
     await pages[0].getByText('玩家 1 · 地主 · 20 张',{exact:true}).waitFor();
     assert.equal(await pages[0].getByRole('button',{name:'提示',exact:true}).count(),0,'No hint on the initial lead');
@@ -244,6 +252,6 @@ const root = path.resolve(__dirname, '../build/doudizhu-smoke');
     await pages[0].getByText(/^玩家 1(出牌|领出)$/).waitFor();
     assert.equal((await state(pages[0])).aiWarning,null,'Single-player AI seats must use DouZero successfully');
     await pages[0].screenshot({path:'build/doudizhu-smoke/douzero-single-player.png'});
-    assert.deepEqual(failures,[]);console.log('DOUDIZHU RTC PASS: private deal, public plays, reconnect, rematch, mixed AI, responsive UI, real lobby controls, retained table cards and lead hints');
+    assert.deepEqual(failures,[]);console.log('DOUDIZHU RTC PASS: private deal, public plays, reconnect, rematch, mixed AI, responsive UI, real lobby controls, counterclockwise seats in all three views, retained table cards and lead hints');
   } finally {await browser?.close();await new Promise(r=>server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1;});
