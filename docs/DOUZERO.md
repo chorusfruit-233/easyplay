@@ -34,7 +34,7 @@ EasyPlay 对飞机单翅膀的不同点数、主体点数、双王附件等限�
 
 Android 使用 `com.microsoft.onnxruntime:onnxruntime-android:1.22.0`，在专用串行执行线程推理。Web 使用 npm `onnxruntime-web@1.22.0` 的本地 WASM，在独立 Worker 中推理。三个身份的会话按需加载并缓存，每次最多处理 128 个候选动作；每批只编码一次公共历史。Android / Web 均使用单线程 CPU，无云端请求。模型和运行时随包分发，浏览器仅从应用同源地址获取资源，支持嵌入 APK 的 LAN 网页及子路径部署。
 
-Android 正式包必须保留 `ai.onnxruntime.**` 的类名及成员，规则在 `android/app/proguard-rules.pro`。1.22.0 的 AAR 未附带该保留规则；JNI 按固定名称查找 `TensorInfo`、`NodeInfo` 等类，R8 重命名后会在首次创建会话时触发原生崩溃，无法依靠 Dart 的兼容策略接管。CI 使用临时测试签名构建开启 R8 的 release APK；CI 和正式发布都会运行 `tools/check_douzero_android.py`，核对包内 JNI 库需要的类确实存在于 DEX 定义中，缺失时禁止通过检查或发布。JVM 参考测试与未压缩的 debug 包不能代替这项检查。
+Android 正式包必须保留 `ai.onnxruntime.**` 的类名及成员，规则在 `android/app/proguard-rules.pro`。1.22.0 的 AAR 未附带该保留规则；JNI 按固定名称查找 `TensorInfo`、`NodeInfo` 等类，R8 重命名后会在首次创建会话时触发原生崩溃，无法依靠 Dart 的兼容策略接管。v1.7.5 遗漏了该规则，已在 v1.7.6 修复。CI 使用临时测试签名构建开启 R8 的 release APK；CI 和正式发布都会运行 `tools/check_douzero_android.py`，核对包内 JNI 库需要的类确实存在于 DEX 定义中，缺失时禁止通过检查或发布。JVM 参考测试与未压缩的 debug 包不能代替这项检查。
 
 Web 不依赖 SharedArrayBuffer；普通 LAN HTTP 没有 WebCrypto 时，Worker 使用本地 SHA-256 校验模型。两类联机服务器均为 `.mjs` 返回 JavaScript 类型。空闲一分钟后 Worker 释放，下一次请求再按需加载；Android 会话随 Activity 销毁释放。
 
