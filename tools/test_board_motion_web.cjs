@@ -45,11 +45,11 @@ const capture = process.env.CAPTURE_BOARD_MOTION === '1';
         // pointer click must keep its coordinates instead of becoming a tap
         // on the entire board's center.
         await page.mouse.click(rect.x+(col+.5)*rect.width/cols,rect.y+(row+.5)*rect.height/rows);
-        await page.waitForFunction(()=>JSON.parse(easyplayBoardMotion.state()).lastTap!==null);
+        await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.generation===s.renderedGeneration && s.lastTap!==null;});
         assert.deepEqual((await state()).lastTap,[row,col],`${game}: preserve the clicked cell`);
         if(game==='go') {
           await page.getByRole('button',{name:'悔棋',exact:true}).click();
-          await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.moves===0 && !s.active;});
+          await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.generation===s.renderedGeneration && s.moves===0 && !s.active;});
         }
         console.log(`PASS ${game}: off-center pointer coordinates with semantics enabled`);
       }
@@ -67,11 +67,11 @@ const capture = process.env.CAPTURE_BOARD_MOTION === '1';
         requestAnimationFrame(tick);
       });
       await page.getByRole('button',{name:'演示行棋',exact:true}).click();
-      const sample=await page.waitForFunction(()=>window.motionSamples.find(s=>s.moves===1 && s.active && s.frames.some(p=>p.moving)));
+      const sample=await page.waitForFunction(()=>window.motionSamples.find(s=>s.generation===s.renderedGeneration && s.moves===1 && s.active && s.frames.some(p=>p.moving)));
       const moving=await sample.jsonValue();await sample.dispose();assert.equal(moving.moves,1);
       assert.equal(moving.frames.filter(p=>p.moving).length,game==='chess'?2:1);
       if(capture) for(let n=0;n<24;n++){await shot();await page.waitForTimeout(35);}
-      await page.waitForFunction(()=>!JSON.parse(easyplayBoardMotion.state()).active);
+      await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.generation===s.renderedGeneration && !s.active;});
       await page.evaluate(()=>window.motionRecording++);
       const settled=await state();assert.ok(settled.frames.every(p=>!p.moving && !p.departing && p.opacity===1 && p.scale===1));
       if(game==='draughts') {
@@ -79,7 +79,7 @@ const capture = process.env.CAPTURE_BOARD_MOTION === '1';
         assert.deepEqual(settled.lastMoveTrail,{path:fullPath,flipped:false});
         if(process.env.CAPTURE_BOARD_TRAIL==='1') await page.screenshot({path:path.join(root,'draughts-trail.png')});
         await page.evaluate(()=>easyplayBoardMotion.flip());
-        await page.waitForFunction(()=>JSON.parse(easyplayBoardMotion.state()).lastMoveTrail?.flipped===true);
+        await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.generation===s.renderedGeneration && s.lastMoveTrail?.flipped===true;});
         const flipped=await state();
         assert.deepEqual(flipped.lastMoveTrail,{path:fullPath,flipped:true});
         assert.equal(flipped.active,false);
@@ -87,30 +87,42 @@ const capture = process.env.CAPTURE_BOARD_MOTION === '1';
       }
       if(capture) await page.screenshot({path:path.join(root,`${game}.png`)});
       await page.getByRole('button',{name:'悔棋',exact:true}).click();
-      await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.moves===0 && !s.active;});
+      await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.generation===s.renderedGeneration && s.moves===0 && !s.active;});
       if(game==='draughts') assert.equal((await state()).lastMoveTrail,null);
       console.log(`PASS ${game}: animation, final board and undo`);
     }
     await change('gomoku');
     await page.evaluate(()=>{easyplayBoardMotion.move();});
-    await page.waitForFunction(()=>JSON.parse(easyplayBoardMotion.state()).active);
+    await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.generation===s.renderedGeneration && s.active;});
     await page.evaluate(()=>easyplayBoardMotion.move());
-    await page.waitForFunction(()=>JSON.parse(easyplayBoardMotion.state()).moves===2);
-    await page.waitForFunction(()=>!JSON.parse(easyplayBoardMotion.state()).active);
+    await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.generation===s.renderedGeneration && s.moves===2;});
+    await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.generation===s.renderedGeneration && !s.active;});
     assert.equal((await state()).frames.length,2);
     await page.emulateMedia({reducedMotion:'reduce'});
     await page.waitForFunction(()=>JSON.parse(easyplayBoardMotion.state()).reduced);
     await change('gomoku');
     await page.getByRole('button',{name:'演示行棋',exact:true}).click();
-    const reducedSample=await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.moves===1 && s.frames.length===1 ? s : null;});
+    const reducedSample=await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.generation===s.renderedGeneration && s.moves===1 && s.frames.length===1 ? s : null;});
     const reduced=await reducedSample.jsonValue();await reducedSample.dispose();assert.equal(reduced.active,false);assert.equal(reduced.frames[0].scale,1);
     await change('draughts');
     await page.getByRole('button',{name:'演示行棋',exact:true}).click();
-    await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.moves===1 && s.lastMoveTrail!==null;});
+    await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.generation===s.renderedGeneration && s.moves===1 && s.lastMoveTrail!==null;});
     const reducedTrail=await state();
     assert.equal(reducedTrail.active,false);
     assert.deepEqual(reducedTrail.lastMoveTrail.path,[[0,1],[2,3],[4,5],[6,7]]);
+    // Read immediately in the same JS task to exercise the interval between
+    // session mutation and rendering. A completed frame, rather than an idle
+    // motion clock alone, must acknowledge that the old trail has disappeared.
+    const pendingUndo=await page.evaluate(()=>{
+      easyplayBoardMotion.undo();
+      return JSON.parse(easyplayBoardMotion.state());
+    });
+    assert.equal(pendingUndo.moves,0);
+    assert.notEqual(pendingUndo.generation,pendingUndo.renderedGeneration);
+    assert.notEqual(pendingUndo.lastMoveTrail,null);
+    await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.generation===s.renderedGeneration && s.moves===0 && !s.active;});
+    assert.equal((await state()).lastMoveTrail,null);
     assert.deepEqual(failures,[]);
-    console.log('PASS fast replies and system reduced motion');
+    console.log('PASS fast replies, system reduced motion and rendered undo synchronization');
   } finally {await browser?.close();await new Promise(resolve=>server.close(resolve));}
 })().catch(error=>{console.error(error);process.exitCode=1;});

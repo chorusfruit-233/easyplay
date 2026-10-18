@@ -97,12 +97,15 @@ class _DemoState extends State<_Demo> {
     );
   }
 
-  void change(String value) => setState(() {
+  void _mutate(VoidCallback action) => setState(() {
     generation++;
+    action();
+  });
+  void change(String value) => _mutate(() {
     game = value;
     _reset();
   });
-  void move() => setState(() {
+  void move() => _mutate(() {
     switch (game) {
       case 'go':
         go.placeGo(Cell(4, 4 + go.moves.length));
@@ -120,7 +123,7 @@ class _DemoState extends State<_Demo> {
         }
     }
   });
-  void undo() => setState(() {
+  void undo() => _mutate(() {
     switch (game) {
       case 'go':
         go.undo();
@@ -134,7 +137,7 @@ class _DemoState extends State<_Demo> {
         draughts.undo();
     }
   });
-  void flip() => setState(() => flipped = !flipped);
+  void flip() => _mutate(() => flipped = !flipped);
   BoardMotionScene<Object>? _scene() {
     _boardBounds = null;
     _lastMoveTrail = null;
@@ -220,7 +223,14 @@ class _DemoState extends State<_Demo> {
     ),
     home: Builder(
       builder: (context) {
-        renderedGeneration = generation;
+        // Session mutations are immediate, but the painters and motion scene
+        // still describe the preceding frame until this build is complete.
+        // Browser assertions must wait for this acknowledgement before mixing
+        // session counts with observations of the actual rendered widget tree.
+        final buildingGeneration = generation;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) renderedGeneration = buildingGeneration;
+        });
         reduced = MediaQuery.disableAnimationsOf(context);
         return Scaffold(
           appBar: AppBar(title: const Text('EasyPlay · 行棋动画')),
@@ -243,7 +253,7 @@ class _DemoState extends State<_Demo> {
                           session: go,
                           selected: null,
                           targets: const [],
-                          onCell: (cell) => setState(() {
+                          onCell: (cell) => _mutate(() {
                             lastTap = cell;
                             go.placeGo(cell);
                           }),
@@ -251,12 +261,12 @@ class _DemoState extends State<_Demo> {
                         'gomoku' => GomokuBoard(
                           session: gomoku,
                           placementMode: GoPlacementMode.direct,
-                          onCell: (cell) => setState(() => gomoku.place(cell)),
+                          onCell: (cell) => _mutate(() => gomoku.place(cell)),
                         ),
                         'chess' => ChessBoard(session: chess, onCell: null),
                         'xiangqi' => XiangqiBoard(
                           session: xiangqi,
-                          onCell: (cell) => setState(() => lastTap = cell),
+                          onCell: (cell) => _mutate(() => lastTap = cell),
                         ),
                         _ => DraughtsBoard(
                           session: draughts,
