@@ -37,7 +37,9 @@ void main() {
       );
       await tester.pumpWidget(const MaterialApp(home: DraughtsNewGamePage()));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(find.textContaining('人机 · 初级'), 300);
+      await tester.scrollUntilVisible(find.text('棋谱库'), 300);
+      await tester.tap(find.text('棋谱库'));
+      await tester.pumpAndSettle();
       await tester.tap(find.textContaining('人机 · 初级'));
       await tester.pumpAndSettle();
       final page = tester.widget<DraughtsGamePage>(

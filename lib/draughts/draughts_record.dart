@@ -2,6 +2,7 @@ import '../ai/ai_duel_config.dart';
 import '../game_session.dart' show Side;
 import 'draughts_move.dart';
 import 'draughts_session.dart';
+import 'draughts_rules.dart';
 import 'draughts_variant.dart';
 import 'draughts_ai_level.dart';
 
@@ -56,6 +57,34 @@ class DraughtsRecord {
         ? '1-0'
         : '0-1',
   );
+
+  /// Restores current snapshots and pre-snapshot records through legal replay.
+  DraughtsSession restore() {
+    final session = sessionState == null
+        ? DraughtsSession(DraughtsRules.forVariant(variant))
+        : DraughtsSession.fromJson(sessionState);
+    if (session.variant != variant) {
+      throw const FormatException('record variant does not match session');
+    }
+    if (sessionState == null) {
+      for (final move in moves) {
+        if (!session.applyMove(move)) {
+          throw const FormatException('record contains an illegal move');
+        }
+      }
+      if (!session.gameOver) {
+        switch (result) {
+          case '1/2-1/2':
+            session.agreeDraw();
+          case '1-0':
+            session.resign(Side.white);
+          case '0-1':
+            session.resign(Side.black);
+        }
+      }
+    }
+    return session;
+  }
 
   Map<String, Object?> toJson() => {
     'version': 1,

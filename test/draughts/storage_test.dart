@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -6,6 +8,29 @@ import 'package:easyplay/game_session.dart' show Side;
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test(
+    'the library keeps all games beyond the former 500-record cap',
+    () async {
+      final session = DraughtsSession(
+        DraughtsRules.forVariant(DraughtsVariant.english),
+      );
+      final records = [
+        for (var i = 0; i < 500; i++)
+          DraughtsRecord.fromSession(session, id: 'old-$i').toJson(),
+      ];
+      SharedPreferences.setMockInitialValues({
+        'easyplay.draughts.records.v1': jsonEncode(records),
+      });
+      await DraughtsStorage.save(
+        DraughtsRecord.fromSession(session, id: 'new'),
+      );
+      final saved = await DraughtsStorage.list();
+      expect(saved, hasLength(501));
+      expect(saved.first.id, 'new');
+      expect(saved.last.id, 'old-499');
+    },
+  );
 
   test('overlapping saves and deletes preserve queue order', () async {
     final session = DraughtsSession(

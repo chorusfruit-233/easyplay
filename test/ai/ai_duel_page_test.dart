@@ -86,6 +86,9 @@ void main() {
       expect(find.text('继续'), findsOneWidget);
       await tester.pageBack();
       await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('棋谱库'), 300);
+      await tester.tap(find.text('棋谱库'));
+      await tester.pumpAndSettle();
       expect(find.textContaining('AI 对抗 · 黑高级 / 白初级'), findsOneWidget);
       await tester.tap(find.textContaining('AI 对抗 · 黑高级 / 白初级'));
       await tester.pumpAndSettle();
@@ -237,6 +240,9 @@ void main() {
         ),
       );
       await tester.pumpWidget(const MaterialApp(home: GomokuHomePage()));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(find.text('棋谱库'), 300);
+      await tester.tap(find.text('棋谱库'));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
         find.textContaining('AI 对抗 · 黑初级 / 白初级'),

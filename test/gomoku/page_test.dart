@@ -136,6 +136,9 @@ void main() {
     expect(page.session.moves.length, 1);
     await tester.pageBack();
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('棋谱库'));
+    await tester.tap(find.text('棋谱库'));
+    await tester.pumpAndSettle();
     expect(find.text('索索夫-8 · 1 手'), findsOneWidget);
     await tester.ensureVisible(find.text('索索夫-8 · 1 手'));
     await tester.pumpAndSettle();
@@ -568,6 +571,9 @@ void main() {
       await tester.tapAt(_point(tester, const Cell(7, 7)));
       await tester.pumpAndSettle();
       await tester.pageBack();
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('棋谱库'));
+      await tester.tap(find.text('棋谱库'));
       await tester.pumpAndSettle();
       final saved = find.text('${variant.label} · 1 手');
       await tester.ensureVisible(saved);

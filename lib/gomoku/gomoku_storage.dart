@@ -79,6 +79,7 @@ class GomokuRecord {
 }
 
 class GomokuStorage {
+  // A library entry stays saved until the user deletes it.
   static const key = 'easyplay.gomoku.records.v1';
   static Future<void>? _queue;
 
@@ -101,7 +102,7 @@ class GomokuStorage {
     if (decoded is! List) return [];
     final result = <GomokuRecord>[];
     final ids = <String>{};
-    for (final item in decoded.take(100)) {
+    for (final item in decoded) {
       try {
         final record = GomokuRecord.fromJson(item);
         if (ids.add(record.id)) result.add(record);
@@ -127,7 +128,7 @@ class GomokuStorage {
   static Future<void> save(GomokuRecord record) => _enqueue(() async {
     final records = await _read();
     final next = [record, ...records.where((item) => item.id != record.id)];
-    await _write(next.take(100));
+    await _write(next);
   });
 
   static Future<void> delete(String id) => _enqueue(() async {

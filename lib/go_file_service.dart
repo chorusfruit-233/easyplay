@@ -1,9 +1,7 @@
 import 'dart:typed_data';
-import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
-import 'go_download_native.dart'
-    if (dart.library.js_interop) 'go_download_web.dart';
+import 'record_file_service.dart';
 
 class GoFileService {
   /// The raw bytes of a picked kifu.
@@ -24,6 +22,12 @@ class GoFileService {
     String sgf, {
     String fileName = 'easyplay-game.sgf',
   }) async {
-    return downloadSgf(Uint8List.fromList(utf8.encode(sgf)), fileName);
+    return RecordFileService.saveText(
+      sgf,
+      fileName: fileName,
+      mimeType: fileName.toLowerCase().endsWith('.json')
+          ? 'application/json;charset=utf-8'
+          : 'application/x-go-sgf;charset=utf-8',
+    );
   }
 }

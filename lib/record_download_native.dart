@@ -1,7 +1,12 @@
 import 'dart:typed_data';
+
 import 'package:file_picker/file_picker.dart';
 
-Future<bool> downloadSgf(Uint8List bytes, String fileName) async {
+Future<bool> downloadRecord(
+  Uint8List bytes,
+  String fileName,
+  String mimeType,
+) async {
   final path = await FilePicker.platform.saveFile(
     dialogTitle: '保存文件',
     fileName: fileName,
