@@ -4,14 +4,14 @@
 
 [下载 Android APK](https://github.com/chorusfruit-233/easyplay/releases/latest) · [打开 Web 版](https://chorusfruit-233.github.io/easyplay/)
 
-## v1.7.4
+## v1.7.5
 
-- **五子棋**：采用索索夫-8竞技规则，支持26种指定开局、两次交换和五手1–8打；人机与 AI 观战使用 Rapfi，提供初级、中级、高级三档难度。
-- **棋谱库**：跳棋和五子棋保存全部对局，可继续、确认删除和导出。跳棋导出 PDN，五子棋导出 SGF 或保留完整开局决策的 JSON；旧五子棋规则棋谱只读保留。
-- **跳棋轨迹**：显示上一手的完整方向与全部连吃落点，支持翻转棋盘、悔棋和恢复棋谱。
-- **棋力标注与联机**：Stockfish 难度显示参考 Elo，Pikafish 显示相对强度 1–6（非 Elo）；改进 WebRTC 首次连接和重连握手。
+- **斗地主 AI**：单人对战、房间 AI 补位和跟牌提示接入 DouZero-WP，Android 与 Web 均在设备本地推理；叫分继续使用手牌评估策略。
+- **出牌留桌**：各玩家打出的牌缩小显示在身旁，同轮被压过后仍保留；「不要」保留先前出牌，上一轮直到新一轮实际出牌时才覆盖。
+- **提示与容错**：领出时隐藏提示按钮，跟牌时保留；模型不可用时显示降级提示并自动使用兼容策略，可重试 DouZero。
+- **资源与许可**：内置三个身份模型和本地运行时，补充模型来源、许可、构建复现及界面截图，兼容 APK 内置 LAN 网页。
 
-[完整更新记录](https://github.com/chorusfruit-233/easyplay/compare/v1.7.3...v1.7.4) · [v1.7.4 下载与说明](https://github.com/chorusfruit-233/easyplay/releases/tag/v1.7.4)
+[完整更新记录](https://github.com/chorusfruit-233/easyplay/compare/v1.7.4...v1.7.5) · [v1.7.5 下载与说明](https://github.com/chorusfruit-233/easyplay/releases/tag/v1.7.5)
 
 ## 支持的游戏
 
@@ -34,11 +34,13 @@
 
 ## 界面预览
 
+<img src="docs/images/douzero-home.png" width="280" alt="斗地主使用本地 DouZero-WP AI" /> <img src="docs/images/douzero-single-player.png" width="280" alt="斗地主出牌留桌和跟牌提示" />
+
 <img src="docs/images/gomoku-soosyrv8-declaration.png" width="280" alt="索索夫-8开局与五手1–8打" /> <img src="docs/images/gomoku-record-library.png" width="280" alt="五子棋棋谱库与导出菜单" /> <img src="docs/images/checkers-last-move-trail.png" width="280" alt="跳棋连续吃子的完整轨迹" />
 
 ## 安装与使用
 
-- **Android**：从 Release 下载 `app-arm64-v8a-release.apk`，适用于 ARM64 设备；正式包沿用已有签名，可覆盖更新。v1.7.4 的构建号为20，ARM64 APK 的 versionCode 为2020。
+- **Android**：从 Release 下载 `app-arm64-v8a-release.apk`，适用于 ARM64 设备；正式包沿用已有签名，可覆盖更新。v1.7.5 的构建号为21，ARM64 APK 的 versionCode 为2021。
 - **Web**：直接打开上方 Web 版。AI 在浏览器本地运行，首次使用需要加载同源引擎和模型；围棋的跨源隔离由部署的 service worker 提供。
 - **棋力刻度**：Stockfish 参考 Elo 和 Pikafish 相对档位的适用范围见 [棋力说明](docs/ENGINE_STRENGTH.md)，实际表现随设备、局面和思考时间变化。
 
@@ -68,13 +70,13 @@ flutter build web --no-wasm-dry-run
 python3 tools/serve_web.py --port 8080
 ```
 
-构建包含四个引擎和 LAN Web 客户端的 Android 测试包：
+构建包含棋类引擎、DouZero 模型和 LAN Web 客户端的 Android 测试包：
 
 ```bash
 python3 tools/package_lan_android.py --debug
 ```
 
-Android Studio / Gradle 构建也会自动准备 Stockfish、Pikafish、Rapfi 和内置网页。原生引擎目标为 Android ARM64；KataGo 与 Web 构建的工具链说明见开发文档。正式 APK 使用 `python3 tools/package_lan_android.py` 构建，并须配置正式签名；仓库的发布工作流从 GitHub Secrets 读取签名配置。
+Android Studio / Gradle 构建也会自动准备 Stockfish、Pikafish、Rapfi、DouZero 和内置网页。原生引擎目标为 Android ARM64；KataGo 与 Web 构建的工具链说明见开发文档。正式 APK 使用 `python3 tools/package_lan_android.py` 构建，并须配置正式签名；仓库的发布工作流从 GitHub Secrets 读取签名配置。
 
 ```bash
 flutter test
