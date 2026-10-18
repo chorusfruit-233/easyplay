@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../../game_session.dart' show Cell, Side;
@@ -108,6 +109,17 @@ class DraughtsBoard extends StatelessWidget {
                         );
                       },
                     ),
+                    if (last != null)
+                      IgnorePointer(
+                        child: CustomPaint(
+                          key: const ValueKey('draughts-last-move-trail'),
+                          painter: _LastMoveTrailPainter(
+                            path: last.path,
+                            boardSize: size,
+                            flipped: flipped,
+                          ),
+                        ),
+                      ),
                     IgnorePointer(
                       child: ExcludeSemantics(
                         child: AnimatedBuilder(
@@ -188,4 +200,79 @@ class DraughtsBoard extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// A completed move is independent of the next selection and its capture
+/// preview. Keep every landing, including a king's return to its source.
+class _LastMoveTrailPainter extends CustomPainter {
+  const _LastMoveTrailPainter({
+    required this.path,
+    required this.boardSize,
+    required this.flipped,
+  });
+
+  final List<Cell> path;
+  final int boardSize;
+  final bool flipped;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final square = size.width / boardSize;
+    Offset center(Cell cell) => Offset(
+      ((flipped ? boardSize - 1 - cell.col : cell.col) + .5) * square,
+      ((flipped ? boardSize - 1 - cell.row : cell.row) + .5) * square,
+    );
+
+    final points = path.map(center).toList(growable: false);
+    final outline = Paint()
+      ..color = const Color(0xff204b57)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = square * .105
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    final trail = Paint()
+      ..color = const Color(0xffb7e9f2)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = square * .05
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+    for (var i = 1; i < points.length; i++) {
+      final start = points[i - 1], end = points[i];
+      canvas.drawLine(start, end, outline);
+      canvas.drawLine(start, end, trail);
+      final direction = (end - start) / (end - start).distance;
+      final normal = Offset(-direction.dy, direction.dx);
+      // Mid-segment arrows remain visible even when the destination is
+      // occupied. They also distinguish the direction of a closed capture.
+      final tip = Offset.lerp(start, end, .62)!;
+      final base = tip - direction * square * .18;
+      final arrow = Path()
+        ..moveTo(
+          (base + normal * square * .12).dx,
+          (base + normal * square * .12).dy,
+        )
+        ..lineTo(tip.dx, tip.dy)
+        ..lineTo(
+          (base - normal * square * .12).dx,
+          (base - normal * square * .12).dy,
+        );
+      canvas.drawPath(arrow, outline);
+      canvas.drawPath(arrow, trail);
+    }
+    for (var i = 0; i < points.length - 1; i++) {
+      final radius = square * (i == 0 ? .13 : .09);
+      canvas.drawCircle(points[i], radius, outline);
+      canvas.drawCircle(points[i], radius, trail);
+    }
+    // This halo stays outside the piece and marks the final landing even
+    // when a multi-capture finishes on its original square.
+    canvas.drawCircle(points.last, square * .455, outline);
+    canvas.drawCircle(points.last, square * .455, trail);
+  }
+
+  @override
+  bool shouldRepaint(covariant _LastMoveTrailPainter oldDelegate) =>
+      boardSize != oldDelegate.boardSize ||
+      flipped != oldDelegate.flipped ||
+      !listEquals(path, oldDelegate.path);
 }

@@ -74,9 +74,21 @@ const capture = process.env.CAPTURE_BOARD_MOTION === '1';
       await page.waitForFunction(()=>!JSON.parse(easyplayBoardMotion.state()).active);
       await page.evaluate(()=>window.motionRecording++);
       const settled=await state();assert.ok(settled.frames.every(p=>!p.moving && !p.departing && p.opacity===1 && p.scale===1));
+      if(game==='draughts') {
+        const fullPath=[[0,1],[2,3],[4,5],[6,7]];
+        assert.deepEqual(settled.lastMoveTrail,{path:fullPath,flipped:false});
+        if(process.env.CAPTURE_BOARD_TRAIL==='1') await page.screenshot({path:path.join(root,'draughts-trail.png')});
+        await page.evaluate(()=>easyplayBoardMotion.flip());
+        await page.waitForFunction(()=>JSON.parse(easyplayBoardMotion.state()).lastMoveTrail?.flipped===true);
+        const flipped=await state();
+        assert.deepEqual(flipped.lastMoveTrail,{path:fullPath,flipped:true});
+        assert.equal(flipped.active,false);
+        if(process.env.CAPTURE_BOARD_TRAIL==='1') await page.screenshot({path:path.join(root,'draughts-trail-flipped.png')});
+      }
       if(capture) await page.screenshot({path:path.join(root,`${game}.png`)});
       await page.getByRole('button',{name:'悔棋',exact:true}).click();
       await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.moves===0 && !s.active;});
+      if(game==='draughts') assert.equal((await state()).lastMoveTrail,null);
       console.log(`PASS ${game}: animation, final board and undo`);
     }
     await change('gomoku');
@@ -92,6 +104,12 @@ const capture = process.env.CAPTURE_BOARD_MOTION === '1';
     await page.getByRole('button',{name:'演示行棋',exact:true}).click();
     const reducedSample=await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.moves===1 && s.frames.length===1 ? s : null;});
     const reduced=await reducedSample.jsonValue();await reducedSample.dispose();assert.equal(reduced.active,false);assert.equal(reduced.frames[0].scale,1);
+    await change('draughts');
+    await page.getByRole('button',{name:'演示行棋',exact:true}).click();
+    await page.waitForFunction(()=>{const s=JSON.parse(easyplayBoardMotion.state());return s.moves===1 && s.lastMoveTrail!==null;});
+    const reducedTrail=await state();
+    assert.equal(reducedTrail.active,false);
+    assert.deepEqual(reducedTrail.lastMoveTrail.path,[[0,1],[2,3],[4,5],[6,7]]);
     assert.deepEqual(failures,[]);
     console.log('PASS fast replies and system reduced motion');
   } finally {await browser?.close();await new Promise(resolve=>server.close(resolve));}
