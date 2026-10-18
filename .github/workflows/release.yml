@@ -63,6 +63,10 @@ jobs:
         if: steps.version.outputs.publish == 'true'
         run: python3 tools/prepare_rapfi.py
 
+      - name: Verify DouZero models and runtime
+        if: steps.version.outputs.publish == 'true'
+        run: python3 tools/prepare_douzero.py
+
       - name: Install dependencies
         if: steps.version.outputs.publish == 'true'
         run: flutter pub get

@@ -1,0 +1,30 @@
+DouZero-WP integration in EasyPlay
+
+DouZero: Mastering DouDizhu with Self-Play Deep Reinforcement Learning
+DouZero contributors. Apache License 2.0 (DOUZERO-LICENSE.txt).
+Source: https://github.com/kwai/DouZero
+Source commit: 718a5c920bf3361e34178a38f3b80458e176b351
+
+The published DouZero-WP pretrained checkpoints are mirrored in:
+https://github.com/pineoncellar/DouZero_API
+Commit: ca8c841552e08d602ad326d2c7450b683bf41226
+Directory: baselines/douzero_WP (repository license: Apache-2.0).
+Their Git blob hashes also match tianqiraf/DouZero_For_HappyDouDiZhu,
+commit c01062592f362cfb77d6af14a34c2cbcfa614fd2.
+The original Google Drive folder linked by kwai/DouZero returned 404 when
+checked on 2026-10-18. These are mirrored WP checkpoints, not independently
+verified downloads from that unavailable folder. No AlphaDou weights are used.
+
+Changes: strict complete parameter loading; ONNX opset 17 conversion;
+one shared history LSTM result per candidate batch; candidate scores instead
+of Python action selection. Float32 weights are not quantized or retrained.
+Model and checkpoint SHA-256 values are in manifest.json.
+Reproduction: tools/export_douzero.py; see docs/DOUZERO.md.
+
+ONNX Runtime 1.22.0
+Copyright (c) Microsoft Corporation. MIT License (ONNXRUNTIME-LICENSE.txt).
+Source: https://github.com/microsoft/onnxruntime
+Commit: f217402897f40ebba457e2421bc0a4702771968e (v1.22.0).
+Third-party notices: ONNXRUNTIME-NOTICES.txt.
+Android: com.microsoft.onnxruntime:onnxruntime-android:1.22.0 (Maven Central).
+Web: onnxruntime-web@1.22.0 (npm, checksum-pinned by prepare_douzero.py).

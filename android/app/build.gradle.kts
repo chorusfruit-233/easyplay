@@ -44,11 +44,17 @@ val prepareRapfi = tasks.register<Exec>("prepareRapfi") {
     commandLine(providers.gradleProperty("stockfishPython").getOrElse(if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3"), "tools/prepare_rapfi.py", "--android-only")
 }
 
+val prepareDouZero = tasks.register<Exec>("prepareDouZero") {
+    group = "build"
+    workingDir(rootProject.projectDir.parentFile)
+    commandLine(providers.gradleProperty("stockfishPython").getOrElse(if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3"), "tools/prepare_douzero.py", "--android-only")
+}
+
 tasks.matching {
     it.name == "preBuild" || (it.name.startsWith("merge") &&
         (it.name.endsWith("NativeLibs") || it.name.endsWith("JniLibFolders")))
 }.configureEach {
-    dependsOn(prepareStockfish, preparePikafish, prepareRapfi)
+    dependsOn(prepareStockfish, preparePikafish, prepareRapfi, prepareDouZero)
 }
 
 // Generate assets for rootBundle directly, so every Android entry point packs
@@ -82,6 +88,7 @@ val prepareLanWeb = tasks.register<Exec>("prepareLanWeb") {
         repository.resolve("tools/prepare_stockfish.py"),
         repository.resolve("tools/prepare_pikafish.py"),
         repository.resolve("tools/prepare_rapfi.py"),
+        repository.resolve("tools/prepare_douzero.py"),
     )
     inputs.property("flutterSdk", flutterSdk)
     inputs.file("$flutterSdk/bin/cache/flutter_tools.stamp")
@@ -158,4 +165,15 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.22.0")
+    testImplementation("com.google.code.gson:gson:2.11.0")
+}
+
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
+    systemProperty("easyplayRoot", rootProject.projectDir.parentFile.absolutePath)
 }

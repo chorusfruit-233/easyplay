@@ -10,6 +10,13 @@ class _LicenseEntry {
 
 const _licenseEntries = <_LicenseEntry>[
   _LicenseEntry('EasyPlay（本项目）', 'assets/licenses/GPL-3.0.txt'),
+  _LicenseEntry(
+    'DouZero-WP · Apache-2.0',
+    'assets/douzero/DOUZERO-LICENSE.txt',
+  ),
+  _LicenseEntry('DouZero 模型来源与转换', 'assets/douzero/NOTICE.txt'),
+  _LicenseEntry('ONNX Runtime · MIT', 'assets/douzero/ONNXRUNTIME-LICENSE.txt'),
+  _LicenseEntry('ONNX Runtime 第三方组件', 'assets/douzero/ONNXRUNTIME-NOTICES.txt'),
   _LicenseEntry('主题设置来源与修改说明', 'assets/licenses/THEME-NOTICE.txt'),
   _LicenseEntry(
     'Material Color Utilities · Apache-2.0',

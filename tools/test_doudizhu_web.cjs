@@ -11,7 +11,7 @@ const root = path.resolve(__dirname, '../build/doudizhu-smoke');
     const file = path.resolve(root,relative || 'index.html');
     if(!file.startsWith(root+path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {res.writeHead(404);res.end();return;}
     res.setHeader('Cross-Origin-Opener-Policy','same-origin');res.setHeader('Cross-Origin-Embedder-Policy','require-corp');
-    res.setHeader('Content-Type',({'.html':'text/html','.js':'application/javascript','.wasm':'application/wasm','.json':'application/json'})[path.extname(file)] || 'application/octet-stream');
+    res.setHeader('Content-Type',({'.html':'text/html','.js':'application/javascript','.mjs':'application/javascript','.wasm':'application/wasm','.json':'application/json'})[path.extname(file)] || 'application/octet-stream');
     fs.createReadStream(file).pipe(res);
   });
   await new Promise(r => server.listen(0,'127.0.0.1',r));
@@ -48,7 +48,10 @@ const root = path.resolve(__dirname, '../build/doudizhu-smoke');
     const url = `http://127.0.0.1:${server.address().port}/easyplay/`;
     await Promise.all(pages.map(async p => {await p.goto(url);await p.waitForFunction(() => !!window.easyplayDoudizhuSmoke,undefined,{timeout:60000});}));
     const state = p => p.evaluate(() => JSON.parse(easyplayDoudizhuSmoke.state()));
-    const action = (p,name) => p.evaluate(n => easyplayDoudizhuSmoke.action(n),name);
+    const action = async (p,name) => {
+      await p.evaluate(n => easyplayDoudizhuSmoke.action(n),name);
+      if (name === 'auto') assert.equal((await state(p)).aiWarning,null,'Real DouZero inference must succeed without compatibility fallback');
+    };
     const connect = async (seat,ai=false) => {
       const offer=await pages[0].evaluate(([s,a]) => easyplayDoudizhuSmoke.offer(s,a),[seat,ai]);
       const signal=JSON.parse(offer);assert.equal(signal.seat,seat);assert.equal(signal.game,'doudizhu');
@@ -83,6 +86,17 @@ const root = path.resolve(__dirname, '../build/doudizhu-smoke');
       }
     };
     if (process.env.DDZ_UI_ONLY !== '1') {
+    console.log('DouZero-WP: compare Dart features and real WASM scores with upstream PyTorch');
+    const oracle = JSON.parse(fs.readFileSync(path.resolve(__dirname,'../test/doudizhu/fixtures/douzero_reference.json'),'utf8'));
+    for (const fixture of oracle.cases) {
+      const actual = JSON.parse(await pages[0].evaluate(input => easyplayDoudizhuSmoke.oracle(input),JSON.stringify(fixture.view)));
+      assert.equal(actual.role,fixture.role);assert.equal(actual.xSha256,fixture.xSha256);assert.equal(actual.z,fixture.z);
+      assert.equal(actual.values.length,fixture.values.length);
+      actual.values.forEach((value,i) => assert.ok(Math.abs(value-fixture.values[i]) <= 0.00002,`${fixture.name} action ${i}: ${value} vs ${fixture.values[i]}`));
+      const best = values => values.indexOf(Math.max(...values));
+      assert.equal(best(actual.values),best(fixture.values));
+    }
+    await pages[0].evaluate(() => easyplayDoudizhuSmoke.resetOracle());
     console.log('Three players: connect two independent peers');
     await connect(1);await connect(2);await pages[0].waitForFunction(() => JSON.parse(easyplayDoudizhuSmoke.state()).seats.every(s=>s.ready));await synced();
     await action(pages[0],'start');await synced();await privacy();
@@ -166,9 +180,16 @@ const root = path.resolve(__dirname, '../build/doudizhu-smoke');
     await Promise.all(pages.map((p,i) => p.getByText(`玩家 ${i+1} · 17 张`,{exact:true}).waitFor()));
     await pages[0].getByRole('button',{name:'叫 3 分',exact:true}).click();
     await pages[0].getByText('玩家 1 · 地主 · 20 张',{exact:true}).waitFor();
+    assert.equal(await pages[0].getByRole('button',{name:'提示',exact:true}).count(),0,'No hint on the initial lead');
     await pages[0].getByRole('button',{name:/[♠♥♣♦]/}).first().click();
     await pages[0].getByRole('button',{name:'出牌',exact:true}).click();
     await pages[0].getByText('玩家 1 · 地主 · 19 张',{exact:true}).waitFor();
+    const tablePlay = (p,seat,complete=false) => p.getByText(new RegExp(`^玩家 ${seat+1}${complete?'上轮':'本轮'}出牌：`));
+    for (const p of pages) {
+      await tablePlay(p,0).waitFor();
+      await p.getByRole('button',{name:'提示',exact:true}).waitFor();
+    }
+    const firstPlay = await tablePlay(pages[0],0).textContent();
     for (const p of pages) {
       await p.getByRole('button',{name:'历史出牌',exact:true}).click();
       await p.getByText('1 · 玩家 1 · 地主 · 单牌',{exact:false}).waitFor();
@@ -183,7 +204,46 @@ const root = path.resolve(__dirname, '../build/doudizhu-smoke');
     await pages[0].setViewportSize({width:568,height:320});
     await pages[0].waitForTimeout(300);
     await pages[0].screenshot({path:'build/doudizhu-smoke/history-landscape.png'});
+    await pages[0].getByRole('button',{name:'关闭历史出牌',exact:true}).click();
+    for (const p of pages) {
+      for (const seat of [0,1,2]) await tablePlay(p,seat,true).waitFor();
+      assert.equal(await tablePlay(p,0,true).textContent(),firstPlay.replace('本轮','上轮'),'Two passes retain the played card');
+      await p.getByRole('button',{name:'提示',exact:true}).waitFor({state:'detached'});
+    }
+    await pages[0].setViewportSize({width:390,height:844});
+    await scroll(pages[0],-1600);
+    await pages[0].screenshot({path:'build/doudizhu-smoke/table-portrait.png'});
+    await scroll(pages[1],-1600);
+    await pages[1].screenshot({path:'build/doudizhu-smoke/table-guest-portrait.png'});
+    await pages[1].setViewportSize({width:568,height:320});
+    await pages[1].evaluate(() => new Promise(requestAnimationFrame).then(() => new Promise(requestAnimationFrame)));
+    await pages[1].mouse.move(550,200);await pages[1].mouse.wheel(0,-1600);
+    await pages[1].screenshot({path:'build/doudizhu-smoke/table-landscape.png'});
+    await pages[0].getByRole('button',{name:/[♠♥♣♦]/}).first().click();
+    await pages[0].getByRole('button',{name:'出牌',exact:true}).click();
+    await pages[0].getByText('玩家 1 · 地主 · 18 张',{exact:true}).waitFor();
+    for (const p of pages) {
+      await tablePlay(p,0).waitFor();
+      assert.notEqual(await tablePlay(p,0).textContent(),firstPlay,'A new lead replaces the previous card');
+      assert.equal(await tablePlay(p,1,true).count(),0,'New lead clears the old round');
+      assert.equal(await tablePlay(p,2,true).count(),0,'New lead clears the old round');
+    }
     for(const p of pages.slice(1)) assert.ok(await p.evaluate(() => window.__easyplayDroppedHellos > 0), 'First HELLO loss must be exercised');
-    assert.deepEqual(failures,[]);console.log('DOUDIZHU RTC PASS: private deal, public plays, reconnect, rematch, mixed AI, responsive UI, real lobby controls');
+    console.log('Single-player UI: advertise DouZero and let both local AI seats respond');
+    await pages[0].evaluate(()=>easyplayDoudizhuSmoke.home());
+    const singlePlayerMode = pages[0].getByText(/你与两名本地 DouZero-WP AI/);
+    await singlePlayerMode.waitFor();
+    await pages[0].screenshot({path:'build/doudizhu-smoke/douzero-home.png'});
+    await singlePlayerMode.click();
+    await pages[0].getByText('玩家 1 · 17 张',{exact:true}).waitFor();
+    await pages[0].getByRole('button',{name:'叫 3 分',exact:true}).click();
+    await pages[0].getByText('玩家 1 · 地主 · 20 张',{exact:true}).waitFor();
+    await pages[0].getByRole('button',{name:/[♠♥♣♦]/}).last().click();
+    await pages[0].getByRole('button',{name:'出牌',exact:true}).click();
+    await pages[0].getByText('玩家 1 · 地主 · 19 张',{exact:true}).waitFor();
+    await pages[0].getByText(/^玩家 1(出牌|领出)$/).waitFor();
+    assert.equal((await state(pages[0])).aiWarning,null,'Single-player AI seats must use DouZero successfully');
+    await pages[0].screenshot({path:'build/doudizhu-smoke/douzero-single-player.png'});
+    assert.deepEqual(failures,[]);console.log('DOUDIZHU RTC PASS: private deal, public plays, reconnect, rematch, mixed AI, responsive UI, real lobby controls, retained table cards and lead hints');
   } finally {await browser?.close();await new Promise(r=>server.close(r));}
 })().catch(e=>{console.error(e);process.exitCode=1;});

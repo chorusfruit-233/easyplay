@@ -67,6 +67,7 @@ flutter:
   uses-material-design: true
 
   assets:
+    - assets/douzero/
     - assets/rapfi/
     - assets/pikafish/
     - assets/licenses/GPL-3.0.txt

@@ -34,6 +34,9 @@ jobs:
       - name: Verify Rapfi assets
         run: python3 tools/prepare_rapfi.py
 
+      - name: Verify DouZero models and runtime
+        run: python3 tools/prepare_douzero.py
+
       - run: flutter pub get
       - name: Android packaging retry tests
         run: python3 -m unittest discover -s tools/tests
@@ -74,6 +77,8 @@ jobs:
           node tools/test_stockfish_web.cjs
           node tools/test_pikafish_web.cjs
           node tools/test_rapfi_web.cjs
+      - name: DouZero WASM reference and compatibility checks
+        run: node tools/test_douzero_web.cjs
       - name: WebRTC production transport browser smoke
         run: |
           flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/lan/rtc_browser_smoke.dart --output build/rtc-smoke
@@ -104,3 +109,6 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties', 'pubspec.lock') }}
           restore-keys: ${{ runner.os }}-gradle-
       - run: python3 tools/package_lan_android.py --debug --network-retries 2
+      - name: DouZero native JNI references
+        working-directory: android
+        run: ./gradlew :app:testDebugUnitTest --no-daemon

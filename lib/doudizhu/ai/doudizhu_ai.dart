@@ -6,6 +6,8 @@ import 'endgame_search.dart';
 import 'hand_plan.dart';
 import 'legal_play_generator.dart';
 import 'public_cards.dart';
+import 'douzero_factory.dart';
+import 'douzero_player.dart';
 
 class BiddingPolicy {
   const BiddingPolicy();
@@ -56,9 +58,26 @@ class TeamPolicy {
 }
 
 class DouDizhuAi {
-  const DouDizhuAi();
+  const DouDizhuAi({DouZeroPlayer? neuralPlayer}) : _player = neuralPlayer;
+  final DouZeroPlayer? _player;
   static const candidateBudget = 4096;
+  static final _douZero = DouZeroPlayer(createDouZeroRuntime());
+  static final warning = ValueNotifier<String?>(null);
+  static DateTime? _retryAfter;
+  static String get engineLabel =>
+      _douZero.runtime.supported ? 'DouZero-WP' : '本地兼容策略';
 
+  static Future<void> retryEngine() async {
+    try {
+      if (_douZero.runtime.supported) await _douZero.runtime.reset();
+    } catch (_) {
+      // A missing native channel is retried on the next inference request.
+    }
+    _retryAfter = null;
+    warning.value = null;
+  }
+
+  /// Synchronous compatibility/reference policy. Production uses chooseAsync.
   List<int> choosePlay(DouDizhuPlayerView view) {
     final decision = _Decision(view);
     for (final _ in decision.run()) {
@@ -68,6 +87,23 @@ class DouDizhuAi {
   }
 
   Future<List<int>> chooseAsync(DouDizhuPlayerView view) async {
+    if (view.publicState.phase != DouDizhuPhase.playing || view.hand.isEmpty) {
+      return [];
+    }
+    final player = _player ?? _douZero;
+    if (player.runtime.supported &&
+        (_retryAfter == null || DateTime.now().isAfter(_retryAfter!))) {
+      try {
+        final cards = await player.choose(view);
+        warning.value = null;
+        _retryAfter = null;
+        return cards;
+      } catch (error) {
+        debugPrint('DouZero unavailable: ${error.runtimeType}');
+        warning.value = 'DouZero 暂不可用，已使用本地兼容策略';
+        _retryAfter = DateTime.now().add(const Duration(seconds: 30));
+      }
+    }
     if (!kIsWeb) return compute(_choose, view.toWire());
     final decision = _Decision(view);
     var count = 0;

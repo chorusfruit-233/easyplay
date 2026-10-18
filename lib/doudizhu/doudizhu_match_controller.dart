@@ -6,12 +6,14 @@ import 'multiplayer/doudizhu_replica.dart';
 class DouDizhuMatchController extends ChangeNotifier {
   DouDizhuMatchController.network(this.replica) : _local = null {
     replica!.addListener(_update);
+    DouDizhuAi.warning.addListener(_update);
   }
   DouDizhuMatchController.hotseat()
     : replica = null,
       _local = DouDizhuSession() {
     _local!.deal();
     covered = true;
+    DouDizhuAi.warning.addListener(_update);
   }
   final DouDizhuReplica? replica;
   final DouDizhuSession? _local;
@@ -28,6 +30,8 @@ class DouDizhuMatchController extends ChangeNotifier {
   DouDizhuPlayerView? get view =>
       hotseat ? (covered ? null : _local!.view(_local.turn)) : replica!.view;
   String? get error => replica?.error;
+  String? get aiWarning => DouDizhuAi.warning.value;
+  Future<void> retryAi() => DouDizhuAi.retryEngine();
   void _update() => notifyListeners();
   void reveal() {
     covered = false;
@@ -66,6 +70,7 @@ class DouDizhuMatchController extends ChangeNotifier {
 
   @override
   void dispose() {
+    DouDizhuAi.warning.removeListener(_update);
     replica?.removeListener(_update);
     _local?.close();
     super.dispose();

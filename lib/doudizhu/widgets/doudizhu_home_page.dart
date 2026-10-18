@@ -1,5 +1,6 @@
 import '../../ui/app_layout.dart';
 import 'package:flutter/material.dart';
+import '../ai/doudizhu_ai.dart';
 import '../../lan/message_transport.dart';
 import '../../lan/rtc_transport.dart';
 import '../doudizhu_model.dart';
@@ -68,7 +69,7 @@ class DouDizhuHomePage extends StatelessWidget {
         for (final mode in [
           (
             '单人对战',
-            '你与两名本地 AI',
+            '你与两名本地 ${DouDizhuAi.engineLabel} AI',
             Icons.smart_toy_outlined,
             () => _single(context),
           ),

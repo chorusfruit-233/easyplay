@@ -79,6 +79,7 @@ def main() -> None:
     subprocess.run(["python3", "tools/prepare_stockfish.py"], cwd=ROOT, check=True)
     subprocess.run(["python3", "tools/prepare_pikafish.py"], cwd=ROOT, check=True)
     subprocess.run(["python3", "tools/prepare_rapfi.py"], cwd=ROOT, check=True)
+    subprocess.run(["python3", "tools/prepare_douzero.py"], cwd=ROOT, check=True)
     command = ["flutter", "build", "appbundle" if args.appbundle else "apk"]
     command += ["--debug"] if args.debug else ["--release"]
     if not args.debug and not args.appbundle:

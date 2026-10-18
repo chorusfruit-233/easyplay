@@ -7,16 +7,36 @@ class DouDizhuCard extends StatelessWidget {
     this.card,
     this.selected = false,
     this.small = false,
+    this.compact = false,
   });
   final PlayingCard? card;
-  final bool selected, small;
+  final bool selected, small, compact;
   @override
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
+    final symbol = Text(
+      compact && card != null && card!.rank >= 16 ? '王' : card?.symbol ?? '',
+      style: TextStyle(
+        fontSize: compact
+            ? 10
+            : small
+            ? 16
+            : 22,
+        color: card?.red == true ? colors.error : colors.onSurface,
+      ),
+    );
     return Container(
-      width: small ? 42 : 58,
-      height: small ? 62 : 90,
-      padding: const EdgeInsets.all(5),
+      width: compact
+          ? 24
+          : small
+          ? 42
+          : 58,
+      height: compact
+          ? 34
+          : small
+          ? 62
+          : 90,
+      padding: EdgeInsets.all(compact ? 3 : 5),
       decoration: BoxDecoration(
         color: card == null
             ? colors.primaryContainer
@@ -38,14 +58,22 @@ class DouDizhuCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 SizedBox(
-                  height: small ? 20 : 28,
+                  height: compact
+                      ? 13
+                      : small
+                      ? 20
+                      : 28,
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.topLeft,
                     child: Text(
-                      card!.label,
+                      compact && card!.rank >= 16
+                          ? (card!.rank == 16 ? '小' : '大')
+                          : card!.label,
                       style: TextStyle(
-                        fontSize: card!.rank >= 16
+                        fontSize: compact
+                            ? 10
+                            : card!.rank >= 16
                             ? 12
                             : small
                             ? 16
@@ -56,13 +84,16 @@ class DouDizhuCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                Text(
-                  card!.symbol,
-                  style: TextStyle(
-                    fontSize: small ? 16 : 22,
-                    color: card!.red ? colors.error : colors.onSurface,
+                if (compact)
+                  SizedBox(
+                    height: 12,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.topLeft,
+                      child: symbol,
+                    ),
                   ),
-                ),
+                if (!compact) symbol,
               ],
             ),
     );

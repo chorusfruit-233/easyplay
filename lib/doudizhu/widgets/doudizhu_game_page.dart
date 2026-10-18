@@ -2,10 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../doudizhu.dart';
 import '../doudizhu_match_controller.dart';
+import '../doudizhu_table.dart';
 import 'doudizhu_hand.dart';
 import 'doudizhu_card.dart';
 import 'bidding_panel.dart';
 import 'doudizhu_history.dart';
+import 'doudizhu_played_cards.dart';
 
 class DouDizhuGamePage extends StatefulWidget {
   const DouDizhuGamePage({super.key, required this.controller});
@@ -75,6 +77,60 @@ class _DouDizhuGamePageState extends State<DouDizhuGamePage> {
     }
   }
 
+  Widget _player(
+    PublicGameState state,
+    PlayerSeat seat,
+    DouDizhuTableRound round, {
+    bool own = false,
+  }) {
+    final title =
+        '${seat.label}${state.landlord == seat
+            ? ' · 地主'
+            : state.landlord != null
+            ? ' · 农民'
+            : ''}';
+    final play = round.plays[seat];
+    final cards = play == null
+        ? null
+        : DouDizhuPlayedCards(
+            key: ValueKey('doudizhu-play-${seat.index}'),
+            seat: seat,
+            play: play,
+            complete: round.complete,
+            strongest: round.topSeat == seat,
+          );
+    if (own) {
+      return Padding(
+        key: ValueKey('doudizhu-player-${seat.index}'),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          children: [
+            Expanded(child: Text('$title · ${state.counts[seat.index]} 张')),
+            if (cards != null) Expanded(child: cards),
+          ],
+        ),
+      );
+    }
+    return Card(
+      key: ValueKey('doudizhu-player-${seat.index}'),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              '剩余 ${state.counts[seat.index]} 张${state.bids[seat.index] != null ? ' · 叫分 ${state.bids[seat.index]}' : ''}',
+            ),
+            if (state.turn == seat && state.phase != DouDizhuPhase.finished)
+              const Text('轮到此玩家'),
+            if (cards != null) ...[const SizedBox(height: 6), cards],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller,
@@ -88,6 +144,7 @@ class _DouDizhuGamePageState extends State<DouDizhuGamePage> {
     final active =
         !controller.covered && view != null && view.isTurn && controller.canAct;
     final finished = state.phase == DouDizhuPhase.finished;
+    final round = DouDizhuTableRound.fromState(state);
     final status = finished
         ? '${state.winner == DouDizhuTeam.landlord ? '地主' : '农民'}获胜'
         : state.phase == DouDizhuPhase.bidding
@@ -150,32 +207,7 @@ class _DouDizhuGamePageState extends State<DouDizhuGamePage> {
                             for (final other in PlayerSeat.values.where(
                               (s) => s != seat,
                             ))
-                              Expanded(
-                                child: Card(
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(10),
-                                    child: Column(
-                                      children: [
-                                        Text(
-                                          '${other.label}${state.landlord == other
-                                              ? ' · 地主'
-                                              : state.landlord != null
-                                              ? ' · 农民'
-                                              : ''}',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                        Text(
-                                          '剩余 ${state.counts[other.index]} 张${state.bids[other.index] != null ? ' · 叫分 ${state.bids[other.index]}' : ''}',
-                                        ),
-                                        if (state.turn == other && !finished)
-                                          const Text('轮到此玩家'),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
+                              Expanded(child: _player(state, other, round)),
                           ],
                         ),
                         const SizedBox(height: 12),
@@ -217,21 +249,24 @@ class _DouDizhuGamePageState extends State<DouDizhuGamePage> {
                           Text(
                             '${state.trick.seat!.label} · ${classifyPlay(state.trick.cardIds.map(PlayingCard.new).toList())?.type.label ?? ''}${state.trick.passes > 0 ? ' · 一人不要' : ''}',
                           ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 4,
-                            runSpacing: 4,
-                            alignment: WrapAlignment.center,
-                            children: [
-                              for (final id in state.trick.cardIds)
-                                DouDizhuCard(
-                                  card: PlayingCard(id),
-                                  small: true,
-                                ),
-                            ],
-                          ),
                         ],
                         const SizedBox(height: 18),
+                        if (controller.aiWarning case final warning?)
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(8),
+                              child: Wrap(
+                                crossAxisAlignment: WrapCrossAlignment.center,
+                                children: [
+                                  Text(warning),
+                                  TextButton(
+                                    onPressed: controller.retryAi,
+                                    child: const Text('重试 DouZero'),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         if (!controller.canAct) ...[
                           Text(
                             controller.error ?? '等待离线玩家恢复连接',
@@ -253,6 +288,9 @@ class _DouDizhuGamePageState extends State<DouDizhuGamePage> {
                           else
                             const Text('返回房间可重新交换邀请'),
                         ],
+                        if (!controller.covered ||
+                            round.plays.containsKey(seat))
+                          _player(state, seat, round, own: true),
                         if (controller.covered)
                           Card(
                             child: Padding(
@@ -290,10 +328,13 @@ class _DouDizhuGamePageState extends State<DouDizhuGamePage> {
                               runSpacing: 8,
                               alignment: WrapAlignment.center,
                               children: [
-                                OutlinedButton(
-                                  onPressed: active && !_hinting ? _hint : null,
-                                  child: Text(_hinting ? '思考中…' : '提示'),
-                                ),
+                                if (state.trick.seat != null)
+                                  OutlinedButton(
+                                    onPressed: active && !_hinting
+                                        ? _hint
+                                        : null,
+                                    child: Text(_hinting ? '思考中…' : '提示'),
+                                  ),
                                 TextButton(
                                   onPressed: _selected.isEmpty
                                       ? null
@@ -333,14 +374,6 @@ class _DouDizhuGamePageState extends State<DouDizhuGamePage> {
                               style: TextStyle(color: colors.error),
                             ),
                           if (view != null) ...[
-                            Text(
-                              '${seat.label}${state.landlord == seat
-                                  ? ' · 地主'
-                                  : state.landlord != null
-                                  ? ' · 农民'
-                                  : ''} · ${view.hand.length} 张',
-                            ),
-                            const SizedBox(height: 8),
                             DouDizhuHand(
                               ids: view.hand,
                               selected: _selected,
