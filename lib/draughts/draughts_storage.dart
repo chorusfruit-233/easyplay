@@ -73,12 +73,15 @@ class DraughtsStorage {
       aiLevel: record.aiLevel,
       aiDuel: record.aiDuel,
     );
-    final next = [saved, ...records.where((item) => item.id != id)].take(500);
+    // A library retains its games until the user deletes them explicitly.
+    final next = [saved, ...records.where((item) => item.id != id)];
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
+    if (!await prefs.setString(
       _key,
       jsonEncode(next.map((item) => item.toJson()).toList()),
-    );
+    )) {
+      throw StateError('本地存储写入失败');
+    }
   }
 
   static Future<void> delete(String id) => _enqueue(() => _delete(id));
@@ -86,7 +89,7 @@ class DraughtsStorage {
   static Future<void> _delete(String id) async {
     final records = await _readList();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(
+    if (!await prefs.setString(
       _key,
       jsonEncode(
         records
@@ -94,6 +97,8 @@ class DraughtsStorage {
             .map((item) => item.toJson())
             .toList(),
       ),
-    );
+    )) {
+      throw StateError('本地存储写入失败');
+    }
   }
 }

@@ -195,13 +195,42 @@ const root = path.resolve(__dirname, '../build/web');
           phase='resume Soosõrv-8 record';
           const saved=current;
           await button('Back').click();
+          const library=button(/^棋谱库/);
+          await reveal(library); await library.click();
+          const readDownload = async label => {
+            await button('棋谱操作').first().click();
+            const next = page.waitForEvent('download');
+            await page.getByRole('menuitem', {name:label, exact:true}).click();
+            const download = await next;
+            const stream = await download.createReadStream(), chunks = [];
+            for await (const chunk of stream) chunks.push(chunk);
+            assert.equal(await download.failure(), null);
+            return {name:download.suggestedFilename(), text:Buffer.concat(chunks).toString('utf8')};
+          };
+          const sgf = await readDownload('导出 SGF');
+          assert.match(sgf.name, /^gomoku_.*\.sgf$/);
+          assert.ok(sgf.text.startsWith('(;GM[4]FF[4]CA[UTF-8]'));
+          assert.ok(sgf.text.includes('RU[Soosyrv-8]'));
+          assert.equal((sgf.text.match(/;[BW]\[/g) || []).length, saved.moves.length);
+          const json = await readDownload('导出 JSON 完整备份');
+          assert.match(json.name, /^gomoku_.*\.json$/);
+          assert.deepEqual(JSON.parse(json.text).session, saved, 'JSON preserves every swap, proposal and selection');
+          if (process.env.CAPTURE_RECORD_LIBRARY==='1' && scenario.width===420) {
+            await page.getByRole('menuitem', {name:'导出 SGF', exact:true}).waitFor({state:'hidden'});
+            await button('棋谱操作').first().click();
+            await page.getByRole('menuitem', {name:'删除棋谱', exact:true}).waitFor();
+            await page.waitForTimeout(250);
+            await page.screenshot({path:path.resolve(__dirname,'../docs/images/gomoku-record-library.png')});
+            await page.keyboard.press('Escape');
+            await page.getByRole('menuitem', {name:'导出 SGF', exact:true}).waitFor({state:'hidden'});
+          }
           const record=button(/^索索夫-8 · 6 手/);
           await reveal(record); await record.click();
           await board.waitFor();
           assert.deepEqual(await state(),saved);
         }
         assert.deepEqual(failures,[]);
-        console.log(`PASS ${scenario.name}: confirmed Soosõrv-8 opening, both swaps, N=${count} proposals, selection, W6${scenario.ai ? ' and AI identities' : ' and resume'}`);
+        console.log(`PASS ${scenario.name}: confirmed Soosõrv-8 opening, both swaps, N=${count} proposals, selection, W6${scenario.ai ? ' and AI identities' : ', SGF/JSON downloads and library resume'}`);
       } catch (error) {
         console.error(`${scenario.name} / ${phase}: ${error.message}`);
         await page.screenshot({path:`/tmp/easyplay-professional-${scenario.name.replaceAll(' ','-')}.png`});

@@ -1,17 +1,15 @@
 import 'dart:async';
 import 'dart:js_interop';
 import 'dart:typed_data';
+
 import 'package:web/web.dart' as web;
 
-Future<bool> downloadSgf(Uint8List bytes, String fileName) async {
-  final blob = web.Blob(
-    [bytes.toJS].toJS,
-    web.BlobPropertyBag(
-      type: fileName.toLowerCase().endsWith('.json')
-          ? 'application/json;charset=utf-8'
-          : 'application/x-go-sgf;charset=utf-8',
-    ),
-  );
+Future<bool> downloadRecord(
+  Uint8List bytes,
+  String fileName,
+  String mimeType,
+) async {
+  final blob = web.Blob([bytes.toJS].toJS, web.BlobPropertyBag(type: mimeType));
   final url = web.URL.createObjectURL(blob);
   final anchor = web.HTMLAnchorElement()
     ..href = url
@@ -20,6 +18,6 @@ Future<bool> downloadSgf(Uint8List bytes, String fileName) async {
   anchor.click();
   anchor.remove();
   Timer(const Duration(seconds: 30), () => web.URL.revokeObjectURL(url));
-  // Browsers expose download initiation, not whether the user saved the file.
+  // The browser reports download initiation, not whether the user kept it.
   return true;
 }

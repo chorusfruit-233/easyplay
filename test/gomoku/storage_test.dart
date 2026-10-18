@@ -48,6 +48,25 @@ void main() {
     expect((await GomokuStorage.list()).map((item) => item.id), ['one']);
   });
 
+  test('棋谱库读取并保存超过一百份棋谱，不静默淘汰旧记录', () async {
+    GomokuRecord record(String id) => GomokuRecord(
+      id: id,
+      createdAt: DateTime.utc(2026),
+      session: GomokuSession(),
+    );
+    SharedPreferences.setMockInitialValues({
+      GomokuStorage.key: jsonEncode([
+        for (var index = 0; index < 105; index++) record('$index').toJson(),
+      ]),
+    });
+    expect(await GomokuStorage.list(), hasLength(105));
+    await GomokuStorage.save(record('new'));
+    final records = await GomokuStorage.list();
+    expect(records, hasLength(106));
+    expect(records.first.id, 'new');
+    expect(records.last.id, '104');
+  });
+
   test('跳过损坏、未知版本和非法着法存档，保留有效记录', () async {
     final valid = GomokuRecord(
       id: 'valid',

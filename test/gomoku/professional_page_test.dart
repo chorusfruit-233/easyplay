@@ -281,6 +281,9 @@ void main() {
     final before = (await GomokuStorage.list()).single.toJson();
     await tester.pumpWidget(const MaterialApp(home: GomokuHomePage()));
     await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('棋谱库'));
+    await tester.tap(find.text('棋谱库'));
+    await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.text('竞技连珠 · 1 手'), 200);
     await tester.tap(find.text('竞技连珠 · 1 手'));
     await tester.pumpAndSettle();
@@ -310,6 +313,9 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: GomokuHomePage()));
       await tester.pumpAndSettle();
       expect(find.byType(DropdownButtonFormField<GomokuVariant>), findsNothing);
+      await tester.ensureVisible(find.text('棋谱库'));
+      await tester.tap(find.text('棋谱库'));
+      await tester.pumpAndSettle();
       await tester.scrollUntilVisible(find.text('自由五子棋 · 1 手'), 200);
       await tester.tap(find.text('自由五子棋 · 1 手'));
       await tester.pumpAndSettle();

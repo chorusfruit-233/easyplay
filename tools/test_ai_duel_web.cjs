@@ -98,8 +98,39 @@ const capture = process.env.CAPTURE_AI_DUEL === '1';
       await page.locator('flt-semantics-placeholder').waitFor({state:'attached', timeout:60000});
       await page.locator('flt-semantics-placeholder').dispatchEvent('click');
       assert.equal((await records())[1].id, old.id);
+      await button(new RegExp(`^${label}，`)).click();
+      const library = button(/^棋谱库/);
+      await reveal(library); await library.click();
+      if (game === 'draughts') {
+        const next = page.waitForEvent('download');
+        await button('导出 PDN').nth(1).click();
+        const download = await next, stream = await download.createReadStream(), chunks = [];
+        for await (const chunk of stream) chunks.push(chunk);
+        const pdn = Buffer.concat(chunks).toString('utf8');
+        assert.equal(await download.failure(), null);
+        assert.match(download.suggestedFilename(), /\.pdn$/);
+        assert.match(pdn, /^\[Variant "English"\]/m);
+        assert.match(pdn, /^\[GameType "21,B,8,8,N1,0"\]/m);
+        assert.match(pdn, /^\[EasyPlayNotationVersion "2"\]/m);
+        assert.ok(old.moves.length > 0);
+        for (const move of old.moves) {
+          const token = move.path.map(c => c[0] * 4 + Math.floor(c[1] / 2) + 1).join(move.captures.length ? 'x' : '-');
+          assert.ok(pdn.includes(token), `PDN retains ${token}`);
+        }
+      }
+      await page.setViewportSize({width:420, height:800});
+      if (process.env.CAPTURE_RECORD_LIBRARY === '1' && game === 'draughts') {
+        await page.waitForTimeout(250);
+        await page.screenshot({path:path.resolve(__dirname, '../docs/images/draughts-record-library.png')});
+      }
+      await button(/^.*AI 对抗 · 黑初级 \/ 白高级/).nth(1).click();
+      await button('继续').waitFor();
+      const restored = (await records()).find(r => r.id === old.id);
+      const restoredCount = count(restored);
+      await page.waitForTimeout(1000);
+      assert.equal(count((await records()).find(r => r.id === old.id)), restoredCount, 'library restores spectator paused');
       assert.deepEqual(failures, []);
-      console.log(`PASS ${game}: autoplay, independent levels, pause, step, undo, resume, restart, landscape, exit and persisted records`);
+      console.log(`PASS ${game}: autoplay, independent levels, pause, step, undo, resume, restart, landscape, library restore${game === 'draughts' ? ' and PDN download' : ''}`);
       await context.close();
     }
   } finally {await browser?.close(); await new Promise(resolve => server.close(resolve));}

@@ -4,15 +4,13 @@ import 'package:flutter/material.dart';
 import '../../ai/widgets/ai_duel_setup.dart';
 import '../../game_session.dart' show Side, SideX;
 import '../draughts_ai_level.dart';
-import '../draughts_record.dart';
-import '../draughts_notation.dart';
 import '../draughts_rules.dart';
 import '../draughts_session.dart';
-import '../draughts_storage.dart';
 import '../draughts_variant.dart';
 import 'draughts_game_page.dart';
 import 'draughts_lan_pages.dart';
 import 'draughts_ai_duel_page.dart';
+import 'draughts_library_page.dart';
 
 class DraughtsNewGamePage extends StatefulWidget {
   const DraughtsNewGamePage({super.key});
@@ -22,26 +20,14 @@ class DraughtsNewGamePage extends StatefulWidget {
 
 class _DraughtsNewGamePageState extends State<DraughtsNewGamePage> {
   DraughtsVariant _selected = DraughtsVariant.english;
-  late Future<List<DraughtsRecord>> _records = DraughtsStorage.list();
-
-  void _reloadRecords() {
-    if (!mounted) return;
-    setState(() {
-      _records = DraughtsStorage.list();
-    });
-  }
-
-  void _start() =>
-      Navigator.push(
-        context,
-        MaterialPageRoute<void>(
-          builder: (_) => DraughtsGamePage(
-            session: DraughtsSession(DraughtsRules.forVariant(_selected)),
-          ),
-        ),
-      ).then((_) {
-        _reloadRecords();
-      });
+  void _start() => Navigator.push(
+    context,
+    MaterialPageRoute<void>(
+      builder: (_) => DraughtsGamePage(
+        session: DraughtsSession(DraughtsRules.forVariant(_selected)),
+      ),
+    ),
+  );
 
   Future<void> _startAi() async {
     var side = DraughtsRules.forVariant(_selected).firstMove;
@@ -99,7 +85,6 @@ class _DraughtsNewGamePageState extends State<DraughtsNewGamePage> {
         ),
       ),
     );
-    _reloadRecords();
   }
 
   Future<void> _startAiDuel() async {
@@ -119,119 +104,6 @@ class _DraughtsNewGamePageState extends State<DraughtsNewGamePage> {
         ),
       ),
     );
-    _reloadRecords();
-  }
-
-  void _open(DraughtsRecord record) {
-    late final DraughtsSession session;
-    try {
-      session = record.sessionState == null
-          ? DraughtsSession(DraughtsRules.forVariant(record.variant))
-          : DraughtsSession.fromJson(record.sessionState);
-      if (session.variant != record.variant) {
-        throw const FormatException('record variant does not match session');
-      }
-      if (record.sessionState == null) {
-        for (final move in record.moves) {
-          if (!session.applyMove(move)) {
-            throw const FormatException('record contains an illegal move');
-          }
-        }
-        if (!session.gameOver) {
-          switch (record.result) {
-            case '1/2-1/2':
-              session.agreeDraw();
-            case '1-0':
-              session.resign(Side.white);
-            case '0-1':
-              session.resign(Side.black);
-          }
-        }
-      }
-    } catch (error) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('无法恢复对局：$error')));
-      return;
-    }
-    Navigator.push(
-      context,
-      MaterialPageRoute<void>(
-        builder: (_) => record.kind == DraughtsGameKind.aiDuel
-            ? DraughtsAiDuelPage(
-                session: session,
-                config: record.aiDuel!,
-                recordId: record.id,
-                createdAt: record.createdAt,
-                initiallyPaused: true,
-              )
-            : DraughtsGamePage(
-                session: session,
-                recordId: record.id,
-                savedAt: record.createdAt,
-                aiLevel: record.kind == DraughtsGameKind.ai
-                    ? record.aiLevel ?? DraughtsAiLevel.intermediate
-                    : null,
-                humanSide: record.localSide ?? Side.white,
-              ),
-      ),
-    ).then((_) {
-      _reloadRecords();
-    });
-  }
-
-  Future<void> _importPdn() async {
-    final controller = TextEditingController();
-    final source = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('导入 PDN 棋谱'),
-        content: SizedBox(
-          width: 560,
-          child: TextField(
-            controller: controller,
-            minLines: 8,
-            maxLines: 14,
-            decoration: const InputDecoration(
-              hintText: '粘贴包含 [Variant "..."] 标头的 PDN',
-              border: OutlineInputBorder(),
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: const Text('导入'),
-          ),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (source == null || source.trim().isEmpty || !mounted) return;
-    try {
-      final parsed = DraughtsNotation.importPdn(source);
-      final imported = DraughtsRecord(
-        id: 'pdn-${DateTime.now().microsecondsSinceEpoch}',
-        variant: parsed.variant,
-        moves: parsed.moves,
-        kind: parsed.kind,
-        localSide: parsed.localSide,
-        createdAt: parsed.createdAt,
-        result: parsed.result,
-      );
-      await DraughtsStorage.save(imported);
-      if (!mounted) return;
-      _open(imported);
-      _reloadRecords();
-    } catch (error) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('导入失败：$error')));
-    }
   }
 
   @override
@@ -306,58 +178,12 @@ class _DraughtsNewGamePageState extends State<DraughtsNewGamePage> {
         ),
         const SizedBox(height: 8),
         OutlinedButton.icon(
-          onPressed: _importPdn,
-          icon: const Icon(Icons.file_open_outlined),
-          label: const Text('导入 PDN 棋谱'),
-        ),
-        const SizedBox(height: 24),
-        Text(
-          '最近对局',
-          style: Theme.of(
+          onPressed: () => Navigator.push<void>(
             context,
-          ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-        ),
-        FutureBuilder<List<DraughtsRecord>>(
-          future: _records,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const LinearProgressIndicator();
-            }
-            final records = snapshot.data ?? const [];
-            if (records.isEmpty) {
-              return const ListTile(title: Text('还没有保存的跳棋对局'));
-            }
-            return Column(
-              children: [
-                for (final record in records.take(20))
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.history),
-                      title: Text(record.variant.label),
-                      subtitle: Text(
-                        '${switch (record.kind) {
-                          DraughtsGameKind.local => '本地',
-                          DraughtsGameKind.online => '联机',
-                          DraughtsGameKind.ai => '人机 · ${record.aiLevel?.label ?? '中级'}',
-                          DraughtsGameKind.aiDuel => 'AI 对抗 · 黑${record.aiDuel!.blackLevel.label} / 白${record.aiDuel!.whiteLevel.label}',
-                        }} · ${record.moves.length} 手 · ${record.createdAt.toLocal()}',
-                      ),
-                      trailing: IconButton(
-                        tooltip: '删除',
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () async {
-                          if (record.id != null) {
-                            await DraughtsStorage.delete(record.id!);
-                          }
-                          _reloadRecords();
-                        },
-                      ),
-                      onTap: () => _open(record),
-                    ),
-                  ),
-              ],
-            );
-          },
+            MaterialPageRoute(builder: (_) => const DraughtsLibraryPage()),
+          ),
+          icon: const Icon(Icons.collections_bookmark_outlined),
+          label: const Text('棋谱库'),
         ),
       ],
     ),

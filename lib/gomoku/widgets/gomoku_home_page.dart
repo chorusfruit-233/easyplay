@@ -5,9 +5,9 @@ import '../../ai/widgets/ai_duel_setup.dart';
 import '../../game_session.dart' show Side, SideX;
 import '../gomoku_ai_level.dart';
 import '../gomoku_session.dart';
-import '../gomoku_storage.dart';
 import 'gomoku_game_page.dart';
 import 'gomoku_ai_duel_page.dart';
+import 'gomoku_library_page.dart';
 
 class GomokuHomePage extends StatefulWidget {
   const GomokuHomePage({super.key, this.lanBuilder, this.rtcBuilder});
@@ -20,24 +20,10 @@ class GomokuHomePage extends StatefulWidget {
 }
 
 class _GomokuHomePageState extends State<GomokuHomePage> {
-  late Future<List<GomokuRecord>> _records = GomokuStorage.list();
   static const _variant = GomokuVariant.soosyrv8;
 
-  void _reload() {
-    if (mounted) {
-      setState(() {
-        _records = GomokuStorage.list();
-      });
-    }
-  }
-
-  Future<void> _open(Widget page) async {
-    await Navigator.push<void>(
-      context,
-      MaterialPageRoute(builder: (_) => page),
-    );
-    _reload();
-  }
+  Future<void> _open(Widget page) =>
+      Navigator.push<void>(context, MaterialPageRoute(builder: (_) => page));
 
   Future<void> _startAi() async {
     var side = Side.black;
@@ -112,34 +98,6 @@ class _GomokuHomePageState extends State<GomokuHomePage> {
     );
   }
 
-  void _restore(GomokuRecord record) {
-    try {
-      final aiDuel = record.aiDuel;
-      _open(
-        record.variant.playableRule && aiDuel != null
-            ? GomokuAiDuelPage(
-                session: record.restore(),
-                config: aiDuel,
-                recordId: record.id,
-                createdAt: record.createdAt,
-                initiallyPaused: true,
-              )
-            : GomokuGamePage(
-                session: record.restore(),
-                recordId: record.id,
-                createdAt: record.createdAt,
-                aiLevel: record.aiLevel,
-                humanSide: record.humanSide,
-                readOnly: !record.variant.playableRule,
-              ),
-      );
-    } on FormatException catch (error) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('无法恢复对局：$error')));
-    }
-  }
-
   Widget _entry(
     String title,
     String description,
@@ -203,69 +161,11 @@ class _GomokuHomePageState extends State<GomokuHomePage> {
             () => _open(widget.rtcBuilder!(context, _variant)),
           ),
         const SizedBox(height: 20),
-        Text('最近对局', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
-        FutureBuilder<List<GomokuRecord>>(
-          future: _records,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const LinearProgressIndicator();
-            }
-            if (snapshot.hasError) {
-              return ListTile(
-                title: const Text('无法读取存档'),
-                trailing: TextButton(
-                  onPressed: _reload,
-                  child: const Text('重试'),
-                ),
-              );
-            }
-            final records = snapshot.data ?? [];
-            if (records.isEmpty) return const Text('还没有保存的五子棋对局');
-            return Column(
-              children: [
-                for (final record in records.take(20))
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.history),
-                        title: Text(
-                          '${record.variant.label} · ${record.moveCount} 手',
-                        ),
-                        subtitle: Text(
-                          '${record.aiDuel != null
-                              ? 'AI 对抗 · 黑${record.aiDuel!.blackLevel.label} / 白${record.aiDuel!.whiteLevel.label}'
-                              : record.aiLevel == null
-                              ? '本地双人'
-                              : '人机 · ${record.aiLevel!.label}'} · ${!record.variant.playableRule
-                              ? '旧规则 · 仅供查看'
-                              : record.gameOver
-                              ? record.resultLabel
-                              : '继续对局'} · ${record.createdAt.toLocal().toString().split('.').first}',
-                        ),
-                        onTap: () => _restore(record),
-                        trailing: IconButton(
-                          tooltip: '删除存档',
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () async {
-                            try {
-                              await GomokuStorage.delete(record.id);
-                              _reload();
-                            } catch (error) {
-                              if (!context.mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('删除失败：$error')),
-                              );
-                            }
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            );
-          },
+        _entry(
+          '棋谱库',
+          '查看、继续对局，导出 SGF 或完整备份',
+          Icons.collections_bookmark_outlined,
+          () => _open(const GomokuLibraryPage()),
         ),
       ],
     ),

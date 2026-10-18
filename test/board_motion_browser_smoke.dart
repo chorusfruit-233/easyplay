@@ -30,6 +30,7 @@ void main() {
   )).toJS;
   api['move'] = (() => _demo.currentState!.move()).toJS;
   api['undo'] = (() => _demo.currentState!.undo()).toJS;
+  api['flip'] = (() => _demo.currentState!.flip()).toJS;
   api['slow'] = ((JSNumber factor) => timeDilation = factor.toDartDouble).toJS;
   api['state'] = (() => jsonEncode(_demo.currentState!.snapshot()).toJS).toJS;
   web.window.setProperty('easyplayBoardMotion'.toJS, api);
@@ -45,7 +46,9 @@ class _DemoState extends State<_Demo> {
   String game = 'go';
   Cell? lastTap;
   Map<String, double>? _boardBounds;
+  Map<String, Object?>? _lastMoveTrail;
   bool reduced = false;
+  bool flipped = false;
   int generation = 0, renderedGeneration = -1;
   GameSession go = GameSession(
     GameType.go,
@@ -70,6 +73,7 @@ class _DemoState extends State<_Demo> {
 
   void _reset() {
     lastTap = null;
+    flipped = false;
     go = GameSession(GameType.go, goConfig: const GoConfig(boardSize: 9));
     gomoku = GomokuSession(variant: GomokuVariant.freestyle);
     chess = ChessSession(
@@ -93,12 +97,15 @@ class _DemoState extends State<_Demo> {
     );
   }
 
-  void change(String value) => setState(() {
+  void _mutate(VoidCallback action) => setState(() {
     generation++;
+    action();
+  });
+  void change(String value) => _mutate(() {
     game = value;
     _reset();
   });
-  void move() => setState(() {
+  void move() => _mutate(() {
     switch (game) {
       case 'go':
         go.placeGo(Cell(4, 4 + go.moves.length));
@@ -116,7 +123,7 @@ class _DemoState extends State<_Demo> {
         }
     }
   });
-  void undo() => setState(() {
+  void undo() => _mutate(() {
     switch (game) {
       case 'go':
         go.undo();
@@ -130,14 +137,26 @@ class _DemoState extends State<_Demo> {
         draughts.undo();
     }
   });
+  void flip() => _mutate(() => flipped = !flipped);
   BoardMotionScene<Object>? _scene() {
     _boardBounds = null;
+    _lastMoveTrail = null;
     BoardMotionScene<Object>? result;
     void visit(Element e) {
       final w = e.widget;
       if (w is AnimatedBuilder && w.animation is BoardMotionScene<Object>) {
         result = w.animation as BoardMotionScene<Object>;
       } else if (w is CustomPaint) {
+        if (w.key == const ValueKey('draughts-last-move-trail')) {
+          final painter = w.painter as dynamic;
+          _lastMoveTrail = {
+            'path': [
+              for (final cell in painter.path as List<Cell>)
+                [cell.row, cell.col],
+            ],
+            'flipped': painter.flipped as bool,
+          };
+        }
         try {
           final scene = (w.painter as dynamic).motion;
           if (scene is BoardMotionScene<Object>) {
@@ -181,6 +200,7 @@ class _DemoState extends State<_Demo> {
       },
       'lastTap': lastTap == null ? null : [lastTap!.row, lastTap!.col],
       'boardBounds': _boardBounds,
+      'lastMoveTrail': _lastMoveTrail,
       'frames': [
         for (final p in scene?.frames ?? <BoardPieceFrame<Object>>[])
           {
@@ -203,7 +223,14 @@ class _DemoState extends State<_Demo> {
     ),
     home: Builder(
       builder: (context) {
-        renderedGeneration = generation;
+        // Session mutations are immediate, but the painters and motion scene
+        // still describe the preceding frame until this build is complete.
+        // Browser assertions must wait for this acknowledgement before mixing
+        // session counts with observations of the actual rendered widget tree.
+        final buildingGeneration = generation;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) renderedGeneration = buildingGeneration;
+        });
         reduced = MediaQuery.disableAnimationsOf(context);
         return Scaffold(
           appBar: AppBar(title: const Text('EasyPlay · 行棋动画')),
@@ -226,7 +253,7 @@ class _DemoState extends State<_Demo> {
                           session: go,
                           selected: null,
                           targets: const [],
-                          onCell: (cell) => setState(() {
+                          onCell: (cell) => _mutate(() {
                             lastTap = cell;
                             go.placeGo(cell);
                           }),
@@ -234,14 +261,18 @@ class _DemoState extends State<_Demo> {
                         'gomoku' => GomokuBoard(
                           session: gomoku,
                           placementMode: GoPlacementMode.direct,
-                          onCell: (cell) => setState(() => gomoku.place(cell)),
+                          onCell: (cell) => _mutate(() => gomoku.place(cell)),
                         ),
                         'chess' => ChessBoard(session: chess, onCell: null),
                         'xiangqi' => XiangqiBoard(
                           session: xiangqi,
-                          onCell: (cell) => setState(() => lastTap = cell),
+                          onCell: (cell) => _mutate(() => lastTap = cell),
                         ),
-                        _ => DraughtsBoard(session: draughts, onCell: (_) {}),
+                        _ => DraughtsBoard(
+                          session: draughts,
+                          onCell: (_) {},
+                          flipped: flipped,
+                        ),
                       },
                     ),
                   ),
