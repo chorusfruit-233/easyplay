@@ -171,7 +171,7 @@ class _DouDizhuGamePageState extends State<DouDizhuGamePage> {
                 title: const Text('经典三人斗地主'),
                 content: const SingleChildScrollView(
                   child: Text(
-                    '54 张牌，每人 17 张，地主取得 3 张底牌并先出。按顺序叫 1–3 分，必须超过当前最高分；全员不叫重新发牌。\n\n'
+                    '54 张牌，每人 17 张，地主取得 3 张底牌并先出。叫分和出牌均逆时针轮转：自己 → 右侧下家 → 左侧上家。叫 1–3 分，必须超过当前最高分；全员不叫重新发牌。\n\n'
                     '地主出完则地主胜，任意农民出完则两名农民共同获胜。领出不能不要，连续两人不要后由上一出牌者重新领出。\n\n'
                     '顺子、连对和飞机主体不能包含 2 或王。飞机单翅膀须为不同点数且不能同时带双王；对翅膀须为不同点数的对子。四带二单可带一对，不能带双王；四带两对须为两个不同点数的对子。炸弹压普通牌，王炸最大。\n\n'
                     '熟人房间依赖房主可信；房主保留完整发牌状态，其他玩家仅接收自己的牌。结束后不保存历史牌谱。',
@@ -203,10 +203,11 @@ class _DouDizhuGamePageState extends State<DouDizhuGamePage> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Row(
+                          // Keep the next player on the physical right so
+                          // turns run counterclockwise from every seat.
+                          textDirection: TextDirection.ltr,
                           children: [
-                            for (final other in PlayerSeat.values.where(
-                              (s) => s != seat,
-                            ))
+                            for (final other in [seat.previous, seat.next])
                               Expanded(child: _player(state, other, round)),
                           ],
                         ),

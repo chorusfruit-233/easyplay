@@ -6,6 +6,7 @@ enum PlayerSeat {
   seat2;
 
   PlayerSeat get next => values[(index + 1) % 3];
+  PlayerSeat get previous => values[(index + 2) % 3];
   String get label => '玩家 ${index + 1}';
 }
 

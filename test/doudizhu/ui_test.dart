@@ -17,6 +17,85 @@ import 'package:easyplay/doudizhu/multiplayer/card_room_coordinator.dart';
 import 'test_support.dart';
 
 void main() {
+  for (final (size, direction) in [
+    (const Size(390, 844), TextDirection.ltr),
+    (const Size(844, 390), TextDirection.rtl),
+  ]) {
+    testWidgets('hotseat turns counterclockwise at $size in $direction', (
+      tester,
+    ) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final controller = DouDizhuMatchController.hotseat();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Directionality(
+            textDirection: direction,
+            child: DouDizhuGamePage(controller: controller),
+          ),
+        ),
+      );
+
+      void expectSeats(PlayerSeat own) {
+        final (left, right) = switch (own) {
+          PlayerSeat.seat0 => (PlayerSeat.seat2, PlayerSeat.seat1),
+          PlayerSeat.seat1 => (PlayerSeat.seat0, PlayerSeat.seat2),
+          PlayerSeat.seat2 => (PlayerSeat.seat1, PlayerSeat.seat0),
+        };
+        Offset position(PlayerSeat seat) => tester.getCenter(
+          find.byKey(ValueKey('doudizhu-player-${seat.index}')),
+        );
+        final bottom = controller.covered
+            ? tester.getCenter(find.text('请把设备交给${own.label}'))
+            : position(own);
+        expect(position(left).dx, lessThan(position(right).dx));
+        expect(position(left).dy, lessThan(bottom.dy));
+        expect(position(right).dy, lessThan(bottom.dy));
+        expect(controller.state!.turn, own);
+        expect(tester.takeException(), isNull);
+      }
+
+      Future<void> reveal(PlayerSeat own) async {
+        expectSeats(own);
+        expect(find.byType(DouDizhuHand), findsNothing);
+        controller.reveal();
+        await tester.pump();
+        expectSeats(own);
+        expect(controller.view!.seat, own);
+        expect(find.byType(DouDizhuHand), findsOneWidget);
+      }
+
+      // Bidding visits bottom -> right -> left, including the seat-2 wrap.
+      for (final seat in PlayerSeat.values) {
+        await reveal(seat);
+        controller.act('bid', {'score': seat == PlayerSeat.seat2 ? 3 : 0});
+        await tester.pump();
+      }
+      expect(controller.state!.landlord, PlayerSeat.seat2);
+      for (final seat in [
+        PlayerSeat.seat2,
+        PlayerSeat.seat0,
+        PlayerSeat.seat1,
+      ]) {
+        await reveal(seat);
+        if (seat == PlayerSeat.seat2) {
+          controller.act('play', {
+            'cards': [controller.view!.hand.first],
+          });
+        } else {
+          controller.act('pass');
+        }
+        await tester.pump();
+      }
+      await reveal(PlayerSeat.seat2);
+      expect(find.text('提示'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    });
+  }
+
   testWidgets('AI fallback is visible and retry keeps hotseat hands covered', (
     tester,
   ) async {
