@@ -4,12 +4,12 @@
 
 [下载 Android APK](https://github.com/chorusfruit-233/easyplay/releases/latest) · [打开 Web 版](https://chorusfruit-233.github.io/easyplay/)
 
-## v1.7.6
+## v1.7.7
 
-- **斗地主闪退修复**：修复 Android 正式包首次调用 DouZero 出牌或提示时退出的问题，保留 ONNX 原生推理需要的类名、构造方法与成员。使用 v1.7.5 的 Android 用户建议更新。
-- **正式包检查**：CI 构建经过 R8 压缩的 release APK，核对原生库需要的 JNI 类；正式发布前也必须通过检查，避免未压缩测试包正常而正式包崩溃。
+- **斗地主逆时针轮转**：叫分和出牌统一按「自己 → 右侧下家 → 左侧上家」推进。
+- **三视角座位修正**：每位玩家均以上家在左、下家在右显示；同机交接随当前玩家调整视角，单人 AI、LAN 和 WebRTC 共用一致布局。
 
-[完整更新记录](https://github.com/chorusfruit-233/easyplay/compare/v1.7.5...v1.7.6) · [v1.7.6 下载与说明](https://github.com/chorusfruit-233/easyplay/releases/tag/v1.7.6)
+[完整更新记录](https://github.com/chorusfruit-233/easyplay/compare/v1.7.6...v1.7.7) · [v1.7.7 下载与说明](https://github.com/chorusfruit-233/easyplay/releases/tag/v1.7.7)
 
 ## 支持的游戏
 
@@ -38,7 +38,7 @@
 
 ## 安装与使用
 
-- **Android**：从 Release 下载 `app-arm64-v8a-release.apk`，适用于 ARM64 设备；正式包沿用已有签名，可覆盖更新。v1.7.6 的构建号为22，ARM64 APK 的 versionCode 为2022。
+- **Android**：从 Release 下载 `app-arm64-v8a-release.apk`，适用于 ARM64 设备；正式包沿用已有签名，可覆盖更新。v1.7.7 的构建号为23，ARM64 APK 的 versionCode 为2023。
 - **Web**：直接打开上方 Web 版。AI 在浏览器本地运行，首次使用需要加载同源引擎和模型；围棋的跨源隔离由部署的 service worker 提供。
 - **棋力刻度**：Stockfish 参考 Elo 和 Pikafish 相对档位的适用范围见 [棋力说明](docs/ENGINE_STRENGTH.md)，实际表现随设备、局面和思考时间变化。
 
