@@ -158,6 +158,13 @@ Future<LanEndpoint?> _probe(String host, int port, Duration timeout) async {
             json['maxPlayers'] != 3)) {
       return null;
     }
+    if (json['game'] == 'battleship' &&
+        (json['version'] != lanProtocolVersion ||
+            json['rulesVersion'] != 1 ||
+            json['protocolVersion'] != 1 ||
+            json['maxPlayers'] != 2)) {
+      return null;
+    }
     if (json['game'] == 'xiangqi') {
       LanMessage.validateXiangqiConfig(Map<String, Object?>.from(json));
     }

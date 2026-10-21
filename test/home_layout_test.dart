@@ -40,7 +40,7 @@ void main() {
     const Size(1280, 800),
   ]) {
     for (final textScale in [1.0, 1.8]) {
-      testWidgets('all six games remain reachable at $size, text $textScale', (
+      testWidgets('all games remain reachable at $size, text $textScale', (
         tester,
       ) async {
         tester.view.physicalSize = size;
@@ -49,7 +49,7 @@ void main() {
         addTearDown(tester.view.resetDevicePixelRatio);
         final opened = <GameType>[];
         await tester.pumpWidget(home(textScale: textScale, onPlay: opened.add));
-        expect(find.byType(GameCard), findsNWidgets(6));
+        expect(find.byType(GameCard), findsNWidgets(GameType.values.length));
         for (final game in GameType.values) {
           await tester.ensureVisible(find.text(game.label));
           await tester.tap(find.text(game.label));

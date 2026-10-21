@@ -191,6 +191,7 @@ class _GameCardState extends State<GameCard> {
     GameType.gomoku => '索索夫-8连珠 · Rapfi AI',
     GameType.xiangqi => '楚河汉界，将帅交锋',
     GameType.doudizhu => '经典三人，叫分与出牌',
+    GameType.battleship => '隐蔽舰队，搜索与开火',
   };
 
   @override

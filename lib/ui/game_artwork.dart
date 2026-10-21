@@ -33,7 +33,43 @@ class _GameArtworkPainter extends CustomPainter {
       ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
     final stone = Paint()..color = colors.primary;
-    if (type == GameType.doudizhu) {
+    if (type == GameType.battleship) {
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          const Rect.fromLTWH(2, 2, 44, 44),
+          const Radius.circular(8),
+        ),
+        fill,
+      );
+      canvas.drawPath(
+        Path()
+          ..moveTo(8, 25)
+          ..lineTo(40, 25)
+          ..lineTo(34, 34)
+          ..lineTo(14, 34)
+          ..close(),
+        stone,
+      );
+      canvas.drawRect(const Rect.fromLTWH(18, 17, 12, 8), stone);
+      canvas.drawLine(
+        const Offset(24, 9),
+        const Offset(24, 18),
+        Paint()
+          ..color = colors.primary
+          ..strokeWidth = 2,
+      );
+      canvas.drawPath(
+        Path()
+          ..moveTo(7, 39)
+          ..quadraticBezierTo(12, 35, 17, 39)
+          ..quadraticBezierTo(22, 43, 27, 39)
+          ..quadraticBezierTo(32, 35, 41, 39),
+        Paint()
+          ..color = colors.tertiary
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2,
+      );
+    } else if (type == GameType.doudizhu) {
       for (var i = 0; i < 3; i++) {
         canvas.save();
         canvas.translate(24, 25);

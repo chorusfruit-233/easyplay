@@ -1,4 +1,5 @@
 import '../ui/app_layout.dart';
+import '../battleship/widgets/battleship_lobby_page.dart';
 import '../doudizhu/widgets/doudizhu_lobby_page.dart';
 import '../xiangqi/widgets/xiangqi_lan_pages.dart';
 import 'dart:convert';
@@ -32,6 +33,7 @@ class LanWebRoom {
   String get label => switch (game) {
     'chess' => '国际象棋',
     'doudizhu' => '斗地主',
+    'battleship' => '海战棋',
     'xiangqi' => '中国象棋',
     'gomoku' => '五子棋 · ${gomokuVariant.label}',
     'draughts' => '跳棋 · ${variant!.label}',
@@ -62,6 +64,7 @@ class LanWebRoom {
         'gomoku',
         'xiangqi',
         'doudizhu',
+        'battleship',
       ].contains(game)) {
         return null;
       }
@@ -69,6 +72,12 @@ class LanWebRoom {
           (data['rulesVersion'] != 1 ||
               data['protocolVersion'] != 1 ||
               data['maxPlayers'] != 3)) {
+        return null;
+      }
+      if (game == 'battleship' &&
+          (data['rulesVersion'] != 1 ||
+              data['protocolVersion'] != 1 ||
+              data['maxPlayers'] != 2)) {
         return null;
       }
       if (game == 'xiangqi') {
@@ -147,9 +156,15 @@ class _LanQuickJoinCardState extends State<LanQuickJoinCard> {
                   onPressed: () => Navigator.push<void>(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => room.game == 'doudizhu'
-                          ? DouDizhuLobbyPage(initialOrigin: room.origin)
-                          : LanQuickJoinPage(room: room),
+                      builder: (_) => switch (room.game) {
+                        'battleship' => BattleshipLobbyPage(
+                          initialOrigin: room.origin,
+                        ),
+                        'doudizhu' => DouDizhuLobbyPage(
+                          initialOrigin: room.origin,
+                        ),
+                        _ => LanQuickJoinPage(room: room),
+                      },
                     ),
                   ),
                   child: const Text('快捷加入'),
@@ -233,37 +248,37 @@ class _LanQuickJoinPageState extends State<LanQuickJoinPage> {
   }
 
   @override
-  Widget build(BuildContext context) => widget.room.game == 'doudizhu'
-      ? DouDizhuLobbyPage(initialOrigin: widget.room.origin)
-      : Scaffold(
-          appBar: AppBar(title: const Text('快捷加入')),
-          body: AppPageList(
-            children: [
-              Text(
-                '${widget.room.label} · ${widget.room.origin.host}:${widget.room.origin.port}',
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _token,
-                autofocus: true,
-                enabled: !_connecting,
-                decoration: const InputDecoration(labelText: '房间口令'),
-                onChanged: (_) => setState(() {}),
-                onSubmitted: (_) => _join(),
-              ),
-              const SizedBox(height: 16),
-              if (_error != null)
-                Text(
-                  _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
-                ),
-              FilledButton(
-                onPressed: _connecting || _token.text.trim().isEmpty
-                    ? null
-                    : _join,
-                child: Text(_connecting ? '连接中…' : '加入'),
-              ),
-            ],
+  Widget build(BuildContext context) => switch (widget.room.game) {
+    'battleship' => BattleshipLobbyPage(initialOrigin: widget.room.origin),
+    'doudizhu' => DouDizhuLobbyPage(initialOrigin: widget.room.origin),
+    _ => Scaffold(
+      appBar: AppBar(title: const Text('快捷加入')),
+      body: AppPageList(
+        children: [
+          Text(
+            '${widget.room.label} · ${widget.room.origin.host}:${widget.room.origin.port}',
           ),
-        );
+          const SizedBox(height: 16),
+          TextField(
+            controller: _token,
+            autofocus: true,
+            enabled: !_connecting,
+            decoration: const InputDecoration(labelText: '房间口令'),
+            onChanged: (_) => setState(() {}),
+            onSubmitted: (_) => _join(),
+          ),
+          const SizedBox(height: 16),
+          if (_error != null)
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          FilledButton(
+            onPressed: _connecting || _token.text.trim().isEmpty ? null : _join,
+            child: Text(_connecting ? '连接中…' : '加入'),
+          ),
+        ],
+      ),
+    ),
+  };
 }
