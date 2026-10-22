@@ -4,13 +4,13 @@
 
 [下载 Android APK](https://github.com/chorusfruit-233/easyplay/releases/latest) · [打开 Web 版](https://chorusfruit-233.github.io/easyplay/)
 
-## v1.7.8
+## v1.7.9
 
-- **新增海战棋 Battleship**：10×10 海域、五艘秘密舰船，支持本地 AI、同机双人、LAN 和 WebRTC，布阵与开火均需确认。
-- **隔格布阵与自动排除**：舰船至少间隔一格，斜角也不能紧贴；击沉后自动标出周围空格，AI 和联机同步遵守。海战棋联机规则升级为版本 2，双方需更新。
-- **舰船外观升级**：五种舰船采用不同的俯视船体、甲板和炮塔，击沉后保留受损轮廓，适配深浅主题与横竖屏。
+- **棋谱自动播放**：围棋、跳棋和五子棋的全部现有棋谱支持播放/暂停、逐步前后退、进度拖动、跳到开局/末尾与 0.5×、1×、2× 速度。
+- **完整还原棋谱步骤**：围棋可选 SGF 主线和变着，保留让子与注释；五子棋展示交换、候选点与选点；跳棋保留连吃、升王及上一手轨迹，兼容已有存档和导入棋谱。
+- **只读回看**：播放不改写存档或启动 AI，原续局入口保留。支持当前本地对局回看与后台自动暂停；跳棋 PDN 导出移入「棋谱操作」菜单。
 
-[完整更新记录](https://github.com/chorusfruit-233/easyplay/compare/v1.7.7...v1.7.8) · [v1.7.8 下载与说明](https://github.com/chorusfruit-233/easyplay/releases/tag/v1.7.8)
+[完整更新记录](https://github.com/chorusfruit-233/easyplay/compare/v1.7.8...v1.7.9) · [v1.7.9 下载与说明](https://github.com/chorusfruit-233/easyplay/releases/tag/v1.7.9)
 
 ## 支持的游戏
 
@@ -46,7 +46,7 @@
 
 ## 安装与使用
 
-- **Android**：从 Release 下载 `app-arm64-v8a-release.apk`，适用于 ARM64 设备；正式包沿用已有签名，可覆盖更新。v1.7.8 的构建号为24，ARM64 APK 的 versionCode 为2024。
+- **Android**：从 Release 下载 `app-arm64-v8a-release.apk`，适用于 ARM64 设备；正式包沿用已有签名，可覆盖更新。v1.7.9 的构建号为25，ARM64 APK 的 versionCode 为2025。
 - **Web**：直接打开上方 Web 版。AI 在浏览器本地运行，首次使用需要加载同源引擎和模型；围棋的跨源隔离由部署的 service worker 提供。
 - **棋力刻度**：Stockfish 参考 Elo 和 Pikafish 相对档位的适用范围见 [棋力说明](docs/ENGINE_STRENGTH.md)，实际表现随设备、局面和思考时间变化。
 
