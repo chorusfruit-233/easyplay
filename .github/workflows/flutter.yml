@@ -95,6 +95,10 @@ jobs:
         run: |
           flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/theme_browser_smoke.dart --output build/theme-smoke
           node tools/test_theme_web.cjs
+      - name: Record library playback browser smoke
+        run: |
+          flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/records/playback_browser_smoke.dart --output build/playback-smoke
+          node tools/test_record_playback_web.cjs
       - name: Board move animation browser smoke
         run: |
           flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/board_motion_browser_smoke.dart --output build/board-motion-smoke

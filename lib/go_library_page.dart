@@ -6,6 +6,8 @@ import 'go_encoding.dart';
 import 'go_record_summary.dart';
 import 'go_sgf.dart';
 import 'go_storage.dart';
+import 'records/record_replay.dart';
+import 'records/widgets/record_playback_page.dart';
 
 /// Adds an imported kifu to the library.
 ///
@@ -19,8 +21,8 @@ Future<GoSavedRecord> importKifu(String text) async {
 
 /// The kifu library: every stored game, and what can be done with one.
 ///
-/// Opening a game hands it to the board screen, which is the editor; this page
-/// only manages the files.
+/// Opening a row continues it in the editor; the play action opens an
+/// independent read-only projection of the saved SGF.
 class GoLibraryPage extends StatefulWidget {
   const GoLibraryPage({super.key});
 
@@ -111,6 +113,18 @@ class _GoLibraryPageState extends State<GoLibraryPage> {
     // Whatever was played is saved under the same id, so the row's move count
     // and result may have moved on.
     if (mounted) await _load();
+  }
+
+  Future<void> _play(GoSavedRecord record) async {
+    try {
+      final replay = GoRecordReplay(record.sgf);
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(builder: (_) => RecordPlaybackPage(record: replay)),
+      );
+    } catch (error) {
+      _notice('无法播放棋谱：$error');
+    }
   }
 
   @override
@@ -230,7 +244,17 @@ class _GoLibraryPageState extends State<GoLibraryPage> {
             ),
           ],
         ),
-        trailing: Icon(Icons.chevron_right, color: colors.onSurfaceVariant),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+              tooltip: '播放棋谱',
+              onPressed: () => _play(record),
+              icon: const Icon(Icons.play_circle_outline),
+            ),
+            Icon(Icons.chevron_right, color: colors.onSurfaceVariant),
+          ],
+        ),
         onTap: () => _open(record),
       ),
     );

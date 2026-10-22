@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../record_file_service.dart';
+import '../../records/record_replay.dart';
+import '../../records/widgets/record_playback_page.dart';
 import '../gomoku_notation.dart';
 import '../gomoku_storage.dart';
 import 'gomoku_ai_duel_page.dart';
@@ -97,6 +99,18 @@ class _GomokuLibraryPageState extends State<GomokuLibraryPage> {
       _notice('棋谱导出失败：$error');
     } finally {
       if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  Future<void> _play(GomokuRecord record) async {
+    try {
+      final replay = GomokuRecordReplay(record);
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(builder: (_) => RecordPlaybackPage(record: replay)),
+      );
+    } catch (error) {
+      _notice('无法播放棋谱：$error');
     }
   }
 
@@ -202,27 +216,37 @@ class _GomokuLibraryPageState extends State<GomokuLibraryPage> {
                   subtitle: Text(_summary(record)),
                   isThreeLine: true,
                   onTap: _exporting ? null : () => _open(record),
-                  trailing: PopupMenuButton<_RecordAction>(
-                    tooltip: '棋谱操作',
-                    enabled: !_exporting,
-                    onSelected: (action) => switch (action) {
-                      _RecordAction.sgf => _export(record, json: false),
-                      _RecordAction.json => _export(record, json: true),
-                      _RecordAction.delete => _delete(record),
-                    },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(
-                        value: _RecordAction.sgf,
-                        child: Text('导出 SGF'),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: '播放棋谱',
+                        onPressed: _exporting ? null : () => _play(record),
+                        icon: const Icon(Icons.play_circle_outline),
                       ),
-                      PopupMenuItem(
-                        value: _RecordAction.json,
-                        child: Text('导出 JSON 完整备份'),
-                      ),
-                      PopupMenuDivider(),
-                      PopupMenuItem(
-                        value: _RecordAction.delete,
-                        child: Text('删除棋谱'),
+                      PopupMenuButton<_RecordAction>(
+                        tooltip: '棋谱操作',
+                        enabled: !_exporting,
+                        onSelected: (action) => switch (action) {
+                          _RecordAction.sgf => _export(record, json: false),
+                          _RecordAction.json => _export(record, json: true),
+                          _RecordAction.delete => _delete(record),
+                        },
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(
+                            value: _RecordAction.sgf,
+                            child: Text('导出 SGF'),
+                          ),
+                          PopupMenuItem(
+                            value: _RecordAction.json,
+                            child: Text('导出 JSON 完整备份'),
+                          ),
+                          PopupMenuDivider(),
+                          PopupMenuItem(
+                            value: _RecordAction.delete,
+                            child: Text('删除棋谱'),
+                          ),
+                        ],
                       ),
                     ],
                   ),

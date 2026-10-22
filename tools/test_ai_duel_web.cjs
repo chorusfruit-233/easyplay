@@ -102,8 +102,9 @@ const capture = process.env.CAPTURE_AI_DUEL === '1';
       const library = button(/^棋谱库/);
       await reveal(library); await library.click();
       if (game === 'draughts') {
+        await button('棋谱操作').nth(1).click();
         const next = page.waitForEvent('download');
-        await button('导出 PDN').nth(1).click();
+        await page.getByRole('menuitem', {name:'导出 PDN', exact:true}).click();
         const download = await next, stream = await download.createReadStream(), chunks = [];
         for await (const chunk of stream) chunks.push(chunk);
         const pdn = Buffer.concat(chunks).toString('utf8');
