@@ -4,12 +4,13 @@
 
 [下载 Android APK](https://github.com/chorusfruit-233/easyplay/releases/latest) · [打开 Web 版](https://chorusfruit-233.github.io/easyplay/)
 
-## v1.7.7
+## v1.7.8
 
-- **斗地主逆时针轮转**：叫分和出牌统一按「自己 → 右侧下家 → 左侧上家」推进。
-- **三视角座位修正**：每位玩家均以上家在左、下家在右显示；同机交接随当前玩家调整视角，单人 AI、LAN 和 WebRTC 共用一致布局。
+- **新增海战棋 Battleship**：10×10 海域、五艘秘密舰船，支持本地 AI、同机双人、LAN 和 WebRTC，布阵与开火均需确认。
+- **隔格布阵与自动排除**：舰船至少间隔一格，斜角也不能紧贴；击沉后自动标出周围空格，AI 和联机同步遵守。海战棋联机规则升级为版本 2，双方需更新。
+- **舰船外观升级**：五种舰船采用不同的俯视船体、甲板和炮塔，击沉后保留受损轮廓，适配深浅主题与横竖屏。
 
-[完整更新记录](https://github.com/chorusfruit-233/easyplay/compare/v1.7.6...v1.7.7) · [v1.7.7 下载与说明](https://github.com/chorusfruit-233/easyplay/releases/tag/v1.7.7)
+[完整更新记录](https://github.com/chorusfruit-233/easyplay/compare/v1.7.7...v1.7.8) · [v1.7.8 下载与说明](https://github.com/chorusfruit-233/easyplay/releases/tag/v1.7.8)
 
 ## 支持的游戏
 
@@ -43,7 +44,7 @@
 
 ## 安装与使用
 
-- **Android**：从 Release 下载 `app-arm64-v8a-release.apk`，适用于 ARM64 设备；正式包沿用已有签名，可覆盖更新。v1.7.7 的构建号为23，ARM64 APK 的 versionCode 为2023。
+- **Android**：从 Release 下载 `app-arm64-v8a-release.apk`，适用于 ARM64 设备；正式包沿用已有签名，可覆盖更新。v1.7.8 的构建号为24，ARM64 APK 的 versionCode 为2024。
 - **Web**：直接打开上方 Web 版。AI 在浏览器本地运行，首次使用需要加载同源引擎和模型；围棋的跨源隔离由部署的 service worker 提供。
 - **棋力刻度**：Stockfish 参考 Elo 和 Pikafish 相对档位的适用范围见 [棋力说明](docs/ENGINE_STRENGTH.md)，实际表现随设备、局面和思考时间变化。
 
