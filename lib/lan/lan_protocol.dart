@@ -16,6 +16,7 @@ const lanMaxEvents = 20000;
 /// Handshakes, heartbeat, rejection and synchronization do not consume seq.
 enum LanMessageType {
   card,
+  battleship,
   hello,
   helloAck,
   matchStart,
@@ -69,6 +70,9 @@ class LanMessage {
     final value = jsonDecode(raw);
     if (value is! Map<String, dynamic>) {
       throw const FormatException('联机消息必须是对象');
+    }
+    if (value['type'] == 'battleship' && utf8.encode(raw).length > 65536) {
+      throw const FormatException('海战棋消息过大');
     }
     return LanMessage.fromWire(value);
   }
@@ -193,6 +197,19 @@ class LanMessage {
             data['payload'] is! Map ||
             _body.length > 65536) {
           throw const FormatException('无效的斗地主消息');
+        }
+      case LanMessageType.battleship:
+        if (data['game'] != 'battleship' ||
+            data['protocolVersion'] is! int ||
+            data['protocolVersion'] != 1 ||
+            data['rulesVersion'] is! int ||
+            data['rulesVersion'] != 1 ||
+            data['action'] is! String ||
+            (data['action'] as String).isEmpty ||
+            (data['action'] as String).length > 32 ||
+            data['payload'] is! Map ||
+            utf8.encode(encode()).length > 65536) {
+          throw const FormatException('无效的海战棋消息');
         }
       case LanMessageType.hello:
         integer('roomVersion');

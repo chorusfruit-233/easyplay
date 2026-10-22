@@ -27,6 +27,7 @@ extension GameTypeX on GameType {
     GameType.gomoku => '五子棋',
     GameType.xiangqi => '中国象棋',
     GameType.doudizhu => '斗地主',
+    GameType.battleship => '海战棋',
   };
   String get english => switch (this) {
     GameType.go => 'GO',
@@ -35,6 +36,7 @@ extension GameTypeX on GameType {
     GameType.gomoku => 'GOMOKU',
     GameType.xiangqi => 'XIANGQI',
     GameType.doudizhu => 'DOUDIZHU',
+    GameType.battleship => 'BATTLESHIP',
   };
   String get description => switch (this) {
     GameType.go => '在方寸之间，寻找全局的平衡',
@@ -43,6 +45,7 @@ extension GameTypeX on GameType {
     GameType.gomoku => '连成五子，攻守之间见胜负',
     GameType.xiangqi => '楚河汉界，运筹将帅之间',
     GameType.doudizhu => '三人纸牌，地主与农民的协作',
+    GameType.battleship => '部署舰队，在未知海域搜寻敌舰',
   };
   IconData get icon => switch (this) {
     GameType.go => Icons.blur_on,
@@ -51,6 +54,7 @@ extension GameTypeX on GameType {
     GameType.gomoku => Icons.grain,
     GameType.xiangqi => Icons.account_balance,
     GameType.doudizhu => Icons.style,
+    GameType.battleship => Icons.directions_boat_outlined,
   };
 }
 

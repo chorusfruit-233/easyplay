@@ -87,6 +87,10 @@ jobs:
         run: |
           flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/doudizhu/rtc_browser_smoke.dart --output build/doudizhu-smoke
           node tools/test_doudizhu_web.cjs
+      - name: Battleship private fleets and browser play
+        run: |
+          flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/battleship/rtc_browser_smoke.dart --output build/battleship-smoke
+          node tools/test_battleship_web.cjs
       - name: Theme browser smoke
         run: |
           flutter build web --release --no-wasm-dry-run --base-href /easyplay/ --target test/theme_browser_smoke.dart --output build/theme-smoke

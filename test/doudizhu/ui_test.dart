@@ -220,7 +220,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
   });
-  testWidgets('home retains five games and opens sixth entry', (tester) async {
+  testWidgets('home retains DouDizhu among all game entries', (tester) async {
     GameType? selected;
     await tester.pumpWidget(
       MaterialApp(
@@ -232,7 +232,7 @@ void main() {
     await tester.ensureVisible(find.text('斗地主'));
     await tester.tap(find.text('斗地主'));
     expect(selected, GameType.doudizhu);
-    expect(GameType.values.length, 6);
+    expect(GameType.values, contains(GameType.doudizhu));
     expect(tester.takeException(), isNull);
   });
   testWidgets(

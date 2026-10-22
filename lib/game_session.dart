@@ -1,4 +1,4 @@
-enum GameType { go, chess, checkers, gomoku, xiangqi, doudizhu }
+enum GameType { go, chess, checkers, gomoku, xiangqi, doudizhu, battleship }
 
 enum Side { black, white }
 
@@ -189,6 +189,9 @@ class GameSession {
 
   GameSession(this.type, {GoConfig? goConfig})
     : _goConfig = goConfig ?? const GoConfig() {
+    if (type == GameType.battleship) {
+      throw UnsupportedError('Use BattleshipSession for Battleship');
+    }
     if (type == GameType.doudizhu) {
       throw UnsupportedError('Use DouDizhuSession for DouDizhu');
     }

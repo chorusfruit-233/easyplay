@@ -1,6 +1,6 @@
 # EasyPlay
 
-面向 Android 和 Web 的 Flutter 棋牌应用，支持围棋、国际象棋、跳棋、五子棋、中国象棋和三人斗地主。提供本地双人、设备本地 AI、Android 局域网房间及浏览器 WebRTC 对弈，无需账号或远程 AI 服务。斗地主支持单人 AI、同机三人及三人联机。
+面向 Android 和 Web 的 Flutter 棋牌应用，支持围棋、国际象棋、跳棋、五子棋、中国象棋、三人斗地主和海战棋 Battleship。提供本地对战、设备本地 AI、Android 局域网房间及浏览器 WebRTC 对弈，无需账号或远程 AI 服务。斗地主支持三人对战，海战棋支持秘密布阵与双人侦察对战。
 
 [下载 Android APK](https://github.com/chorusfruit-233/easyplay/releases/latest) · [打开 Web 版](https://chorusfruit-233.github.io/easyplay/)
 
@@ -21,8 +21,11 @@
 | 五子棋 | 15×15 索索夫-8、黑方禁手、SGF/JSON 棋谱导出、AI 对抗观战 | Rapfi，三档难度 |
 | 中国象棋 | 马腿、象眼、炮架、将帅照面、将死与困毙；固定亚洲长将/长捉配置 | Pikafish，六档难度 |
 | 斗地主 | 54 张牌、叫分、全部常用牌型、地主与农民阵营；三人对战 | 本地 DouZero-WP，仅使用自己的手牌与公开信息 |
+| 海战棋 | 经典 10×10、五艘舰船、手动/随机布阵、开火确认、击沉与同机遮挡 | 本地侦察 AI，仅依据自己的视图与公开结果 |
 
 棋类游戏支持本地双人、AI 与联机。斗地主支持经典三人规则、同机遮挡交接、本地 DouZero-WP AI、三人 LAN / WebRTC 和两名真人加 AI 补位，详见 [斗地主说明](docs/DOUDIZHU.md)。中国象棋的着法历史仅用于当前对局的规则、悔棋、搜索和重连，不持久化保存棋谱；规则范围见 [中国象棋说明](docs/XIANGQI.md)。
+
+海战棋支持单人 AI、同机双人、LAN 和 WebRTC。每回合开火一次，命中后也轮到对手，击沉全部五艘舰船获胜；布阵和开火均需确认，联机客人仅接收自己的舰队与公开结果。详见 [海战棋说明](docs/BATTLESHIP.md)。
 
 五种棋类支持落子、移动和吃子动画，兼容系统减少动态效果设置，预览与细节见 [行棋动画](docs/BOARD_ANIMATIONS.md)。
 
@@ -31,6 +34,8 @@
 两种游戏的独立[棋谱库](docs/RECORD_LIBRARIES.md)保留全部对局，不按数量自动淘汰。跳棋支持 PDN 导入与导出；五子棋 SGF 用于交流正式落子和停着，JSON 保留交换、候选点等完整开局操作，当前尚无五子棋文件导入。
 
 ## 界面预览
+
+<img src="docs/images/battleship-placement.png" width="280" alt="海战棋秘密布阵与位置确认" /> <img src="docs/images/battleship-battle.png" width="280" alt="海战棋海域侦察与开火确认" />
 
 <img src="docs/images/douzero-home.png" width="280" alt="斗地主使用本地 DouZero-WP AI" /> <img src="docs/images/douzero-single-player.png" width="280" alt="斗地主出牌留桌和跟牌提示" />
 
@@ -91,6 +96,7 @@ dart analyze lib test
 - [棋力标注](docs/ENGINE_STRENGTH.md)：Stockfish 参考 Elo 与 Pikafish 相对强度
 - [AI 对抗观战](docs/AI_DUEL.md)：五子棋、跳棋双 AI 自动对弈与暂停、单步控制
 - [斗地主说明](docs/DOUDIZHU.md)：固定规则、三人房间、手牌隐私与重连
+- [海战棋说明](docs/BATTLESHIP.md)：经典规则、秘密布阵、本地侦察 AI、双人联机与重连
 - [DouZero 接入](docs/DOUZERO.md)：WP 模型、设备本地推理、合法动作、许可与转换复现
 - [AlphaDou 接入评估](docs/ALPHADOU.md)：权重公开情况、规则适配与移动端 / Web 路线
 - [中国象棋说明](docs/XIANGQI.md)：固定规则、Pikafish、构建与模型许可

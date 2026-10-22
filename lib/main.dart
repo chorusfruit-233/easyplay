@@ -1,4 +1,5 @@
 import 'doudizhu/widgets/doudizhu_home_page.dart';
+import 'battleship/widgets/battleship_home_page.dart';
 import 'xiangqi/widgets/xiangqi_home_page.dart';
 import 'package:flutter/material.dart';
 import 'game_session.dart';
@@ -80,6 +81,13 @@ class _ShellState extends State<Shell> {
   // Every entry into Go goes through the section shell, so the board and the
   // library always share the same bottom bar.
   void _openGame(GameType game) {
+    if (game == GameType.battleship) {
+      Navigator.push<void>(
+        context,
+        MaterialPageRoute(builder: (_) => const BattleshipHomePage()),
+      );
+      return;
+    }
     if (game == GameType.doudizhu) {
       Navigator.push<void>(
         context,
