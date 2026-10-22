@@ -11,7 +11,7 @@ void arrange(BattleshipSession game, BattleshipSeat seat, {int offset = 0}) {
   for (final ship in ShipType.values) {
     game.place(
       seat,
-      ShipPlacement(ship, offset + ship.index * 10, ShipDirection.horizontal),
+      ShipPlacement(ship, offset + ship.index * 20, ShipDirection.horizontal),
     );
   }
 }
@@ -26,19 +26,19 @@ BattleshipSession prepared() {
 }
 
 void main() {
-  test('classic fleet totals seventeen cells and touching ships are legal', () {
+  test('separated fleet totals seventeen cells and stays private', () {
     final game = BattleshipSession();
     arrange(game, p1);
     final fleet = game.view(p1).ownFleet;
     expect(fleet.map((ship) => ship.ship.length), [5, 4, 3, 3, 2]);
     expect(fleet.expand((ship) => ship.cells).toSet(), hasLength(17));
     expect(fleet[0].cells, contains(0));
-    expect(fleet[1].cells, contains(10));
+    expect(fleet[1].cells, contains(20));
     expect(game.view(p2).ownFleet, isEmpty);
     expect(game.view(p2).enemyFleet, isEmpty);
   });
 
-  test('out-of-bounds and overlapping replacements are atomic', () {
+  test('out-of-bounds and touching replacements are atomic', () {
     final game = BattleshipSession();
     arrange(game, p1);
     final old = jsonEncode(game.view(p1).toWire());
@@ -60,19 +60,45 @@ void main() {
     );
     expect(game.revision, revision);
     expect(jsonEncode(game.view(p1).toWire()), old);
-    game.place(
-      p1,
-      ShipPlacement(ShipType.carrier, 50, ShipDirection.horizontal),
-    );
+    game.place(p1, ShipPlacement(ShipType.carrier, 5, ShipDirection.vertical));
     expect(
       game
           .view(p1)
           .ownFleet
           .singleWhere((ship) => ship.ship == ShipType.carrier)
           .start,
-      50,
+      5,
     );
     expect(game.view(p1).ownFleet, hasLength(5));
+  });
+
+  test('ships cannot overlap or touch across an edge or diagonal', () {
+    final game = BattleshipSession();
+    game.place(
+      p1,
+      ShipPlacement(ShipType.carrier, 0, ShipDirection.horizontal),
+    );
+    final old = jsonEncode(game.view(p1).toWire());
+    final revision = game.revision;
+    for (final start in [3, 5, 14, 15]) {
+      final placement = ShipPlacement(
+        ShipType.destroyer,
+        start,
+        ShipDirection.horizontal,
+      );
+      expect(canPlaceBattleship(game.view(p1).ownFleet, placement), isFalse);
+      expect(() => game.place(p1, placement), throwsArgumentError);
+      expect(game.revision, revision);
+      expect(jsonEncode(game.view(p1).toWire()), old);
+    }
+    final separated = ShipPlacement(
+      ShipType.destroyer,
+      16,
+      ShipDirection.horizontal,
+    );
+    expect(canPlaceBattleship(game.view(p1).ownFleet, separated), isTrue);
+    game.place(p1, separated);
+    expect(game.view(p1).ownFleet, hasLength(2));
   });
 
   test('preview shares replacement rules and never mutates a fleet', () {
@@ -181,6 +207,39 @@ void main() {
   });
 
   test(
+    'sinking infers water without shots and rejects firing there atomically',
+    () {
+      final game = prepared();
+      final old = game.view(p1);
+      final targets = [10, 0, 1, 2, 3, 4];
+      for (var index = 0; index < targets.length; index++) {
+        game.fire(p1, targets[index]);
+        game.fire(p2, 90 + index);
+      }
+      final view = game.view(p1);
+      expect(view.excludedCells, {5, 10, 11, 12, 13, 14, 15});
+      expect(old.excludedCells, isEmpty);
+      expect(view.outgoingShots, hasLength(6));
+      expect(view.outgoingShots.first.outcome, ShotOutcome.miss);
+      expect(view.outgoingShots.last.outcome, ShotOutcome.sunk);
+      final revision = game.revision;
+      final wire = jsonEncode(view.toWire());
+      for (final cell in view.excludedCells) {
+        expect(view.canFire(cell), isFalse);
+        expect(() => game.fire(p1, cell), throwsStateError);
+        expect(game.revision, revision);
+        expect(game.turn, p1);
+        expect(jsonEncode(game.view(p1).toWire()), wire);
+      }
+      expect(view.canFire(16), isTrue);
+      game.fire(p1, 99);
+      expect(game.turn, p2);
+      expect(game.view(p2).excludedCells, isEmpty);
+      expect(game.view(p2).canFire(5), isTrue);
+    },
+  );
+
+  test(
     'all seventeen hits end play immediately, reveal fleets, and reset rotates first player',
     () {
       final game = prepared();
@@ -189,9 +248,18 @@ void main() {
           .ownFleet
           .expand((ship) => ship.cells)
           .toList();
+      final ownCells = game
+          .view(p1)
+          .ownFleet
+          .expand((ship) => ship.cells)
+          .toSet();
+      final replies = [
+        for (var cell = 0; cell < 100; cell++)
+          if (!ownCells.contains(cell)) cell,
+      ];
       for (var i = 0; i < targets.length; i++) {
         game.fire(p1, targets[i]);
-        if (i < targets.length - 1) game.fire(p2, 50 + i);
+        if (i < targets.length - 1) game.fire(p2, replies[i]);
       }
       expect(game.phase, BattleshipPhase.finished);
       expect(game.winner, p1);
@@ -245,6 +313,21 @@ void main() {
         final fleet = game.view(seat).ownFleet;
         validateBattleshipFleet(fleet, complete: true);
         expect(fleet.expand((ship) => ship.cells).toSet(), hasLength(17));
+        for (var index = 0; index < fleet.length; index++) {
+          for (final other in fleet.skip(index + 1)) {
+            for (final cell in fleet[index].cells) {
+              for (final neighbor in other.cells) {
+                expect(
+                  max(
+                    (cell ~/ 10 - neighbor ~/ 10).abs(),
+                    (cell % 10 - neighbor % 10).abs(),
+                  ),
+                  greaterThan(1),
+                );
+              }
+            }
+          }
+        }
         expect(game.view(seat.opponent).enemyFleet, isEmpty);
         game.ready(seat);
       }
@@ -272,7 +355,19 @@ void main() {
         );
         game.ready(seat);
       }
-      for (var cell = 0; cell < 99; cell++) {
+      final occupied = game
+          .view(p1)
+          .ownFleet
+          .expand((ship) => ship.cells)
+          .toSet();
+      // Fire all water before sinking ships, so later inferred rings contain
+      // only cells that have already been fired upon.
+      final targets = [
+        for (var cell = 0; cell < 100; cell++)
+          if (!occupied.contains(cell)) cell,
+        ...occupied,
+      ];
+      for (final cell in targets.take(99)) {
         game.fire(p1, cell);
         game.fire(p2, cell);
       }
@@ -286,7 +381,7 @@ void main() {
           view.toWire(),
         );
       }
-      expect(game.fire(p1, 99).outcome, ShotOutcome.sunk);
+      expect(game.fire(p1, targets.last).outcome, ShotOutcome.sunk);
       expect(game.winner, p1);
       for (final seat in BattleshipSeat.values) {
         final view = game.view(seat);

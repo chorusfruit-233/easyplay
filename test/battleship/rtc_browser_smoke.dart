@@ -138,6 +138,8 @@ void main() {
     'rematch': room?.replica.rematch,
     'error': room?.replica.error ?? controller?.error,
     'view': (controller?.view ?? room?.replica.view)?.toWire(),
+    'excludedCells':
+        (controller?.view ?? room?.replica.view)?.excludedCells.toList() ?? [],
     'covered': controller?.covered ?? false,
     'thinking': controller?.thinking ?? false,
     'visibleFleets': visibleFleets(),

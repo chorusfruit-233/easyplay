@@ -151,8 +151,9 @@ class _BattleshipGamePageState extends State<BattleshipGamePage>
       content: const SingleChildScrollView(
         child: Text(
           '双方各有一片 10×10 海域，秘密布置 5 艘舰船：航母 5 格、战列舰 4 格、巡洋舰 3 格、潜艇 3 格、驱逐舰 2 格，共 17 格。\n\n'
-          '舰船只能横向或纵向笔直放置，不能越界或重叠，可以相邻。双方确认后锁定舰队，不能再移动。\n\n'
+          '舰船只能横向或纵向笔直放置，不能越界或重叠。舰船之间至少间隔一格，斜角也不能紧贴。双方确认后锁定舰队，不能再移动。\n\n'
           '每回合选择敌方一个未攻击的位置，再按「确认开火」。无论命中与否，均轮到对方。命中舰船全部格子即击沉，击沉全部 5 艘舰船获胜。\n\n'
+          '击沉后，舰船周围一圈自动标为空格，不能再开火；这些标记不计入开火次数，也不额外消耗回合。\n\n'
           'AI 仅根据已知开火结果侦察。联机对手只接收自己的舰队与公开结果；房主保存权威对局，熟人房间需要信任房主。对局仅保留在内存，退出后不保存。',
         ),
       ),
@@ -392,7 +393,7 @@ class _BattleshipGamePageState extends State<BattleshipGamePage>
               child: Text(
                 valid
                     ? '起点 ${battleshipCoordinate(_start!)} · 可放置'
-                    : '该位置越界或与其他舰船重叠',
+                    : '该位置越界、重叠或紧贴其他舰船，请至少间隔一格',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   color: valid
@@ -543,7 +544,7 @@ class _BattleshipGamePageState extends State<BattleshipGamePage>
           alignment: WrapAlignment.center,
           spacing: 16,
           runSpacing: 8,
-          children: [Text('● 未命中'), Text('× 命中'), Text('▣ 击沉')],
+          children: [Text('● 未命中'), Text('○ 已排除'), Text('× 命中'), Text('▣ 击沉')],
         ),
         if (view.phase == BattleshipPhase.finished) ...[
           const SizedBox(height: 12),

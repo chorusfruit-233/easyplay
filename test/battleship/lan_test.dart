@@ -50,7 +50,7 @@ void main() {
         'app': 'easyplay',
         'version': lanProtocolVersion,
         'game': 'battleship',
-        'rulesVersion': 1,
+        'rulesVersion': battleshipRulesVersion,
         'protocolVersion': 1,
         'players': 2,
         'maxPlayers': 2,
@@ -143,6 +143,146 @@ void main() {
       expect(guest.view!.turn, BattleshipSeat.player2);
     },
   );
+
+  test(
+    'socket sink sync derives halo without shots, turns, or private fleets',
+    () async {
+      final session = BattleshipSession();
+      for (final seat in BattleshipSeat.values) {
+        for (final ship in ShipType.values) {
+          session.place(
+            seat,
+            ShipPlacement(
+              ship,
+              ship.index * 20 + (seat == BattleshipSeat.player2 ? 5 : 0),
+              ShipDirection.horizontal,
+            ),
+          );
+        }
+      }
+      final room = BattleshipRoomCoordinator(
+        password: '1942',
+        session: session,
+      );
+      final server = BattleshipLanServer(room);
+      await server.start(host: '127.0.0.1', port: 0);
+      final (host, _) = await join(room, host: true);
+      final guest = BattleshipReplica();
+      final uri = Uri.parse('ws://127.0.0.1:${server.port}');
+      final transport = ObservedTransport(await connectBattleshipSocket(uri));
+      final wires = <String>[];
+      guest.onWireMessage = wires.add;
+      addTearDown(() async {
+        await host.close();
+        await guest.close();
+        await server.close();
+        await room.close();
+      });
+      await guest.bind(transport, token: '1942');
+      await submit(room, host, 'start');
+      await submit(room, host, 'ready');
+      await submit(room, guest, 'ready');
+      await submit(room, host, 'fire', {'cell': 99});
+      await submit(room, guest, 'fire', {'cell': 80});
+      expect(guest.view!.excludedCells, isEmpty);
+      await submit(room, host, 'fire', {'cell': 98});
+      final beforeSink = room.seq;
+      await submit(room, guest, 'fire', {'cell': 81});
+      await until(() => host.seq == room.seq);
+      expect(room.seq, beforeSink + 1);
+      expect(guest.view!.shots, hasLength(4));
+      expect(guest.view!.shots.last.outcome, ShotOutcome.sunk);
+      expect(guest.view!.turn, BattleshipSeat.player1);
+      expect(guest.view!.excludedCells, {70, 71, 72, 82, 90, 91, 92});
+      expect(guest.view!.canFire(71), isFalse);
+      expect(host.view!.excludedCells, isEmpty);
+      expect(host.view!.enemyFleet, isEmpty);
+      expect(guest.view!.enemyFleet, isEmpty);
+      final shotHistory = jsonEncode(
+        guest.view!.shots.map((shot) => shot.toWire()).toList(),
+      );
+
+      // A new socket receives the same public history and derives the same ring.
+      await guest.disconnect();
+      await until(() => !room.allConnected);
+      final resumed = ObservedTransport(await connectBattleshipSocket(uri));
+      await guest.bind(resumed, token: '1942');
+      expect(guest.view!.excludedCells, {70, 71, 72, 82, 90, 91, 92});
+      expect(
+        jsonEncode(guest.view!.shots.map((shot) => shot.toWire()).toList()),
+        shotHistory,
+      );
+      await submit(room, host, 'fire', {'cell': 97});
+      await until(() => guest.seq == room.seq);
+      expect(guest.view!.isTurn, isTrue);
+      expect(guest.view!.canFire(71), isFalse);
+      final beforeRejected = room.seq;
+      final revision = session.revision;
+      guest.send('fire', {'cell': 71});
+      await until(() => guest.error != null);
+      final rejected = resumed.sent.lastWhere(
+        (message) => message.body['action'] == 'fire',
+      );
+      expect(room.seq, beforeRejected);
+      expect(session.revision, revision);
+      expect(session.turn, BattleshipSeat.player2);
+      expect(guest.view!.shots, hasLength(5));
+      expect(guest.view!.shots.any((shot) => shot.cell == 71), isFalse);
+      await submit(room, guest, 'fire', {'cell': 99});
+      await submit(room, host, 'fire', {'cell': 96});
+      await until(() => guest.seq == room.seq);
+      final beforeReplay = room.seq;
+      final receivedBeforeReplay = wires.length;
+      resumed.send(rejected);
+      await until(() => wires.length > receivedBeforeReplay);
+      expect(room.seq, beforeReplay);
+      expect(session.turn, BattleshipSeat.player2);
+      expect(guest.view!.shots, hasLength(7));
+
+      for (final raw in wires) {
+        final message = LanMessage.decode(raw);
+        if (message.body['action'] != 'snapshot') continue;
+        final view = (battleshipPayload(message)['view'] as Map);
+        expect(view['enemyFleet'], isEmpty);
+        expect(view.keys, isNot(contains('excludedCells')));
+        expect(view.keys, isNot(contains('fleets')));
+      }
+    },
+  );
+
+  for (final rulesVersion in [1, 2.0]) {
+    test(
+      'socket rejects old or malformed rule handshake $rulesVersion',
+      () async {
+        final room = BattleshipRoomCoordinator(password: '1942');
+        final server = BattleshipLanServer(room);
+        await server.start(host: '127.0.0.1', port: 0);
+        final socket = await WebSocket.connect(
+          'ws://127.0.0.1:${server.port}/easyplay/ws',
+        );
+        addTearDown(() async {
+          await socket.close();
+          await server.close();
+          await room.close();
+        });
+        final response = socket.first;
+        socket.add(
+          jsonEncode({
+            ...battleshipMessage('hello', 0, {'token': '1942'}).toWire(),
+            'rulesVersion': rulesVersion,
+          }),
+        );
+        final message = LanMessage.decode(
+          await response.timeout(const Duration(seconds: 2)) as String,
+        );
+        expect(message.body['action'], 'rejected');
+        expect(message.body['rulesVersion'], battleshipRulesVersion);
+        expect(room.playerCount, 0);
+        expect(room.seq, 0);
+        expect(room.started, isFalse);
+      },
+    );
+  }
 
   test(
     'bundled quick join assets keep isolation headers and reject unsafe paths',

@@ -78,26 +78,37 @@ class BattleshipSession {
   void randomizeFleet(BattleshipSeat seat) {
     _canPlace(seat);
     final next = <ShipType, ShipPlacement>{};
-    final occupied = <int>{};
-    for (final ship in ShipType.values) {
-      final candidates = <ShipPlacement>[];
-      for (var start = 0; start < 100; start++) {
-        for (final direction in ShipDirection.values) {
-          if (direction == ShipDirection.horizontal
-              ? start % 10 + ship.length <= 10
-              : start ~/ 10 + ship.length <= 10) {
-            final placement = ShipPlacement(ship, start, direction);
-            if (!placement.cells.any(occupied.contains)) {
-              candidates.add(placement);
-            }
-          }
+    final candidates = {
+      for (final ship in ShipType.values)
+        ship: [
+          for (var start = 0; start < 100; start++)
+            for (final direction in ShipDirection.values)
+              if (direction == ShipDirection.horizontal
+                  ? start % 10 + ship.length <= 10
+                  : start ~/ 10 + ship.length <= 10)
+                ShipPlacement(ship, start, direction),
+        ]..shuffle(_random),
+    };
+    bool placeRemaining(int index, Set<int> blocked) {
+      if (index == ShipType.values.length) return true;
+      final ship = ShipType.values[index];
+      for (final placement in candidates[ship]!) {
+        if (placement.cells.any(blocked.contains)) continue;
+        next[ship] = placement;
+        if (placeRemaining(index + 1, {
+          ...blocked,
+          ...placement.cells,
+          ...battleshipShipHalo(placement.cells),
+        })) {
+          return true;
         }
+        next.remove(ship);
       }
-      // Seventeen occupied cells cannot cover every placement on a 10x10 sea.
-      final placement = candidates[_random.nextInt(candidates.length)];
-      next[ship] = placement;
-      occupied.addAll(placement.cells);
+      return false;
     }
+
+    // Search every alternative if a random partial fleet boxes in a later ship.
+    if (!placeRemaining(0, {})) throw StateError('无法生成完整舰队');
     _fleets[seat]!
       ..clear()
       ..addAll(next);
@@ -120,8 +131,12 @@ class BattleshipSession {
       throw StateError('请等待自己的开火回合');
     }
     if (!battleshipInside(cell)) throw ArgumentError.value(cell, 'cell');
-    if (_shots.any((shot) => shot.attacker == seat && shot.cell == cell)) {
+    final outgoing = _shots.where((shot) => shot.attacker == seat);
+    if (outgoing.any((shot) => shot.cell == cell)) {
       throw StateError('该海域已经开火，请选择其他位置');
+    }
+    if (battleshipExcludedCells(outgoing).contains(cell)) {
+      throw StateError('击沉舰船周围已确定无舰船，请选择其他位置');
     }
     final hits = _shots
         .where(

@@ -7,22 +7,18 @@ import 'package:flutter_test/flutter_test.dart';
 
 List<ShipPlacement> _ownFleet() => [
   ShipPlacement(ShipType.carrier, 0, ShipDirection.horizontal),
-  ShipPlacement(ShipType.battleship, 10, ShipDirection.horizontal),
-  ShipPlacement(ShipType.cruiser, 20, ShipDirection.horizontal),
-  ShipPlacement(ShipType.submarine, 30, ShipDirection.horizontal),
-  ShipPlacement(ShipType.destroyer, 40, ShipDirection.horizontal),
+  ShipPlacement(ShipType.battleship, 20, ShipDirection.horizontal),
+  ShipPlacement(ShipType.cruiser, 40, ShipDirection.horizontal),
+  ShipPlacement(ShipType.submarine, 60, ShipDirection.horizontal),
+  ShipPlacement(ShipType.destroyer, 80, ShipDirection.horizontal),
 ];
 
-List<ShipPlacement> _enemyFleet({bool touching = false}) => [
-  ShipPlacement(ShipType.carrier, touching ? 45 : 44, ShipDirection.horizontal),
-  ShipPlacement(ShipType.battleship, 60, ShipDirection.horizontal),
-  ShipPlacement(ShipType.cruiser, 70, ShipDirection.horizontal),
-  ShipPlacement(ShipType.submarine, 80, ShipDirection.horizontal),
-  ShipPlacement(
-    ShipType.destroyer,
-    touching ? 44 : 94,
-    touching ? ShipDirection.vertical : ShipDirection.horizontal,
-  ),
+List<ShipPlacement> _enemyFleet() => [
+  ShipPlacement(ShipType.carrier, 44, ShipDirection.horizontal),
+  ShipPlacement(ShipType.battleship, 0, ShipDirection.horizontal),
+  ShipPlacement(ShipType.cruiser, 20, ShipDirection.horizontal),
+  ShipPlacement(ShipType.submarine, 60, ShipDirection.horizontal),
+  ShipPlacement(ShipType.destroyer, 84, ShipDirection.horizontal),
 ];
 
 BattleshipSession _game({
@@ -49,15 +45,16 @@ void _shootAndReturn(BattleshipSession session, Iterable<int> targets) {
       .ownFleet
       .expand((placement) => placement.cells)
       .toSet();
-  final replies = [
-    for (var cell = 0; cell < 100; cell++)
-      if (!occupied.contains(cell)) cell,
-    ...occupied,
-  ];
   for (final cell in targets) {
     session.fire(BattleshipSeat.player1, cell);
-    final count = session.view(BattleshipSeat.player2).outgoingShots.length;
-    session.fire(BattleshipSeat.player2, replies[count]);
+    final replyView = session.view(BattleshipSeat.player2);
+    final replies = [
+      for (var reply = 0; reply < 100; reply++)
+        if (replyView.canFire(reply) && !occupied.contains(reply)) reply,
+      for (final reply in occupied)
+        if (replyView.canFire(reply)) reply,
+    ];
+    session.fire(BattleshipSeat.player2, replies.first);
   }
 }
 
@@ -86,10 +83,10 @@ void main() {
     final second = _game(
       enemy: [
         ShipPlacement(ShipType.carrier, 44, ShipDirection.horizontal),
-        ShipPlacement(ShipType.battleship, 10, ShipDirection.horizontal),
-        ShipPlacement(ShipType.cruiser, 20, ShipDirection.horizontal),
-        ShipPlacement(ShipType.submarine, 30, ShipDirection.horizontal),
-        ShipPlacement(ShipType.destroyer, 50, ShipDirection.horizontal),
+        ShipPlacement(ShipType.battleship, 5, ShipDirection.horizontal),
+        ShipPlacement(ShipType.cruiser, 25, ShipDirection.horizontal),
+        ShipPlacement(ShipType.submarine, 65, ShipDirection.horizontal),
+        ShipPlacement(ShipType.destroyer, 85, ShipDirection.horizontal),
       ],
     );
     _shootAndReturn(first, [44, 99]);
@@ -111,10 +108,10 @@ void main() {
     final second = _game(
       own: [
         ShipPlacement(ShipType.carrier, 5, ShipDirection.horizontal),
-        ShipPlacement(ShipType.battleship, 15, ShipDirection.horizontal),
-        ShipPlacement(ShipType.cruiser, 25, ShipDirection.horizontal),
-        ShipPlacement(ShipType.submarine, 35, ShipDirection.horizontal),
-        ShipPlacement(ShipType.destroyer, 45, ShipDirection.horizontal),
+        ShipPlacement(ShipType.battleship, 25, ShipDirection.horizontal),
+        ShipPlacement(ShipType.cruiser, 45, ShipDirection.horizontal),
+        ShipPlacement(ShipType.submarine, 65, ShipDirection.horizontal),
+        ShipPlacement(ShipType.destroyer, 85, ShipDirection.horizontal),
       ],
     );
     final firstAi = BattleshipAi(random: Random(23));
@@ -145,10 +142,26 @@ void main() {
     expect([43, 46], contains(second));
   });
 
-  test('can finish a ship directly beside a sunken ship', () {
-    final session = _game(enemy: _enemyFleet(touching: true));
+  test('never chooses inferred water around a sunken ship', () {
+    final session = _game();
+    _shootAndReturn(session, [84, 85]);
+    final view = session.view(BattleshipSeat.player1);
+    final halo = battleshipShipHalo([84, 85]);
+    expect(view.excludedCells, halo);
+    expect(halo, containsAll([73, 74, 75, 76, 83, 86, 93, 94, 95, 96]));
+    final ai = BattleshipAi(random: Random(4));
+    final choices = List.generate(100, (_) => ai.choose(view));
+    expect(choices.every(view.canFire), isTrue);
+    expect(choices.any(halo.contains), isFalse);
+  });
+
+  test('finishes the final damaged ship after other ships are sunk', () {
+    final session = _game();
+    final occupied = _enemyFleet().expand((ship) => ship.cells).toSet();
     _shootAndReturn(session, [
       for (var cell = 0; cell < 100; cell++)
+        if (!occupied.contains(cell)) cell,
+      for (final cell in occupied)
         if (cell != 45) cell,
     ]);
     final view = session.view(BattleshipSeat.player1);
@@ -191,6 +204,7 @@ void main() {
         expect(view.enemyFleet, isEmpty);
         final choice = players[seat.index].choose(view);
         expect(view.canFire(choice), isTrue);
+        expect(view.excludedCells, isNot(contains(choice)));
         session.fire(seat, choice);
         expect(++shots, lessThanOrEqualTo(199));
       }

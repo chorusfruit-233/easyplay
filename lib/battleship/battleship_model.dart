@@ -1,8 +1,33 @@
 const battleshipBoardSize = 10;
-const battleshipRulesVersion = 1;
+const battleshipRulesVersion = 2;
 const battleshipFleetCells = 17;
 
 bool battleshipInside(int cell) => cell >= 0 && cell < 100;
+
+/// The clipped one-cell ring around a ship, including diagonal neighbours.
+Set<int> battleshipShipHalo(Iterable<int> shipCells) {
+  final cells = shipCells.toSet();
+  if (cells.any((cell) => !battleshipInside(cell))) {
+    throw ArgumentError('舰船坐标必须位于海域内');
+  }
+  final halo = <int>{};
+  for (final cell in cells) {
+    final row = cell ~/ battleshipBoardSize;
+    final column = cell % battleshipBoardSize;
+    for (var dr = -1; dr <= 1; dr++) {
+      for (var dc = -1; dc <= 1; dc++) {
+        final r = row + dr, c = column + dc;
+        if (r >= 0 &&
+            r < battleshipBoardSize &&
+            c >= 0 &&
+            c < battleshipBoardSize) {
+          halo.add(r * battleshipBoardSize + c);
+        }
+      }
+    }
+  }
+  return Set.unmodifiable(halo.difference(cells));
+}
 
 String battleshipCoordinate(int cell) {
   if (!battleshipInside(cell)) throw ArgumentError.value(cell, 'cell');
@@ -174,6 +199,14 @@ final class BattleshipShot {
   }
 }
 
+/// Publicly inferred water around ships already sunk by these shots.
+Set<int> battleshipExcludedCells(Iterable<BattleshipShot> shots) =>
+    Set.unmodifiable({
+      for (final shot in shots)
+        if (shot.outcome == ShotOutcome.sunk)
+          ...battleshipShipHalo(shot.sunkCells),
+    });
+
 /// A recipient's immutable state. Unhit enemy ships do not exist in this view.
 final class BattleshipPlayerView {
   BattleshipPlayerView({
@@ -207,9 +240,11 @@ final class BattleshipPlayerView {
       shots.where((shot) => shot.attacker == seat);
   Iterable<BattleshipShot> get incomingShots =>
       shots.where((shot) => shot.attacker != seat);
+  Set<int> get excludedCells => battleshipExcludedCells(outgoingShots);
   bool canFire(int cell) =>
       isTurn &&
       battleshipInside(cell) &&
+      !excludedCells.contains(cell) &&
       !outgoingShots.any((shot) => shot.cell == cell);
 
   Map<String, Object?> toWire() => Map.unmodifiable({
@@ -293,11 +328,16 @@ final class BattleshipPlayerView {
     final sunkCells = <BattleshipSeat, Set<int>>{
       for (final player in BattleshipSeat.values) player: <int>{},
     };
+    final excluded = <BattleshipSeat, Set<int>>{
+      for (final player in BattleshipSeat.values) player: <int>{},
+    };
     BattleshipSeat? previous;
     for (var index = 0; index < shots.length; index++) {
       final shot = shots[index];
-      if (shot.attacker == previous || !fired[shot.attacker]!.add(shot.cell)) {
-        throw ArgumentError('回合顺序或重复开火无效');
+      if (shot.attacker == previous ||
+          excluded[shot.attacker]!.contains(shot.cell) ||
+          !fired[shot.attacker]!.add(shot.cell)) {
+        throw ArgumentError('回合顺序、重复开火或已排除海域无效');
       }
       previous = shot.attacker;
       final knownFleet = shot.attacker != seat
@@ -326,12 +366,15 @@ final class BattleshipPlayerView {
       }
       if (shot.outcome != ShotOutcome.miss) hits[shot.attacker]!.add(shot.cell);
       if (shot.outcome == ShotOutcome.sunk) {
+        final halo = battleshipShipHalo(shot.sunkCells);
         if (!sunk[shot.attacker]!.add(shot.sunkShip!) ||
             !shot.sunkCells.every(hits[shot.attacker]!.contains) ||
-            shot.sunkCells.any(sunkCells[shot.attacker]!.contains)) {
-          throw ArgumentError('击沉结果缺少公开命中记录或舰船重叠');
+            shot.sunkCells.any(sunkCells[shot.attacker]!.contains) ||
+            halo.any(hits[shot.attacker]!.contains)) {
+          throw ArgumentError('击沉结果缺少公开命中记录，或舰船重叠、相邻');
         }
         sunkCells[shot.attacker]!.addAll(shot.sunkCells);
+        excluded[shot.attacker]!.addAll(halo);
       }
       if (hits[shot.attacker]!.length >= battleshipFleetCells &&
           (hits[shot.attacker]!.length != battleshipFleetCells ||
@@ -389,12 +432,14 @@ void validateBattleshipFleet(
 
 void _validateFleet(List<ShipPlacement> fleet, {required bool complete}) {
   final types = <ShipType>{};
-  final cells = <int>{};
+  final blocked = <int>{};
   for (final placement in fleet) {
-    if (!types.add(placement.ship) ||
-        placement.cells.any((cell) => !cells.add(cell))) {
-      throw ArgumentError('舰船不能重复或重叠');
+    if (!types.add(placement.ship) || placement.cells.any(blocked.contains)) {
+      throw ArgumentError('舰船不能重复、重叠或相邻（包括斜角）');
     }
+    blocked
+      ..addAll(placement.cells)
+      ..addAll(battleshipShipHalo(placement.cells));
   }
   if (complete && types.length != ShipType.values.length) {
     throw ArgumentError('请完整布置五艘舰船');

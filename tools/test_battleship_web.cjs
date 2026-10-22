@@ -87,6 +87,8 @@ const root = path.resolve(__dirname, '../build/battleship-smoke');
     assert.equal((await state(p)).view.ownFleet.length,0,'Preview must not commit a ship');
     await clickKey(p,'battleship-place');
     assert.equal((await state(p)).view.ownFleet.length,1);
+    await clickKey(p,'battleship-own-cell-15');
+    assert.equal(await p.getByRole('button',{name:'放置战列舰',exact:true}).isDisabled(),true,'Ships cannot touch even diagonally');
     await clickKey(p,'battleship-own-cell-9');
     assert.equal(await p.getByRole('button',{name:'放置战列舰',exact:true}).isDisabled(),true,'Horizontal ship cannot wrap around an edge');
     await clickKey(p,'battleship-rotate');
@@ -169,6 +171,7 @@ const root = path.resolve(__dirname, '../build/battleship-smoke');
         for(const raw of wire) {
           const message=JSON.parse(raw);if(message.action!=='snapshot') continue;
           assert.equal(message.type,'battleship');assert.equal(message.payload.view.seat,i);
+          assert.equal(message.protocolVersion,1);assert.equal(message.rulesVersion,2);
           assert.deepEqual(Object.keys(message.payload).sort(),['roomId','started','round','view','seats','rematch'].sort());
           assert.deepEqual(Object.keys(message.payload.view).sort(),['seat','phase','turn','winner','ready','ownFleet','enemyFleet','shots'].sort());
           if(message.payload.view.phase!=='finished') assert.deepEqual(message.payload.view.enemyFleet,[],'No opponent fleet may be serialized during play');
@@ -191,10 +194,40 @@ const root = path.resolve(__dirname, '../build/battleship-smoke');
       assert.deepEqual((await state(pages[1])).view,before,'Reconnect restores only the same private fleet and public history');
     }
     assert.ok(await pages[1].evaluate(()=>window.__battleshipDroppedHello>0));
+    let checkedHalo=false;
     for(let n=0;n<200;n++) {
       const s=await state(pages[0]);if(s.view.phase==='finished') break;
-      await action(pages[s.view.turn],'auto');
+      const shooter=pages[s.view.turn],current=await state(shooter);
+      const fired=new Set(current.view.shots.filter(shot=>shot.attacker===current.view.seat).map(shot=>shot.cell));
+      const halo=current.excludedCells.find(cell=>!fired.has(cell));
+      if(!checkedHalo && halo!==undefined) {
+        console.log('Sunk ship: inferred water is visible, untargetable and does not add shots');
+        const sunk=current.view.shots.filter(shot=>shot.attacker===current.view.seat && shot.outcome==='sunk');
+        assert.ok(sunk.length>0);
+        const expected=new Set();
+        for(const shot of sunk) {
+          const hull=new Set(shot.sunkCells);
+          for(const cell of hull) for(let dr=-1;dr<=1;dr++) for(let dc=-1;dc<=1;dc++) {
+            const row=Math.floor(cell/10)+dr,column=cell%10+dc,target=row*10+column;
+            if(row>=0 && row<10 && column>=0 && column<10 && !hull.has(target)) expected.add(target);
+          }
+        }
+        assert.deepEqual([...current.excludedCells].sort((a,b)=>a-b),[...expected].sort((a,b)=>a-b));
+        const coordinate=String.fromCharCode(65+Math.floor(halo/10))+(halo%10+1);
+        await clickKey(shooter,`battleship-target-cell-${halo}`);
+        assert.equal(await shooter.getByRole('button',{name:`敌方海域 ${coordinate} 已排除，击沉周边`,exact:true}).isDisabled(),true);
+        assert.equal(await shooter.getByRole('button',{name:'确认开火',exact:true}).isDisabled(),true);
+        assert.deepEqual((await state(shooter)).view,current.view,'Tapping inferred water cannot change history, turn or private view');
+        assert.deepEqual((await state(shooter)).view.enemyFleet,[],'Only the sunk hull is public');
+        await scroll(shooter,-10000);await shooter.screenshot({path:path.join(root,'battle-portrait.png')});
+        await shooter.setViewportSize({width:844,height:390});await frame(shooter);await scroll(shooter,-10000);
+        await shooter.screenshot({path:path.join(root,'battle-landscape.png')});
+        await shooter.setViewportSize({width:390,height:844});await frame(shooter);
+        checkedHalo=true;
+      }
+      await action(shooter,'auto');
     }
+    assert.equal(checkedHalo,true,'A full match must exercise automatic sunk-ship exclusion');
     await privacy();
     for(const p of pages) {
       const s=await state(p);assert.equal(s.view.phase,'finished');
@@ -207,7 +240,7 @@ const root = path.resolve(__dirname, '../build/battleship-smoke');
     }
     await privacy();
     assert.deepEqual(errors,[]);
-    console.log('BATTLESHIP WEB PASS: home, manual/random fleets, confirmed fire, private handoff, AI resume, two real RTC views, reconnect, complete game and rematch');
+    console.log('BATTLESHIP WEB PASS: home, separated manual/random fleets, confirmed fire, sunk-ship exclusion, private handoff, AI resume, two real RTC views, reconnect, complete game and rematch');
   } catch(error) {
     await Promise.all(pages.map((p,i)=>p.screenshot({path:path.join(root,`failure-${i}.png`)}).catch(()=>{})));
     throw error;

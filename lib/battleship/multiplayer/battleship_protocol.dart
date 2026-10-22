@@ -1,4 +1,5 @@
 import '../../lan/lan_protocol.dart';
+import '../battleship_model.dart' show battleshipRulesVersion;
 
 export '../../lan/lan_protocol.dart' show LanMessage, LanMessageType;
 
@@ -9,7 +10,7 @@ LanMessage battleshipMessage(
 ) => LanMessage(LanMessageType.battleship, seq, {
   'game': 'battleship',
   'protocolVersion': 1,
-  'rulesVersion': 1,
+  'rulesVersion': battleshipRulesVersion,
   'action': action,
   'payload': payload,
 });

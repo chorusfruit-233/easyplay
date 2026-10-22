@@ -13,7 +13,7 @@ BattleshipSession readyGame() {
     for (final ship in ShipType.values) {
       game.place(
         seat,
-        ShipPlacement(ship, ship.index * 10, ShipDirection.horizontal),
+        ShipPlacement(ship, ship.index * 20, ShipDirection.horizontal),
       );
     }
     game.ready(seat);
@@ -21,7 +21,60 @@ BattleshipSession readyGame() {
   return game;
 }
 
+BattleshipShot outgoing(
+  int cell,
+  ShotOutcome outcome, {
+  ShipType? sunkShip,
+  List<int> sunkCells = const [],
+}) => BattleshipShot(
+  attacker: BattleshipSeat.player1,
+  cell: cell,
+  outcome: outcome,
+  sunkShip: sunkShip,
+  sunkCells: sunkCells,
+);
+
+Map<String, Object?> historyWire(List<BattleshipShot> outgoing) {
+  final wire = copy(readyGame().view(BattleshipSeat.player1).toWire());
+  wire['turn'] = 1;
+  wire['shots'] = [
+    for (var index = 0; index < outgoing.length; index++) ...[
+      outgoing[index].toWire(),
+      if (index < outgoing.length - 1)
+        BattleshipShot(
+          attacker: BattleshipSeat.player2,
+          cell: 99 - index,
+          outcome: ShotOutcome.miss,
+        ).toWire(),
+    ],
+  ];
+  return wire;
+}
+
 void main() {
+  test('ship halos clip every edge, exclude ship cells and are immutable', () {
+    expect(battleshipRulesVersion, 2);
+    expect(battleshipShipHalo([0, 1]), {2, 10, 11, 12});
+    expect(battleshipShipHalo([0, 10]), {1, 11, 20, 21});
+    expect(battleshipShipHalo([89, 99]), {78, 79, 88, 98});
+    expect(battleshipShipHalo([99]), {88, 89, 98});
+    expect(battleshipShipHalo([44, 45]), {
+      33,
+      34,
+      35,
+      36,
+      43,
+      46,
+      53,
+      54,
+      55,
+      56,
+    });
+    expect(battleshipShipHalo([]), isEmpty);
+    expect(() => battleshipShipHalo([100]), throwsArgumentError);
+    expect(() => battleshipShipHalo([0, 1]).add(99), throwsUnsupportedError);
+  });
+
   test('coordinate labels include every edge without row wrapping', () {
     expect(battleshipCoordinate(0), 'A1');
     expect(battleshipCoordinate(9), 'A10');
@@ -223,12 +276,14 @@ void main() {
         () => BattleshipPlayerView.fromWire(duplicate),
         throwsFormatException,
       );
-      final overlap = copy(base);
-      ((overlap['ownFleet'] as List)[1] as Map)['start'] = 1;
-      expect(
-        () => BattleshipPlayerView.fromWire(overlap),
-        throwsFormatException,
-      );
+      for (final start in [1, 10, 15]) {
+        final touching = copy(base);
+        ((touching['ownFleet'] as List)[1] as Map)['start'] = start;
+        expect(
+          () => BattleshipPlayerView.fromWire(touching),
+          throwsFormatException,
+        );
+      }
     },
   );
 
@@ -305,6 +360,138 @@ void main() {
     expect(() => BattleshipPlayerView.fromWire(wire), throwsFormatException);
   });
 
+  test(
+    'inferred water is derived from public sinks and allows earlier misses',
+    () {
+      final wire = historyWire([
+        outgoing(10, ShotOutcome.miss),
+        outgoing(0, ShotOutcome.hit),
+        outgoing(
+          1,
+          ShotOutcome.sunk,
+          sunkShip: ShipType.destroyer,
+          sunkCells: [0, 1],
+        ),
+      ]);
+      final view = BattleshipPlayerView.fromWire(wire);
+      expect(view.excludedCells, {2, 10, 11, 12});
+      expect(battleshipExcludedCells(view.outgoingShots), view.excludedCells);
+      expect(battleshipExcludedCells(view.incomingShots), isEmpty);
+      expect(view.outgoingShots.first.outcome, ShotOutcome.miss);
+      expect(() => view.excludedCells.clear(), throwsUnsupportedError);
+      expect(view.toWire().containsKey('excludedCells'), isFalse);
+      expect(
+        BattleshipPlayerView.fromWire(view.toWire()).toWire(),
+        view.toWire(),
+      );
+    },
+  );
+
+  test('history rejects shots into a ring only after the ship was sunk', () {
+    for (final outcome in [ShotOutcome.miss, ShotOutcome.hit]) {
+      final wire = historyWire([
+        outgoing(0, ShotOutcome.hit),
+        outgoing(
+          1,
+          ShotOutcome.sunk,
+          sunkShip: ShipType.destroyer,
+          sunkCells: [0, 1],
+        ),
+        outgoing(12, outcome),
+      ]);
+      expect(() => BattleshipPlayerView.fromWire(wire), throwsFormatException);
+    }
+  });
+
+  test('separated sunken ships may share inferred water in their halos', () {
+    final view = BattleshipPlayerView.fromWire(
+      historyWire([
+        outgoing(0, ShotOutcome.hit),
+        outgoing(
+          1,
+          ShotOutcome.sunk,
+          sunkShip: ShipType.destroyer,
+          sunkCells: [0, 1],
+        ),
+        outgoing(3, ShotOutcome.hit),
+        outgoing(4, ShotOutcome.hit),
+        outgoing(
+          5,
+          ShotOutcome.sunk,
+          sunkShip: ShipType.cruiser,
+          sunkCells: [3, 4, 5],
+        ),
+      ]),
+    );
+    expect(view.excludedCells, {2, 6, 10, 11, 12, 13, 14, 15, 16});
+    expect(view.excludedCells.intersection({0, 1, 3, 4, 5}), isEmpty);
+  });
+
+  test('sinking rejects earlier hits from another ship in its ring', () {
+    for (final otherHit in [2, 10, 12]) {
+      final wire = historyWire([
+        outgoing(otherHit, ShotOutcome.hit),
+        outgoing(0, ShotOutcome.hit),
+        outgoing(
+          1,
+          ShotOutcome.sunk,
+          sunkShip: ShipType.destroyer,
+          sunkCells: [0, 1],
+        ),
+      ]);
+      expect(() => BattleshipPlayerView.fromWire(wire), throwsFormatException);
+    }
+  });
+
+  test(
+    'public sunk ships cannot touch and exclusion histories stay per player',
+    () {
+      final adjacent = historyWire([
+        outgoing(0, ShotOutcome.hit),
+        outgoing(12, ShotOutcome.hit),
+        outgoing(13, ShotOutcome.hit),
+        outgoing(
+          1,
+          ShotOutcome.sunk,
+          sunkShip: ShipType.destroyer,
+          sunkCells: [0, 1],
+        ),
+        outgoing(
+          14,
+          ShotOutcome.sunk,
+          sunkShip: ShipType.cruiser,
+          sunkCells: [12, 13, 14],
+        ),
+      ]);
+      expect(
+        () => BattleshipPlayerView.fromWire(adjacent),
+        throwsFormatException,
+      );
+
+      final independent = historyWire([
+        outgoing(0, ShotOutcome.hit),
+        outgoing(
+          1,
+          ShotOutcome.sunk,
+          sunkShip: ShipType.destroyer,
+          sunkCells: [0, 1],
+        ),
+      ]);
+      (independent['shots'] as List).add(
+        BattleshipShot(
+          attacker: BattleshipSeat.player2,
+          cell: 10,
+          outcome: ShotOutcome.miss,
+        ).toWire(),
+      );
+      independent['turn'] = 0;
+      final view = BattleshipPlayerView.fromWire(independent);
+      expect(view.excludedCells, contains(10));
+      expect(view.incomingShots.last.cell, 10);
+      expect(battleshipExcludedCells(view.incomingShots), isEmpty);
+    },
+  );
+
   test('finished snapshots preserve the turn at resignation and final hit', () {
     final resigned = readyGame();
     resigned.fire(BattleshipSeat.player1, 99);
@@ -326,10 +513,19 @@ void main() {
         .ownFleet
         .expand((ship) => ship.cells)
         .toList();
+    final ownCells = won
+        .view(BattleshipSeat.player1)
+        .ownFleet
+        .expand((ship) => ship.cells)
+        .toSet();
+    final replies = [
+      for (var cell = 0; cell < 100; cell++)
+        if (!ownCells.contains(cell)) cell,
+    ];
     for (var index = 0; index < targets.length; index++) {
       won.fire(BattleshipSeat.player1, targets[index]);
       if (index < targets.length - 1) {
-        won.fire(BattleshipSeat.player2, 50 + index);
+        won.fire(BattleshipSeat.player2, replies[index]);
       }
     }
     final winWire = copy(won.view(BattleshipSeat.player1).toWire());

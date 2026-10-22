@@ -5,8 +5,7 @@ import 'battleship_model.dart';
 /// Estimates remaining ship placements from public shot results alone.
 ///
 /// Hits narrow the search to the most likely continuation of a damaged ship.
-/// Sinking a ship removes its exact cells; neighbours remain possible because
-/// the classic fleet placement rules allow different ships to touch.
+/// Sinking a ship removes its cells and the surrounding ring from the search.
 class BattleshipAi {
   BattleshipAi({Random? random}) : _random = random ?? Random.secure();
 
@@ -23,8 +22,10 @@ class BattleshipAi {
         .toList();
     final sunkTypes = sunk.map((shot) => shot.sunkShip).toSet();
     final sunkCells = sunk.expand((shot) => shot.sunkCells).toSet();
+    final excluded = view.excludedCells;
     final blocked = {
       ...sunkCells,
+      ...excluded,
       ...shots
           .where((shot) => shot.outcome == ShotOutcome.miss)
           .map((shot) => shot.cell),
@@ -40,7 +41,7 @@ class BattleshipAi {
         cell < battleshipBoardSize * battleshipBoardSize;
         cell++
       )
-        if (!fired.contains(cell)) cell,
+        if (!fired.contains(cell) && !excluded.contains(cell)) cell,
     ];
     if (available.isEmpty) throw StateError('没有尚未开火的位置');
 
@@ -64,7 +65,10 @@ class BattleshipAi {
           final cells = [
             for (var i = 0; i < ship.length; i++) start + i * step,
           ];
-          if (cells.any(blocked.contains)) continue;
+          if (cells.any(blocked.contains) ||
+              battleshipShipHalo(cells).any(damaged.contains)) {
+            continue;
+          }
           final unknown = cells.where((cell) => !fired.contains(cell)).toList();
           if (unknown.isEmpty) continue;
           final evidence = cells.where(damaged.contains).length;

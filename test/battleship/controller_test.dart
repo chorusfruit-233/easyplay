@@ -6,7 +6,8 @@ List<ShipPlacement> _fleet({int rowOffset = 0}) => [
   for (final ship in ShipType.values)
     ShipPlacement(
       ship,
-      (ship.index + rowOffset) * battleshipBoardSize,
+      ((ship.index * 2 + rowOffset) % battleshipBoardSize) *
+          battleshipBoardSize,
       ShipDirection.horizontal,
     ),
 ];

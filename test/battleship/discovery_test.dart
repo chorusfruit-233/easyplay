@@ -1,5 +1,10 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:easyplay/battleship/battleship.dart';
 import 'package:easyplay/battleship/multiplayer/battleship_lan.dart';
 import 'package:easyplay/battleship/multiplayer/battleship_room_coordinator.dart';
+import 'package:easyplay/lan/lan_protocol.dart';
 import 'package:easyplay/lan/lan_scanner.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -27,4 +32,41 @@ void main() {
       expect(found.single.players, 0);
     },
   );
+
+  for (final rulesVersion in [battleshipRulesVersion, 1, 2.0]) {
+    test(
+      'scanner checks integer Battleship rule version $rulesVersion',
+      () async {
+        final server = await HttpServer.bind('127.0.0.1', 0);
+        server.listen((request) async {
+          final body = jsonEncode({
+            'app': 'easyplay',
+            'version': lanProtocolVersion,
+            'game': 'battleship',
+            'rulesVersion': rulesVersion,
+            'protocolVersion': 1,
+            'players': 1,
+            'maxPlayers': 2,
+          });
+          request.response
+            ..headers.contentType = ContentType.json
+            ..contentLength = utf8.encode(body).length
+            ..write(body);
+          await request.response.close();
+        });
+        addTearDown(() => server.close(force: true));
+        final found = await scanLanTargets(
+          ['127.0.0.1'],
+          ports: [server.port],
+          timeout: const Duration(seconds: 2),
+        );
+        expect(
+          found,
+          rulesVersion is int && rulesVersion == battleshipRulesVersion
+              ? hasLength(1)
+              : isEmpty,
+        );
+      },
+    );
+  }
 }
