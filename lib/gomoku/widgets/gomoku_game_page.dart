@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../../game_session.dart' show Cell, Side, SideX;
 import '../../go_placement.dart';
+import '../../records/record_replay.dart';
+import '../../records/widgets/record_playback_page.dart';
 import '../gomoku_ai_level.dart';
 import '../gomoku_player.dart';
 import '../engine/rapfi_player.dart';
@@ -225,6 +227,30 @@ class _GomokuGamePageState extends State<GomokuGamePage>
     }
   }
 
+  Future<void> _playRecord() async {
+    if (_modal || _leaving) return;
+    setState(() {
+      _cancelAi();
+      _modal = true;
+    });
+    try {
+      final replay = GomokuRecordReplay(
+        GomokuRecord(id: _recordId, createdAt: _createdAt, session: _session),
+      );
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(builder: (_) => RecordPlaybackPage(record: replay)),
+      );
+    } catch (error) {
+      if (mounted) setState(() => _message = '无法播放棋谱：$error');
+    } finally {
+      if (mounted) {
+        setState(() => _modal = false);
+        _driveAi();
+      }
+    }
+  }
+
   Future<void> _undo() async {
     if (!_canUndo || _modal) return;
     _cancelAi();
@@ -312,7 +338,16 @@ class _GomokuGamePageState extends State<GomokuGamePage>
       }
     },
     child: Scaffold(
-      appBar: AppBar(title: Text(_session.variant.label)),
+      appBar: AppBar(
+        title: Text(_session.variant.label),
+        actions: [
+          IconButton(
+            tooltip: '播放棋谱',
+            onPressed: _modal ? null : _playRecord,
+            icon: const Icon(Icons.play_circle_outline),
+          ),
+        ],
+      ),
       body: SafeArea(
         child: GomokuMatchLayout(
           header: Card(

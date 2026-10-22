@@ -34,6 +34,8 @@
 
 两种游戏的独立[棋谱库](docs/RECORD_LIBRARIES.md)保留全部对局，不按数量自动淘汰。跳棋支持 PDN 导入与导出；五子棋 SGF 用于交流正式落子和停着，JSON 保留交换、候选点等完整开局操作，当前尚无五子棋文件导入。
 
+围棋、跳棋和五子棋的全部棋谱支持自动播放、暂停、逐步前后退、进度拖动及三档速度。围棋可选 SGF 变着，五子棋完整展示交换与候选点；播放不会改写棋谱或启动 AI，原有继续对局入口保留。
+
 ## 界面预览
 
 <img src="docs/images/battleship-placement.png" width="280" alt="海战棋秘密布阵与位置确认" /> <img src="docs/images/battleship-battle.png" width="280" alt="海战棋海域侦察与开火确认" />

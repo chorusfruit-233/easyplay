@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../game_session.dart' show Side;
 import '../../record_file_service.dart';
+import '../../records/record_replay.dart';
+import '../../records/widgets/record_playback_page.dart';
 import '../draughts_ai_level.dart';
 import '../draughts_notation.dart';
 import '../draughts_record.dart';
@@ -84,6 +86,18 @@ class _DraughtsLibraryPageState extends State<DraughtsLibraryPage> {
       _notice('导出失败：$error');
     } finally {
       if (mounted) setState(() => _exporting.remove(record));
+    }
+  }
+
+  Future<void> _play(DraughtsRecord record) async {
+    try {
+      final replay = DraughtsRecordReplay(record);
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(builder: (_) => RecordPlaybackPage(record: replay)),
+      );
+    } catch (error) {
+      _notice('无法播放棋谱：$error');
     }
   }
 
@@ -277,17 +291,22 @@ class _DraughtsLibraryPageState extends State<DraughtsLibraryPage> {
       children: [
         IconButton(
           constraints: const BoxConstraints.tightFor(width: 48, height: 48),
-          key: ValueKey('draughts-export-${record.id}'),
-          tooltip: '导出 PDN',
-          onPressed: _exporting.contains(record) ? null : () => _export(record),
-          icon: const Icon(Icons.download_outlined),
+          tooltip: '播放棋谱',
+          onPressed: () => _play(record),
+          icon: const Icon(Icons.play_circle_outline),
         ),
         SizedBox.square(
           dimension: 48,
           child: PopupMenuButton<String>(
             tooltip: '棋谱操作',
-            onSelected: (_) => _delete(record),
+            onSelected: (action) =>
+                action == 'export' ? _export(record) : _delete(record),
             itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'export',
+                enabled: !_exporting.contains(record),
+                child: const Text('导出 PDN'),
+              ),
               PopupMenuItem(
                 value: 'delete',
                 enabled: record.id != null,

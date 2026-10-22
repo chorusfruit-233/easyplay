@@ -18,6 +18,8 @@ import 'go_engine_manager.dart';
 import 'katago.dart';
 import 'board.dart';
 import 'go_placement.dart';
+import 'records/record_replay.dart';
+import 'records/widgets/record_playback_page.dart';
 
 extension GameTypeX on GameType {
   String get label => switch (this) {
@@ -1830,6 +1832,30 @@ class _GamePageState extends State<GamePage> {
     }
   }
 
+  Future<void> _playRecord() async {
+    _pauseComputer();
+    try {
+      try {
+        await _kataGo.stop();
+      } catch (_) {
+        // A stopped or unavailable engine does not prevent record playback.
+      }
+      if (!mounted) return;
+      final record = GoRecordReplay(_persistedRecordSgf());
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(builder: (_) => RecordPlaybackPage(record: record)),
+      );
+    } catch (error) {
+      _notice('无法播放棋谱：$error');
+    } finally {
+      if (mounted) {
+        setState(() => _modalOpen = false);
+        _scheduleComputerMove();
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -1863,8 +1889,11 @@ class _GamePageState extends State<GamePage> {
             if (value == 'variations') _chooseSgfVariation();
             if (value == 'record_tools') _chooseRecordTool();
             if (value == 'show_sgf') _showSgfText();
+            if (value == 'play_record') _playRecord();
           },
           itemBuilder: (_) => [
+            if (widget.type == GameType.go && !_onlineReplay)
+              const PopupMenuItem(value: 'play_record', child: Text('播放棋谱')),
             if (widget.type == GameType.go && !_onlineReplay)
               const PopupMenuItem(value: 'restore', child: Text('恢复上次对局')),
             if (widget.type == GameType.go)

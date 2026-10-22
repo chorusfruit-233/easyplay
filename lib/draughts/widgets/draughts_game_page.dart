@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../game_session.dart' show Cell, Side, SideX;
+import '../../records/record_replay.dart';
+import '../../records/widgets/record_playback_page.dart';
 import '../draughts_move.dart';
 import '../draughts_notation.dart';
 import '../draughts_record.dart';
@@ -354,6 +356,28 @@ class _DraughtsGamePageState extends State<DraughtsGamePage>
     );
   }
 
+  Future<void> _playRecord() async {
+    if (_modal) return;
+    setState(() {
+      _cancelAi();
+      _modal = true;
+    });
+    try {
+      final replay = DraughtsRecordReplay(DraughtsRecord.fromSession(_session));
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(builder: (_) => RecordPlaybackPage(record: replay)),
+      );
+    } catch (error) {
+      if (mounted) setState(() => _message = '无法播放棋谱：$error');
+    } finally {
+      if (mounted) {
+        setState(() => _modal = false);
+        _driveAi();
+      }
+    }
+  }
+
   String get _status {
     final result = _session.result;
     if (result != null) {
@@ -380,6 +404,11 @@ class _DraughtsGamePageState extends State<DraughtsGamePage>
       appBar: AppBar(
         title: Text(_session.variant.label),
         actions: [
+          IconButton(
+            tooltip: '播放棋谱',
+            onPressed: _modal ? null : _playRecord,
+            icon: const Icon(Icons.play_circle_outline),
+          ),
           PopupMenuButton<String>(
             onSelected: (value) {
               if (value == 'pdn') _showPdn();

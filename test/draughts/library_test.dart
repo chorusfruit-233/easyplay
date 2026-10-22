@@ -81,7 +81,9 @@ void main() {
     await DraughtsStorage.save(finished);
     await tester.pumpWidget(const MaterialApp(home: DraughtsLibraryPage()));
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('导出 PDN'));
+    await tester.tap(find.byTooltip('棋谱操作'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('导出 PDN'));
     await tester.pumpAndSettle();
     expect(
       picker.savedFileName,
@@ -105,7 +107,9 @@ void main() {
       await DraughtsStorage.save(record());
       await tester.pumpWidget(const MaterialApp(home: DraughtsLibraryPage()));
       await tester.pumpAndSettle();
-      await tester.tap(find.byTooltip('导出 PDN'));
+      await tester.tap(find.byTooltip('棋谱操作'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('导出 PDN'));
       await tester.pumpAndSettle();
       expect(find.text('棋谱已导出'), findsNothing);
       expect(find.textContaining(fails ? '导出失败' : '已取消导出'), findsOneWidget);
@@ -174,7 +178,7 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: DraughtsLibraryPage()));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    for (final tooltip in ['导出 PDN', '棋谱操作']) {
+    for (final tooltip in ['播放棋谱', '棋谱操作']) {
       final rect = tester.getRect(find.byTooltip(tooltip));
       expect(rect.right, lessThanOrEqualTo(320));
       expect(rect.left, greaterThanOrEqualTo(0));
