@@ -33,7 +33,7 @@ class BattleshipHomePage extends StatelessWidget {
       children: [
         Text('先布阵，再侦察', style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 8),
-        const Text('10×10 隐藏海域，5 艘舰船。每回合开火一次，击沉敌方全部舰船获胜。'),
+        const Text('10×10 隐藏海域，5 艘舰船，布阵至少间隔一格。每回合开火一次，击沉后自动排除周围空格。'),
         const SizedBox(height: 20),
         for (final mode in [
           (

@@ -7,6 +7,7 @@ import '../../lan/lan_ports.dart';
 import '../../lan/lan_protocol.dart' show lanProtocolVersion;
 import '../../lan/lan_transport_io.dart' show SocketMessageTransport;
 import '../../lan/message_transport.dart';
+import '../battleship_model.dart' show battleshipRulesVersion;
 import 'battleship_room_coordinator.dart';
 
 bool get battleshipLanHostingSupported => true;
@@ -60,7 +61,7 @@ class BattleshipLanServer {
           'app': 'easyplay',
           'version': lanProtocolVersion,
           'game': 'battleship',
-          'rulesVersion': 1,
+          'rulesVersion': battleshipRulesVersion,
           'protocolVersion': 1,
           'players': coordinator.playerCount,
           'maxPlayers': 2,

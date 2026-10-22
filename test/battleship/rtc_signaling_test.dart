@@ -26,6 +26,8 @@ void main() {
     final offer = invitation();
     final wire = fields(offer);
     expect(wire['game'], 'battleship');
+    expect(wire['protocolVersion'], 1);
+    expect(wire['rulesVersion'], battleshipRulesVersion);
     expect(wire['seat'], BattleshipSeat.player2.index);
     expect(
       wire.keys,
@@ -71,8 +73,8 @@ void main() {
         {'formatVersion': 1.0},
         {'protocolVersion': 2},
         {'protocolVersion': 1.0},
-        {'rulesVersion': 2},
-        {'rulesVersion': 1.0},
+        {'rulesVersion': 1},
+        {'rulesVersion': 2.0},
         {'seat': 0},
         {'seat': 1.0},
         {'seat': 2},

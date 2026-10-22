@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:easyplay/battleship/battleship.dart';
 import 'package:easyplay/battleship/multiplayer/battleship_protocol.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -9,13 +10,15 @@ void main() {
     final decoded = LanMessage.decode(message.encode());
     expect(decoded.type, LanMessageType.battleship);
     expect(decoded.seq, 3);
+    expect(decoded.body['protocolVersion'], 1);
+    expect(decoded.body['rulesVersion'], battleshipRulesVersion);
     expect(battleshipPayload(decoded), {'cell': 42});
     for (final change in <Map<String, Object?>>[
       {'game': 'doudizhu'},
       {'protocolVersion': 2},
       {'protocolVersion': 1.0},
-      {'rulesVersion': 2},
-      {'rulesVersion': 1.0},
+      {'rulesVersion': 1},
+      {'rulesVersion': 2.0},
       {'action': ''},
       {'action': 3},
       {'action': 'x' * 33},

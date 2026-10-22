@@ -211,7 +211,7 @@ void main() {
     expect(find.text('舰队 0/5 · 对手已就绪'), findsOneWidget);
     await _tap(tester, 'own-cell-99');
     expect(tester.widget<FilledButton>(_key('place')).onPressed, isNull);
-    expect(find.text('该位置越界或与其他舰船重叠'), findsOneWidget);
+    expect(find.text('该位置越界、重叠或紧贴其他舰船，请至少间隔一格'), findsOneWidget);
     await _tap(tester, 'rotate');
     expect(find.text('纵向'), findsOneWidget);
     await _tap(tester, 'own-cell-0');

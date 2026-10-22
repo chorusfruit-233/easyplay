@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import '../battleship/battleship_model.dart' show battleshipRulesVersion;
 import '../chess/widgets/chess_lan_pages.dart';
 import '../draughts/draughts_variant.dart';
 import '../draughts/widgets/draughts_lan_pages.dart';
@@ -75,7 +76,9 @@ class LanWebRoom {
         return null;
       }
       if (game == 'battleship' &&
-          (data['rulesVersion'] != 1 ||
+          (data['rulesVersion'] is! int ||
+              data['rulesVersion'] != battleshipRulesVersion ||
+              data['protocolVersion'] is! int ||
               data['protocolVersion'] != 1 ||
               data['maxPlayers'] != 2)) {
         return null;

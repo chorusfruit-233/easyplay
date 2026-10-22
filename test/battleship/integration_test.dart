@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:easyplay/battleship/battleship.dart';
 import 'package:easyplay/battleship/widgets/battleship_home_page.dart';
 import 'package:easyplay/battleship/widgets/battleship_lobby_page.dart';
 import 'package:easyplay/game_session.dart';
@@ -39,7 +40,7 @@ void main() {
     'version': lanProtocolVersion,
     'game': 'battleship',
     'protocolVersion': 1,
-    'rulesVersion': 1,
+    'rulesVersion': battleshipRulesVersion,
     'players': 1,
     'maxPlayers': 2,
   };
@@ -76,6 +77,29 @@ void main() {
         isNull,
       );
     });
+  }
+
+  for (final patch in <Map<String, Object?>>[
+    {'rulesVersion': 1},
+    {'rulesVersion': 2.0},
+    {'protocolVersion': 1.0},
+  ]) {
+    test(
+      'Battleship probe rejects legacy or malformed versions $patch',
+      () async {
+        final client = MockClient(
+          (_) async => http.Response(jsonEncode({...probe, ...patch}), 200),
+        );
+        addTearDown(client.close);
+        expect(
+          await LanWebRoom.probe(
+            Uri.parse('http://192.168.1.20:8091'),
+            client: client,
+          ),
+          isNull,
+        );
+      },
+    );
   }
 
   for (final direct in [false, true]) {

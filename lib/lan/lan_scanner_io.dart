@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../battleship/battleship_model.dart' show battleshipRulesVersion;
 import 'lan_ports.dart';
 import 'lan_protocol.dart';
 
@@ -160,7 +161,9 @@ Future<LanEndpoint?> _probe(String host, int port, Duration timeout) async {
     }
     if (json['game'] == 'battleship' &&
         (json['version'] != lanProtocolVersion ||
-            json['rulesVersion'] != 1 ||
+            json['rulesVersion'] is! int ||
+            json['rulesVersion'] != battleshipRulesVersion ||
+            json['protocolVersion'] is! int ||
             json['protocolVersion'] != 1 ||
             json['maxPlayers'] != 2)) {
       return null;

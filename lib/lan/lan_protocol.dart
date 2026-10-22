@@ -1,6 +1,7 @@
 import '../xiangqi/xiangqi.dart';
 import 'dart:convert';
 
+import '../battleship/battleship_model.dart' show battleshipRulesVersion;
 import '../chess/chess_session.dart' show chessRulesVersion;
 import '../chess/chess_uci.dart' show parseUciMove;
 
@@ -203,7 +204,7 @@ class LanMessage {
             data['protocolVersion'] is! int ||
             data['protocolVersion'] != 1 ||
             data['rulesVersion'] is! int ||
-            data['rulesVersion'] != 1 ||
+            data['rulesVersion'] != battleshipRulesVersion ||
             data['action'] is! String ||
             (data['action'] as String).isEmpty ||
             (data['action'] as String).length > 32 ||
