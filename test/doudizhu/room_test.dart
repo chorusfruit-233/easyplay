@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:easyplay/lan/message_transport.dart';
 import 'package:easyplay/doudizhu/doudizhu.dart';
 import 'package:easyplay/doudizhu/multiplayer/card_room_coordinator.dart';
@@ -10,6 +11,51 @@ import 'test_support.dart';
 import '../support/drop_first_hello.dart';
 
 void main() {
+  test('local host keeps its ready seat after the lobby is suspended', () {
+    fakeAsync((time) {
+      final room = CardRoomCoordinator(password: 'room-pin');
+      final host = DouDizhuReplica();
+      final (authority, client) = MemoryTransport.pair();
+      room.attach(authority, fixedSeat: PlayerSeat.seat0);
+      var pings = 0;
+      host.onWireMessage = (raw) {
+        if (LanMessage.decode(raw).body['action'] == 'ping') pings++;
+      };
+      host.bind(client, token: room.hostCredential);
+      time.flushMicrotasks();
+      host.send('ready');
+      time.flushMicrotasks();
+      time.elapseBlocking(const Duration(minutes: 5));
+      time.elapse(const Duration(seconds: 5));
+      expect(pings, 0);
+      expect(host.connected, isTrue);
+      expect(room.seats[0]['connected'], isTrue);
+      expect(room.seats[0]['ready'], isTrue);
+      final guests = <DouDizhuReplica>[];
+      for (var i = 0; i < 2; i++) {
+        final guest = DouDizhuReplica();
+        final (remote, endpoint) = MemoryTransport.pair();
+        room.attach(remote);
+        guest.bind(endpoint, token: room.password);
+        time.flushMicrotasks();
+        guest.send('ready');
+        time.flushMicrotasks();
+        guests.add(guest);
+      }
+      expect(room.canStart, isTrue);
+      host.send('start');
+      time.flushMicrotasks();
+      expect(host.view!.publicState.phase, DouDizhuPhase.bidding);
+      host.close();
+      for (final guest in guests) {
+        guest.close();
+      }
+      room.close();
+      time.flushMicrotasks();
+      expect(time.pendingTimers, isEmpty);
+    });
+  });
+
   test(
     'negotiated HELLO retry recovers loss and duplicates preserve seat/seq',
     () async {

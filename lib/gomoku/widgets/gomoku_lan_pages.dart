@@ -108,10 +108,7 @@ class _GomokuLanRoomPageState extends State<GomokuLanRoomPage> {
       await server.start();
       final addresses = await lanLocalAddresses();
       final connection = LanClientConnection.gomoku(variant: widget.variant);
-      await connection.connect(
-        Uri.parse('ws://127.0.0.1:${server.port}'),
-        token: _token,
-      );
+      await connection.connectHost(server);
       if (!mounted) {
         await connection.close();
         await server.close();

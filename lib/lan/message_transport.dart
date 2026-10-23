@@ -44,7 +44,9 @@ class HelloRetry {
   void cancel() => _timer?.cancel();
 }
 
-/// An asynchronous pair also lets the browser host use a real local replica.
+/// An asynchronous pair lets the host use a real authenticated local replica.
+/// Both endpoints share an isolate and lifetime; network heartbeat deadlines
+/// must not evict them after the app resumes from a background suspension.
 class MemoryTransport implements MessageTransport {
   MemoryTransport._();
   static (MemoryTransport, MemoryTransport) pair() {

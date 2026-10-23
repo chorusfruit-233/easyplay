@@ -33,6 +33,7 @@ class CardRoomCoordinator extends ChangeNotifier {
     : session = session ?? DouDizhuSession() {
     _heartbeat = Timer.periodic(const Duration(seconds: 5), (_) {
       for (final c in _connections.toList()) {
+        if (c.transport is MemoryTransport) continue;
         if (DateTime.now().difference(c.lastSeen) >
             const Duration(seconds: 20)) {
           _detach(c);

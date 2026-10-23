@@ -131,6 +131,9 @@ class LanClientConnection {
   Stream<void> get disconnections => const Stream.empty();
   Future<void> reconnect() async =>
       throw UnsupportedError('当前平台没有可用的 Socket 传输');
+  Future<void> connectHost(LanHostServer server) async =>
+      throw UnsupportedError('当前平台不能创建局域网房间');
+
   Future<void> connect(Uri uri, {required String token}) async {
     throw UnsupportedError('当前平台没有可用的 Socket 传输');
   }

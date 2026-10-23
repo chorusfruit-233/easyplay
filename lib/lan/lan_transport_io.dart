@@ -241,11 +241,16 @@ class SocketMessageTransport implements MessageTransport {
           _messages.addError(error);
         }
       },
-      onDone: () => _disconnections.add(null),
-      onError: (_) => _disconnections.add(null),
+      onDone: () {
+        if (!_closed) _disconnections.add(null);
+      },
+      onError: (_) {
+        if (!_closed) _disconnections.add(null);
+      },
     );
   }
   final WebSocket socket;
+  bool _closed = false;
   late final StreamSubscription<Object?> _subscription;
   final _messages = StreamController<LanMessage>.broadcast();
   final _disconnections = StreamController<void>.broadcast();
@@ -257,6 +262,8 @@ class SocketMessageTransport implements MessageTransport {
   void send(LanMessage message) => socket.add(message.encode());
   @override
   Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
     await _subscription.cancel();
     await socket.close();
     await _messages.close();
@@ -307,7 +314,11 @@ class LanClientConnection {
   final DraughtsVariant? draughtsVariant;
   final _messages = StreamController<LanMessage>.broadcast();
   final _disconnections = StreamController<void>.broadcast();
-  WebSocket? _socket;
+  MessageTransport? _transport;
+  StreamSubscription<LanMessage>? _subscription;
+  StreamSubscription<void>? _disconnects;
+  LanHostServer? _localServer;
+  bool _closed = false;
   Uri? _uri;
   String? _token;
   Timer? _heartbeat;
@@ -330,11 +341,28 @@ class LanClientConnection {
   Stream<void> get disconnections => _disconnections.stream;
 
   Future<void> reconnect() async {
+    if (_localServer != null) return connectHost(_localServer!);
     if (_uri == null || _token == null) throw StateError('没有可重连的房间');
     await connect(_uri!, token: _token!);
   }
 
+  /// The host and authority share one isolate, so their connection must not
+  /// expire when Android suspends that isolate in the background.
+  Future<void> connectHost(LanHostServer server) async {
+    if (_closed) throw StateError('房间已关闭');
+    final (authority, local) = MemoryTransport.pair();
+    server.coordinator.attach(
+      authority,
+      identity: 'host',
+      fixedSide: server.coordinator.firstSide,
+    );
+    _localServer = server;
+    await _bind(local, token: server.token);
+  }
+
   Future<void> connect(Uri uri, {required String token}) async {
+    if (_closed) throw StateError('房间已关闭');
+    _localServer = null;
     if (isGomoku) {
       LanMessage.validateGomokuConfig(
         LanMessage.gomokuConfigToWire(gomokuVariant!),
@@ -346,7 +374,22 @@ class LanClientConnection {
         ? uri
         : uri.replace(path: '/easyplay/ws');
     final socket = await WebSocket.connect(socketUri.toString());
-    _socket = socket;
+    await _bind(SocketMessageTransport(socket), token: token);
+  }
+
+  Future<void> _bind(
+    MessageTransport transport, {
+    required String token,
+  }) async {
+    _heartbeat?.cancel();
+    await _subscription?.cancel();
+    await _disconnects?.cancel();
+    await _transport?.close();
+    if (_closed) {
+      await transport.close();
+      throw StateError('房间已关闭');
+    }
+    _transport = transport;
     if (isXiangqi) {
       xiangqiReplica ??= XiangqiLanReplica();
     } else if (isGomoku) {
@@ -359,17 +402,16 @@ class LanClientConnection {
       replica ??= LanReplica(config);
     }
     final handshake = Completer<void>();
-    socket.listen(
-      (raw) {
-        if (!identical(_socket, socket)) return;
+    _subscription = transport.messages.listen(
+      (message) {
+        if (!identical(_transport, transport)) return;
         try {
-          final message = LanMessage.decode(raw as String);
           _lastPong = DateTime.now();
           if (message.type == LanMessageType.ping) {
-            socket.add(
+            transport.send(
               LanMessage(LanMessageType.pong, seq, {
                 'nonce': message.body['nonce'],
-              }).encode(),
+              }),
             );
             return;
           }
@@ -407,7 +449,7 @@ class LanClientConnection {
                   chessReplica?.stateRequest() ??
                   draughtsReplica?.stateRequest() ??
                   replica!.stateRequest();
-              socket.add(stateRequest.encode());
+              transport.send(stateRequest);
               return;
             }
             if (message.type == LanMessageType.stateSync &&
@@ -420,26 +462,20 @@ class LanClientConnection {
           if (!handshake.isCompleted) handshake.completeError(error);
         }
       },
-      onDone: () {
-        if (identical(_socket, socket)) {
-          _heartbeat?.cancel();
-          _socket = null;
-          if (!_disconnections.isClosed) _disconnections.add(null);
-        }
-        if (!handshake.isCompleted) {
-          handshake.completeError(StateError('连接已关闭'));
-        }
-      },
       onError: (Object error) {
-        if (identical(_socket, socket)) {
-          _heartbeat?.cancel();
-          _socket = null;
-          if (!_disconnections.isClosed) _disconnections.add(null);
-        }
         if (!handshake.isCompleted) handshake.completeError(error);
+        _lost(transport);
+        unawaited(transport.close());
       },
     );
-    socket.add(
+    _disconnects = transport.disconnections.listen((_) {
+      _lost(transport);
+      if (!handshake.isCompleted) {
+        handshake.completeError(StateError('连接已关闭'));
+      }
+      unawaited(transport.close());
+    });
+    transport.send(
       LanMessage(LanMessageType.hello, 0, {
         'roomVersion': lanProtocolVersion,
         if (!isXiangqi && !isGomoku && !isChess && draughtsVariant == null)
@@ -463,47 +499,63 @@ class LanClientConnection {
         if (isGomoku) ...LanMessage.gomokuConfigToWire(gomokuVariant!),
         'token': token,
         if (side != null) 'resumeSide': LanMessage.sideCode(side!),
-      }).encode(),
+      }),
     );
     try {
       await handshake.future.timeout(const Duration(seconds: 5));
       _lastPong = DateTime.now();
+      if (transport is MemoryTransport) return;
       _heartbeat?.cancel();
       _heartbeat = Timer.periodic(const Duration(seconds: 5), (_) {
         if (DateTime.now().difference(_lastPong) >
             const Duration(seconds: 15)) {
-          socket.close();
+          _lost(transport);
+          unawaited(transport.close());
         } else {
-          socket.add(
+          transport.send(
             LanMessage(LanMessageType.ping, seq, {
               'nonce': DateTime.now().microsecondsSinceEpoch.toString(),
-            }).encode(),
+            }),
           );
         }
       });
     } catch (_) {
-      await socket.close();
-      if (identical(_socket, socket)) _socket = null;
+      await transport.close();
+      if (identical(_transport, transport)) _transport = null;
       rethrow;
     }
   }
 
+  void _lost(MessageTransport transport) {
+    if (!identical(_transport, transport)) return;
+    _heartbeat?.cancel();
+    _transport = null;
+    if (!_disconnections.isClosed) _disconnections.add(null);
+  }
+
   void send(LanMessage message) {
-    if (_socket == null) throw StateError('尚未连接房间');
-    _socket!.add(message.encode());
+    if (_transport == null || _closed) throw StateError('尚未连接房间');
+    _transport!.send(message);
   }
 
   Future<void> disconnect() async {
-    await _socket?.close();
+    final transport = _transport;
+    if (transport == null) return;
+    _lost(transport);
+    await transport.close();
   }
 
   Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
     _heartbeat?.cancel();
-    await _socket?.close();
+    await _subscription?.cancel();
+    await _disconnects?.cancel();
+    await _transport?.close();
     xiangqiReplica?.dispose();
     chessReplica?.dispose();
     if (!_messages.isClosed) await _messages.close();
     if (!_disconnections.isClosed) await _disconnections.close();
-    _socket = null;
+    _transport = null;
   }
 }

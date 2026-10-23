@@ -352,6 +352,8 @@ Android Studio、`flutter run` 和直接 Gradle 构建都会通过 `prepareLanWe
 
 浏览器打开 Android 房主提供的网页后，首页会通过当前地址的 `/easyplay/probe` 识别房间并显示“快捷加入”。该入口自动使用网页的主机、端口、棋种和跳棋规则，仅需输入房间口令；验证成功后仍等待房主开始。普通静态 Web 部署不显示此入口。
 
+房主通过 `MemoryTransport` 接入同一 isolate 内的权威房间，仍使用握手和副本同步。此本地连接不设网络心跳超时，避免 Android 切后台暂停计时器后，返回前台时把房主自己移出房间；LAN 和 WebRTC 的远程连接继续检查心跳。退出房间仍会关闭本地连接并释放座位。回归测试包括暂停事件循环超过心跳期限、远程玩家重连，以及返回建房页后加入对手并开始对局。
+
 网页资源生成到 `build/app/generated/lanWebAssets/flutter_assets/assets/web/`，不写入 `pubspec.yaml`。`python3 tools/package_lan_android.py --debug` 使用相同的 Gradle 打包流程。若 Python 不在 PATH 中，可在 Gradle 参数中指定 `-PlanWebPython=/path/to/python3`（原生 Stockfish 使用 `-PstockfishPython=...`）。
 
 CI 和 APK 发布缓存 Gradle 依赖及 Wrapper，打包启用 `--network-retries 2`。遇到依赖服务器 HTTP 429/临时 5xx、超时或连接重置时，分别等待 30、60 秒后最多重试两次；编译错误继续直接失败。本地默认不额外重试。重试逻辑用 `python3 -m unittest discover -s tools/tests` 验证。
