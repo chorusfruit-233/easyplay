@@ -54,10 +54,15 @@ const root = path.resolve(__dirname, '../build/battleship-smoke');
     const scroll=async(p,delta)=>{const v=p.viewportSize();await p.mouse.move(v.width-8,v.height-55);await p.mouse.wheel(0,delta);await frame(p);};
     const box=async(p,key)=>p.evaluate(k=>JSON.parse(easyplayBattleshipSmoke.rect(k)),key);
     const clickKey=async(p,key)=>{
-      for(let n=0;n<20;n++) {
+      for(let n=0;n<40;n++) {
         const r=await box(p,key),v=p.viewportSize();
         if(r && r.width>0 && r.height>0 && r.y>=65 && r.y+r.height<=v.height-5) {
-          await p.mouse.click(r.x+r.width/2,r.y+r.height/2);await frame(p);return;
+          // Flutter can still animate a wheel scroll after the first frames.
+          // Wait for stable render bounds before sending a pointer click.
+          await frame(p);
+          const settled=await box(p,key);
+          if(!settled || ['x','y','width','height'].some(field=>Math.abs(r[field]-settled[field])>.5)) continue;
+          await p.mouse.click(settled.x+settled.width/2,settled.y+settled.height/2);await frame(p);return;
         }
         await scroll(p,r && r.y<65?-260:260);
       }
