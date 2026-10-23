@@ -7,10 +7,46 @@ import 'package:easyplay/battleship/multiplayer/battleship_replica.dart';
 import 'package:easyplay/battleship/multiplayer/battleship_room_coordinator.dart';
 import 'package:easyplay/lan/message_transport.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fake_async/fake_async.dart';
 
 import 'network_test_support.dart';
 
 void main() {
+  test('local host stays connected after a suspended lobby and can start', () {
+    fakeAsync((time) {
+      final room = BattleshipRoomCoordinator(password: 'room-pin');
+      final host = BattleshipReplica(), guest = BattleshipReplica();
+      final (authority, client) = MemoryTransport.pair();
+      room.attach(authority, fixedSeat: BattleshipSeat.player1);
+      var pings = 0;
+      host.onWireMessage = (raw) {
+        if (LanMessage.decode(raw).body['action'] == 'ping') pings++;
+      };
+      host.bind(client, token: room.hostCredential);
+      time.flushMicrotasks();
+      expect(host.connected, isTrue);
+      expect(time.periodicTimerCount, 1); // The remote-seat watchdog only.
+      time.elapseBlocking(const Duration(minutes: 5));
+      time.elapse(const Duration(seconds: 5));
+      expect(pings, 0);
+      expect(host.connected, isTrue);
+      expect(room.seats[0]['connected'], isTrue);
+      final (remote, endpoint) = MemoryTransport.pair();
+      room.attach(remote);
+      guest.bind(endpoint, token: room.password);
+      time.flushMicrotasks();
+      expect(room.canStart, isTrue);
+      host.send('start');
+      time.flushMicrotasks();
+      expect(host.started && guest.started, isTrue);
+      host.close();
+      guest.close();
+      room.close();
+      time.flushMicrotasks();
+      expect(time.pendingTimers, isEmpty);
+    });
+  });
+
   test(
     'host starts; simultaneous private fleet edits and locks both survive',
     () async {

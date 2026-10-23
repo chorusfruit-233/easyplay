@@ -197,7 +197,7 @@ class BattleshipReplica extends ChangeNotifier {
         },
       );
       await ready.future.timeout(const Duration(seconds: 10));
-      if (current()) {
+      if (current() && transport is! MemoryTransport) {
         _heartbeat = Timer.periodic(const Duration(seconds: 5), (_) {
           if (!current()) return;
           if (DateTime.now().difference(lastReceived) >

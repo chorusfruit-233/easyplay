@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:easyplay/game_session.dart';
 import 'package:easyplay/draughts/draughts_variant.dart';
 import 'package:easyplay/gomoku/gomoku_variant.dart';
@@ -36,6 +37,32 @@ class _DelayedHandshakeTransport implements MessageTransport {
 Future<void> drain() => Future<void>.delayed(const Duration(milliseconds: 5));
 
 void main() {
+  test('RTC local host survives suspension before a guest joins', () {
+    fakeAsync((time) {
+      final room = RtcRoom.host(RtcInvitation.offer('gomoku', 'v=0'));
+      room.prepareHost();
+      time.flushMicrotasks();
+      expect(room.coordinator!.playerCount, 1);
+      expect(time.periodicTimerCount, 0);
+      time.elapseBlocking(const Duration(minutes: 5));
+      time.elapse(const Duration(seconds: 5));
+      expect(room.coordinator!.playerCount, 1);
+      final guest = RtcMatchClient(room.invitation);
+      final (server, endpoint) = MemoryTransport.pair();
+      room.attachPeer(server);
+      guest.bind(endpoint);
+      time.flushMicrotasks();
+      expect(room.coordinator!.playerCount, 2);
+      room.coordinator!.startMatch();
+      time.flushMicrotasks();
+      expect(room.client.started && guest.started, isTrue);
+      guest.close();
+      room.close();
+      time.flushMicrotasks();
+      expect(time.pendingTimers, isEmpty);
+    });
+  });
+
   test(
     'legacy transport sends one HELLO even when its response takes over a second',
     () async {

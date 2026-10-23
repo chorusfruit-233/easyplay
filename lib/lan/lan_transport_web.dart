@@ -125,6 +125,9 @@ class LanClientConnection {
     await connect(_uri!, token: _token!);
   }
 
+  Future<void> connectHost(LanHostServer server) async =>
+      throw UnsupportedError('当前平台不能创建局域网房间');
+
   Future<void> connect(Uri uri, {required String token}) async {
     if (isGomoku) {
       LanMessage.validateGomokuConfig(

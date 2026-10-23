@@ -349,18 +349,20 @@ class _RoomPeer {
         }
         server._playerCounts.add(server.playerCount);
         _lastPong = DateTime.now();
-        _heartbeat = Timer.periodic(const Duration(seconds: 5), (_) {
-          if (DateTime.now().difference(_lastPong) >
-              const Duration(seconds: 15)) {
-            transport.close();
-          } else {
-            _sendEncoded(
-              LanMessage(LanMessageType.ping, server.seq, {
-                'nonce': DateTime.now().microsecondsSinceEpoch.toString(),
-              }).encode(),
-            );
-          }
-        });
+        if (transport is! MemoryTransport) {
+          _heartbeat = Timer.periodic(const Duration(seconds: 5), (_) {
+            if (DateTime.now().difference(_lastPong) >
+                const Duration(seconds: 15)) {
+              transport.close();
+            } else {
+              _sendEncoded(
+                LanMessage(LanMessageType.ping, server.seq, {
+                  'nonce': DateTime.now().microsecondsSinceEpoch.toString(),
+                }).encode(),
+              );
+            }
+          });
+        }
         _helloSignature = message.encode();
         _sendHandshake();
         return;

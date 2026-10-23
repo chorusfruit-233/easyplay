@@ -63,6 +63,7 @@ class RtcMatchClient extends LanClientConnection {
 
   Future<void> bind(MessageTransport transport, {String? token}) async {
     if (_closed) throw StateError('房间已关闭');
+    _heartbeat?.cancel();
     await _subscription?.cancel();
     await _disconnects?.cancel();
     await _transport?.close();
@@ -161,6 +162,7 @@ class RtcMatchClient extends LanClientConnection {
         },
       );
       await ready.future.timeout(const Duration(seconds: 10));
+      if (transport is MemoryTransport) return;
       _heartbeat?.cancel();
       _heartbeat = Timer.periodic(const Duration(seconds: 5), (_) {
         if (DateTime.now().difference(_lastReply) >
