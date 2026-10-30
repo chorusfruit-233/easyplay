@@ -4,13 +4,13 @@
 
 [下载 Android APK](https://github.com/chorusfruit-233/easyplay/releases/latest) · [打开 Web 版](https://chorusfruit-233.github.io/easyplay/)
 
-## v1.7.10
+## v1.7.11
 
-- **房主后台恢复**：修复创建房间后切到后台再返回，人数变为 0、房主自己丢失座位而无法开始对局的问题。
-- **覆盖全部联机游戏**：围棋、国际象棋、跳棋、五子棋、中国象棋，以及斗地主、海战棋的同类房主超时问题一并处理；远程玩家仍支持正常断线重连。
-- **连接清理**：重连时清理旧监听和心跳，退出房间正常释放座位。
+- **国际象棋、中国象棋棋谱库**：自动保存本地、人机和联机对局，支持续局、播放和删除；重新开局和联机再来一局保留旧棋谱。
+- **导出与完整备份**：国际象棋支持 SAN/PGN 导出，中国象棋支持 ICCS 坐标文本导出，两者均支持 JSON 完整备份导入导出。
+- **播放与恢复体验**：保留初始局面、完整规则历史和终局原因，优化横屏回放；查看当前棋谱时暂停 AI，返回后恢复，联机切回前台可正常操作。
 
-[完整更新记录](https://github.com/chorusfruit-233/easyplay/compare/v1.7.9...v1.7.10) · [v1.7.10 下载与说明](https://github.com/chorusfruit-233/easyplay/releases/tag/v1.7.10)
+[完整更新记录](https://github.com/chorusfruit-233/easyplay/compare/v1.7.10...v1.7.11) · [v1.7.11 下载与说明](https://github.com/chorusfruit-233/easyplay/releases/tag/v1.7.11)
 
 ## 支持的游戏
 
@@ -46,7 +46,7 @@
 
 ## 安装与使用
 
-- **Android**：从 Release 下载 `app-arm64-v8a-release.apk`，适用于 ARM64 设备；正式包沿用已有签名，可覆盖更新。v1.7.10 的构建号为26，ARM64 APK 的 versionCode 为2026。
+- **Android**：从 Release 下载 `app-arm64-v8a-release.apk`，适用于 ARM64 设备；正式包沿用已有签名，可覆盖更新。v1.7.11 的构建号为27，ARM64 APK 的 versionCode 为2027。
 - **Web**：直接打开上方 Web 版。AI 在浏览器本地运行，首次使用需要加载同源引擎和模型；围棋的跨源隔离由部署的 service worker 提供。
 - **棋力刻度**：Stockfish 参考 Elo 和 Pikafish 相对档位的适用范围见 [棋力说明](docs/ENGINE_STRENGTH.md)，实际表现随设备、局面和思考时间变化。
 
