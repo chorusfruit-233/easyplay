@@ -4,6 +4,7 @@ import '../../game_session.dart' show Side;
 import '../../record_file_service.dart';
 import '../../records/record_replay.dart';
 import '../../records/widgets/record_playback_page.dart';
+import '../../records/widgets/record_copy.dart';
 import '../draughts_ai_level.dart';
 import '../draughts_notation.dart';
 import '../draughts_record.dart';
@@ -22,7 +23,7 @@ class DraughtsLibraryPage extends StatefulWidget {
 
 class _DraughtsLibraryPageState extends State<DraughtsLibraryPage> {
   late Future<List<DraughtsRecord>> _records = DraughtsStorage.list();
-  final _exporting = <DraughtsRecord>{};
+  final _sharing = <DraughtsRecord>{};
 
   Future<void> _reload() async {
     final next = DraughtsStorage.list();
@@ -73,8 +74,25 @@ class _DraughtsLibraryPageState extends State<DraughtsLibraryPage> {
     }
   }
 
+  Future<void> _copy(DraughtsRecord record) async {
+    if (_sharing.contains(record)) return;
+    setState(() => _sharing.add(record));
+    try {
+      await copyRecordText(
+        context,
+        text: DraughtsNotation.exportPdn(record),
+        label: 'PDN 棋谱',
+      );
+    } catch (error) {
+      _notice('复制失败：$error');
+    } finally {
+      if (mounted) setState(() => _sharing.remove(record));
+    }
+  }
+
   Future<void> _export(DraughtsRecord record) async {
-    setState(() => _exporting.add(record));
+    if (_sharing.contains(record)) return;
+    setState(() => _sharing.add(record));
     try {
       final saved = await RecordFileService.saveText(
         DraughtsNotation.exportPdn(record),
@@ -85,7 +103,7 @@ class _DraughtsLibraryPageState extends State<DraughtsLibraryPage> {
     } catch (error) {
       _notice('导出失败：$error');
     } finally {
-      if (mounted) setState(() => _exporting.remove(record));
+      if (mounted) setState(() => _sharing.remove(record));
     }
   }
 
@@ -299,12 +317,20 @@ class _DraughtsLibraryPageState extends State<DraughtsLibraryPage> {
           dimension: 48,
           child: PopupMenuButton<String>(
             tooltip: '棋谱操作',
-            onSelected: (action) =>
-                action == 'export' ? _export(record) : _delete(record),
+            onSelected: (action) => switch (action) {
+              'copy' => _copy(record),
+              'export' => _export(record),
+              _ => _delete(record),
+            },
             itemBuilder: (_) => [
               PopupMenuItem(
+                value: 'copy',
+                enabled: !_sharing.contains(record),
+                child: const Text('复制 PDN'),
+              ),
+              PopupMenuItem(
                 value: 'export',
-                enabled: !_exporting.contains(record),
+                enabled: !_sharing.contains(record),
                 child: const Text('导出 PDN'),
               ),
               PopupMenuItem(

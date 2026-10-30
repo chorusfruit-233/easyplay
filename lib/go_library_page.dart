@@ -8,6 +8,9 @@ import 'go_sgf.dart';
 import 'go_storage.dart';
 import 'records/record_replay.dart';
 import 'records/widgets/record_playback_page.dart';
+import 'records/widgets/record_copy.dart';
+
+enum _RecordAction { copy, delete }
 
 /// Adds an imported kifu to the library.
 ///
@@ -33,6 +36,7 @@ class GoLibraryPage extends StatefulWidget {
 class _GoLibraryPageState extends State<GoLibraryPage> {
   List<GoSavedRecord> _records = const [];
   bool _loading = true;
+  bool _copying = false;
 
   @override
   void initState() {
@@ -124,6 +128,16 @@ class _GoLibraryPageState extends State<GoLibraryPage> {
       );
     } catch (error) {
       _notice('无法播放棋谱：$error');
+    }
+  }
+
+  Future<void> _copy(GoSavedRecord record) async {
+    if (_copying) return;
+    setState(() => _copying = true);
+    try {
+      await copyRecordText(context, text: record.sgf, label: 'SGF 棋谱');
+    } finally {
+      if (mounted) setState(() => _copying = false);
     }
   }
 
@@ -252,7 +266,19 @@ class _GoLibraryPageState extends State<GoLibraryPage> {
               onPressed: () => _play(record),
               icon: const Icon(Icons.play_circle_outline),
             ),
-            Icon(Icons.chevron_right, color: colors.onSurfaceVariant),
+            PopupMenuButton<_RecordAction>(
+              tooltip: '棋谱操作',
+              enabled: !_copying,
+              onSelected: (action) => switch (action) {
+                _RecordAction.copy => _copy(record),
+                _RecordAction.delete => _confirmDelete(record),
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(value: _RecordAction.copy, child: Text('复制 SGF')),
+                PopupMenuDivider(),
+                PopupMenuItem(value: _RecordAction.delete, child: Text('删除棋谱')),
+              ],
+            ),
           ],
         ),
         onTap: () => _open(record),

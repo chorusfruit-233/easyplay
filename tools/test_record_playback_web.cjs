@@ -20,7 +20,7 @@ const root=path.resolve(__dirname,'../build/playback-smoke');
     browser=await chromium.launch({headless:true,args:['--no-sandbox'],executablePath:process.env.CHROME_PATH||undefined});
     for(const [game,label,length] of [['go','围棋',3],['gomoku','五子棋',12],['draughts','跳棋',12],['chess','国际象棋',10],['xiangqi','中国象棋',9]]) {
       console.log(`Record playback: ${game}`);
-      const context=await browser.newContext({viewport:{width:390,height:844}});
+      const context=await browser.newContext({viewport:{width:390,height:844},permissions:['clipboard-read','clipboard-write']});
       const page=await context.newPage(),errors=[];
       if(Number(process.env.PLAYBACK_CPU_THROTTLE)>1) {
         const cdp=await context.newCDPSession(page);
@@ -68,6 +68,64 @@ const root=path.resolve(__dirname,'../build/playback-smoke');
       await page.waitForTimeout(400);
       await page.screenshot({path:path.join(root,`${game}-library.png`)});
       const original=await stored();
+      const copies={
+        go:[['复制 SGF','SGF 棋谱']],
+        gomoku:[['复制 SGF','SGF 棋谱'],['复制 JSON 完整备份','JSON 完整备份']],
+        draughts:[['复制 PDN','PDN 棋谱']],
+        chess:[['复制 PGN','PGN 棋谱'],['复制 JSON 完整备份','JSON 完整备份']],
+        xiangqi:[['复制 ICCS 着法','ICCS 着法'],['复制 JSON 完整备份','JSON 完整备份']],
+      };
+      let downloads=0;
+      let expectedIccs;
+      page.on('download',()=>downloads++);
+      for(const [action,format] of copies[game]) {
+        await click(button('棋谱操作').first());
+        if(action===copies[game][0][0])await page.screenshot({path:path.join(root,`${game}-copy-menu.png`)});
+        await page.getByRole('menuitem',{name:action,exact:true}).click();
+        await page.getByText(`${format}已复制`,{exact:true}).last().waitFor();
+        const copied=await page.evaluate(()=>navigator.clipboard.readText());
+        if(action==='复制 SGF') {
+          assert.match(copied,game==='go'?/GM\[1\]/:/GM\[4\]/);
+          if(game==='go')assert.match(copied,/另一条变化/);
+        }
+        if(action==='复制 PDN')assert.match(copied,/\[Variant "International"\]/);
+        if(action==='复制 PGN')assert.match(copied,/5\. O-O 1-0/);
+        if(action==='复制 ICCS 着法') {
+          assert.match(copied,/H2-E2/);
+          expectedIccs=copied;
+        }
+        if(action==='复制 JSON 完整备份') {
+          const json=JSON.parse(copied);
+          if(game==='gomoku')assert.equal(json.session.actions.length,12);
+          else {
+            assert.equal(json.game,game);
+            assert.equal(json.session.moves.length,game==='chess'?9:8);
+          }
+        }
+        assert.equal(downloads,0,'Copy cannot open a file download');
+        assert.deepEqual(await stored(),original,'Copy cannot rewrite saved records');
+      }
+      if(game==='xiangqi') {
+        await page.evaluate(()=>{
+          window.playbackClipboardTest=navigator.clipboard;
+          Object.defineProperty(navigator,'clipboard',{configurable:true,value:undefined});
+        });
+        await click(button('棋谱操作').first());
+        await page.getByRole('menuitem',{name:'复制 ICCS 着法',exact:true}).click();
+        await page.getByText('无法自动复制',{exact:true}).last().waitFor();
+        await page.getByRole('textbox').waitFor();
+        const textBox=await page.evaluate(()=>JSON.parse(easyplayPlaybackSmoke.rect('record-copy-fallback')));
+        await page.mouse.click(textBox.x+Math.min(40,textBox.width/2),textBox.y+20);
+        await page.keyboard.press('ControlOrMeta+A');
+        await page.keyboard.press('ControlOrMeta+C');
+        await page.waitForFunction(async expected=>(await window.playbackClipboardTest.readText())===expected,expectedIccs);
+        await page.screenshot({path:path.join(root,'record-copy-fallback.png')});
+        await button('关闭').click();
+        await page.evaluate(()=>{
+          Object.defineProperty(navigator,'clipboard',{configurable:true,value:window.playbackClipboardTest});
+          delete window.playbackClipboardTest;
+        });
+      }
       if(game==='chess'||game==='xiangqi') {
         for(const [action,extension] of [[game==='chess'?'导出 PGN':'导出 ICCS 着法',game==='chess'?'pgn':'txt'],['导出 JSON 完整备份','json']]) {
           await click(button('棋谱操作').first());
@@ -131,7 +189,7 @@ const root=path.resolve(__dirname,'../build/playback-smoke');
       assert.deepEqual(errors,[]);
       await context.close();
     }
-    console.log('RECORD PLAYBACK WEB PASS: all five libraries, PGN/ICCS/JSON downloads, automatic/manual playback, pause, speed, SGF variation, Soosyrv-8 actions, portrait/landscape and unchanged storage');
+    console.log('RECORD PLAYBACK WEB PASS: all five libraries, real SGF/PDN/PGN/ICCS/JSON clipboard writes and manual fallback, PGN/ICCS/JSON downloads, automatic/manual playback, pause, speed, SGF variation, Soosyrv-8 actions, portrait/landscape and unchanged storage');
   } catch(error) {
     if(lastPage&&!lastPage.isClosed()) {
       await lastPage.screenshot({path:path.join(root,'failure.png')});
