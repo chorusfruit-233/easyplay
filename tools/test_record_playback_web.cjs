@@ -22,21 +22,39 @@ const root=path.resolve(__dirname,'../build/playback-smoke');
       console.log(`Record playback: ${game}`);
       const context=await browser.newContext({viewport:{width:390,height:844}});
       const page=await context.newPage(),errors=[];
+      if(Number(process.env.PLAYBACK_CPU_THROTTLE)>1) {
+        const cdp=await context.newCDPSession(page);
+        await cdp.send('Emulation.setCPUThrottlingRate',{rate:Number(process.env.PLAYBACK_CPU_THROTTLE)});
+      }
       lastPage=page;
       page.setDefaultTimeout(30000);
       page.on('pageerror',e=>errors.push(e.message));
       page.on('console',m=>{if(m.type()==='error'&&/overflowed|Exception caught/.test(m.text()))errors.push(m.text());});
       const button=name=>page.getByRole('button',{name,exact:typeof name==='string'});
+      const frame=()=>page.evaluate(()=>new Promise(requestAnimationFrame).then(()=>new Promise(requestAnimationFrame)));
       const scroll=async delta=>{const v=page.viewportSize();await page.mouse.move(v.width-8,v.height-50);await page.mouse.wheel(0,delta);await page.waitForTimeout(120);};
-      const click=async locator=>{
+      const click=async(locator,key)=>{
+        const box=()=>key?page.evaluate(k=>JSON.parse(easyplayPlaybackSmoke.rect(k)),key):locator.boundingBox();
         await scroll(-10000);
-        for(let n=0;n<24;n++) {
-          const r=await locator.count()?await locator.boundingBox():null,v=page.viewportSize();
-          if(r&&r.y>5&&r.y+r.height<v.height-4){await page.mouse.click(r.x+r.width/2,r.y+r.height/2);await page.waitForTimeout(100);return;}
-          await scroll(220);
+        for(let n=0;n<40;n++) {
+          const r=await locator.count()?await box():null,v=page.viewportSize();
+          if(r&&r.y>5&&r.y+r.height<v.height-4) {
+            // Wheel scrolling can still move the Flutter control after it is
+            // visible. Use actual Flutter bounds for keyed controls: clipped
+            // semantics overlays do not always report the painted hit area.
+            await frame();
+            const settled=await box();
+            if(!settled||['x','y','width','height'].some(field=>Math.abs(r[field]-settled[field])>.5))continue;
+            await page.mouse.click(settled.x+settled.width/2,settled.y+settled.height/2);
+            await frame();
+            await page.waitForTimeout(100);
+            return;
+          }
+          await scroll(r&&r.y<5?-220:220);
         }
         throw Error(`Cannot show ${locator}`);
       };
+      const control=(key,label)=>click(button(label),`record-playback-${key}`);
       const state=()=>page.evaluate(()=>JSON.parse(easyplayPlaybackSmoke.state()));
       const stored=()=>page.evaluate(async()=>{
         const s=JSON.parse(await easyplayPlaybackSmoke.storage());
@@ -68,35 +86,36 @@ const root=path.resolve(__dirname,'../build/playback-smoke');
       await page.waitForFunction(()=>JSON.parse(easyplayPlaybackSmoke.state()).progress?.startsWith('0 /'));
       assert.equal((await state()).playing,false);
       if(game==='chess'||game==='xiangqi')assert.equal((await state()).readOnly,true);
-      await click(button('下一步'));
+      await control('next','下一步');
       assert.ok((await state()).progress.startsWith('1 /'));
-      await click(button('播放棋谱'));
+      await control('toggle','播放棋谱');
       await page.waitForFunction(()=>JSON.parse(easyplayPlaybackSmoke.state()).progress.startsWith('2 /'));
-      await click(button('暂停播放'));
+      await control('toggle','暂停播放');
       const paused=(await state()).progress;
       await page.waitForTimeout(1300);
       assert.equal((await state()).progress,paused);
-      await click(button('回到开局'));
+      await control('first','回到开局');
       const speed=page.getByRole('button',{name:'1×',exact:true});
-      await click(speed);
+      await click(speed,'record-playback-speed');
       await page.getByRole('menuitem',{name:'2×',exact:true}).click();
+      await button('2×').waitFor();
       await page.waitForTimeout(350);
-      await click(button('跳到末尾'));
+      await control('last','跳到末尾');
       assert.ok((await state()).progress.startsWith(`${length} / ${length}`));
       if(game==='gomoku') {
         const end=(await state()).session;
         assert.equal(end.actions.length,12);assert.equal(end.moves.length,5);assert.equal(end.gameOver,true);
-        await click(button('上一步'));
+        await control('previous','上一步');
         assert.equal((await state()).session.gameOver,false);
-        for(let i=0;i<3;i++)await click(button('上一步'));
+        for(let i=0;i<3;i++)await control('previous','上一步');
         assert.equal((await state()).session.moves.length,4);
       }
       if(game==='go') {
-        await click(button('主线'));
+        await click(button('主线'),'record-playback-variation');
         await page.getByRole('menuitem',{name:'变化 1',exact:true}).click();
         await page.waitForTimeout(350);
         assert.ok((await state()).progress.startsWith('0 / 2'));
-        await click(button('跳到末尾'));
+        await control('last','跳到末尾');
         await page.getByText('另一条变化',{exact:true}).waitFor();
       }
       await page.waitForTimeout(1500);

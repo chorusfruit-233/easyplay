@@ -31,6 +31,27 @@ void visit(void Function(Element) action) {
   if (root != null) walk(root);
 }
 
+Map<String, double>? rect(String key) {
+  RenderBox? box;
+  visit((element) {
+    if (element.widget.key == ValueKey(key)) {
+      final render = element.findRenderObject();
+      if (render is RenderBox && render.attached && render.hasSize) {
+        box = render;
+      }
+    }
+  });
+  final render = box;
+  if (render == null) return null;
+  final offset = render.localToGlobal(Offset.zero);
+  return {
+    'x': offset.dx,
+    'y': offset.dy,
+    'width': render.size.width,
+    'height': render.size.height,
+  };
+}
+
 Map<String, Object?> state() {
   final result = <String, Object?>{};
   visit((element) {
@@ -129,6 +150,7 @@ Future<void> main() async {
     ),
   );
   final api = JSObject();
+  api['rect'] = ((JSString key) => jsonEncode(rect(key.toDart)).toJS).toJS;
   api['state'] = (() => jsonEncode(state()).toJS).toJS;
   api['storage'] =
       (() => SharedPreferences.getInstance()
