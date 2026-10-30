@@ -8,6 +8,10 @@ import '../../draughts/widgets/draughts_board.dart';
 import '../../game_session.dart';
 import '../../gomoku/gomoku_session.dart';
 import '../../gomoku/widgets/gomoku_board.dart';
+import '../../chess/chess_session.dart';
+import '../../chess/widgets/chess_board.dart';
+import '../../xiangqi/xiangqi_session.dart';
+import '../../xiangqi/widgets/xiangqi_board.dart';
 import '../record_playback_controller.dart';
 import '../record_replay.dart';
 
@@ -70,6 +74,15 @@ class _RecordPlaybackPageState extends State<RecordPlaybackPage>
       final DraughtsSession session => DraughtsBoard(
         session: session,
         onCell: (_) {},
+      ),
+      final ChessSession session => ChessBoard(
+        session: session,
+        onCell: null,
+        flipped: (_player.record as ChessRecordReplay).flipped,
+      ),
+      final XiangqiSession session => XiangqiBoard(
+        session: session,
+        flipped: (_player.record as XiangqiRecordReplay).flipped,
       ),
       _ => const SizedBox.shrink(),
     },
@@ -211,12 +224,21 @@ class _RecordPlaybackPageState extends State<RecordPlaybackPage>
         padding: const EdgeInsets.all(16),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            Widget board(BoxConstraints bounds) => Center(
-              child: SizedBox.square(
-                dimension: math.min(bounds.maxWidth, bounds.maxHeight),
-                child: _board(),
-              ),
-            );
+            Widget board(BoxConstraints bounds) {
+              final ratio = _player.frame.session is XiangqiSession ? .9 : 1.0;
+              final height = math.min(
+                bounds.maxHeight,
+                bounds.maxWidth / ratio,
+              );
+              return Center(
+                child: SizedBox(
+                  width: height * ratio,
+                  height: height,
+                  child: _board(),
+                ),
+              );
+            }
+
             if (constraints.maxWidth >= 600 &&
                 constraints.maxWidth > constraints.maxHeight * 1.2) {
               return Row(

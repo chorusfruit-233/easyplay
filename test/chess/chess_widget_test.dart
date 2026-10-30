@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:easyplay/chess/chess.dart';
 import 'package:easyplay/chess/widgets/chess_board.dart';
 import 'package:easyplay/chess/widgets/chess_game_page.dart';
@@ -7,14 +8,14 @@ import 'package:easyplay/chess/widgets/chess_home_page.dart';
 import 'package:easyplay/chess/widgets/chess_lan_pages.dart';
 
 void main() {
-  testWidgets('home contains only three match modes, no persistence UI', (
-    tester,
-  ) async {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+  testWidgets('home offers match modes and a record library', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: ChessHomePage()));
     for (final label in ['AI 对战', '本地双人', '局域网联机']) {
       expect(find.text(label), findsOneWidget);
     }
-    for (final label in ['棋谱库', '继续上次', '最近对局']) {
+    expect(find.text('棋谱库'), findsOneWidget);
+    for (final label in ['继续上次', '最近对局']) {
       expect(find.text(label), findsNothing);
     }
     await tester.tap(find.text('本地双人'));

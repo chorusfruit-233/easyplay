@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:easyplay/xiangqi/xiangqi.dart';
 import 'package:easyplay/xiangqi/widgets/xiangqi_board.dart';
 import 'package:easyplay/xiangqi/widgets/xiangqi_game_page.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   testWidgets(
     'board preserves its aspect ratio within both parent dimensions',
     (tester) async {
@@ -104,9 +106,7 @@ void main() {
       }
     }
   });
-  testWidgets('local controls play one move and undo without persistence', (
-    tester,
-  ) async {
+  testWidgets('local controls play one move and undo', (tester) async {
     final session = XiangqiSession();
     await tester.pumpWidget(
       MaterialApp(home: XiangqiGamePage(initialSession: session)),

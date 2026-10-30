@@ -1,3 +1,5 @@
+import '../../records/board_record.dart';
+import '../../records/widgets/board_library_page.dart';
 import '../../ui/app_layout.dart';
 import 'package:flutter/material.dart';
 import 'chess_ai_settings.dart';
@@ -27,6 +29,12 @@ class ChessHomePage extends StatelessWidget {
           ),
           ('本地双人', '在同一设备上轮流走棋', Icons.people_outline, const ChessGamePage()),
           ('局域网联机', '与同一网络中的朋友对弈', Icons.wifi, const ChessLanLobbyPage()),
+          (
+            '棋谱库',
+            '继续对局、播放棋谱与导出备份',
+            Icons.collections_bookmark_outlined,
+            const BoardLibraryPage(game: BoardRecordGame.chess),
+          ),
         ])
           Card(
             child: ListTile(

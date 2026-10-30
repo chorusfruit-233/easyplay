@@ -15,13 +15,17 @@ class XiangqiMatchController extends ChangeNotifier {
   final XiangqiEngine? engine;
   final XiangqiSide humanSide;
   final XiangqiAiLevel level;
-  bool thinking = false, _disposed = false, _changing = false;
+  bool thinking = false,
+      _disposed = false,
+      _changing = false,
+      _suspended = false;
   String? error;
   int _generation = 0;
   Future<void>? _stopping;
   bool get isAi => engine != null;
   bool get canPlay =>
       !_changing &&
+      !_suspended &&
       !thinking &&
       !session.gameOver &&
       (!isAi || session.turn == humanSide);
@@ -39,6 +43,7 @@ class XiangqiMatchController extends ChangeNotifier {
 
   Future<void> runAi() async {
     if (_disposed ||
+        _suspended ||
         _changing ||
         engine == null ||
         thinking ||
@@ -136,7 +141,15 @@ class XiangqiMatchController extends ChangeNotifier {
     await engine?.stop();
   }
 
+  Future<void> resume() async {
+    if (_disposed) return;
+    _suspended = false;
+    _notify();
+    await runAi();
+  }
+
   Future<void> suspend() async {
+    _suspended = true;
     _generation++;
     thinking = false;
     _notify();
