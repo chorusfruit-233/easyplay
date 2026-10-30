@@ -11,8 +11,9 @@ import '../board_record_notation.dart';
 import '../board_record_storage.dart';
 import '../record_replay.dart';
 import 'record_playback_page.dart';
+import 'record_copy.dart';
 
-enum _Action { notation, json, delete }
+enum _Action { copyNotation, copyJson, notation, json, delete }
 
 class BoardLibraryPage extends StatefulWidget {
   const BoardLibraryPage({super.key, required this.game});
@@ -113,6 +114,31 @@ class _BoardLibraryPageState extends State<BoardLibraryPage> {
       if (mounted) await _load();
     } catch (error) {
       _notice('无法恢复棋谱：$error');
+    }
+  }
+
+  Future<void> _copy(BoardGameRecord record, {required bool json}) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final chess = record.game == BoardRecordGame.chess;
+      await copyRecordText(
+        context,
+        text: json
+            ? BoardRecordNotation.toJson(record)
+            : chess
+            ? BoardRecordNotation.toPgn(record)
+            : BoardRecordNotation.toIccs(record),
+        label: json
+            ? 'JSON 完整备份'
+            : chess
+            ? 'PGN 棋谱'
+            : 'ICCS 着法',
+      );
+    } catch (error) {
+      _notice('复制失败：$error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -246,7 +272,7 @@ class _BoardLibraryPageState extends State<BoardLibraryPage> {
                   Text('还没有棋谱'),
                   SizedBox(height: 8),
                   Text(
-                    '对局会自动保存到这里。未完成的本地、人机对局可继续，所有棋谱均可播放或导出。',
+                    '对局会自动保存到这里。未完成的本地、人机对局可继续，所有棋谱均可播放、复制或导出。',
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -296,11 +322,26 @@ class _BoardLibraryPageState extends State<BoardLibraryPage> {
                         tooltip: '棋谱操作',
                         enabled: !_busy,
                         onSelected: (action) => switch (action) {
+                          _Action.copyNotation => _copy(record, json: false),
+                          _Action.copyJson => _copy(record, json: true),
                           _Action.notation => _export(record, json: false),
                           _Action.json => _export(record, json: true),
                           _Action.delete => _delete(record),
                         },
                         itemBuilder: (_) => [
+                          PopupMenuItem(
+                            value: _Action.copyNotation,
+                            child: Text(
+                              widget.game == BoardRecordGame.chess
+                                  ? '复制 PGN'
+                                  : '复制 ICCS 着法',
+                            ),
+                          ),
+                          const PopupMenuItem(
+                            value: _Action.copyJson,
+                            child: Text('复制 JSON 完整备份'),
+                          ),
+                          const PopupMenuDivider(),
                           PopupMenuItem(
                             value: _Action.notation,
                             child: Text(

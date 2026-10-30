@@ -3,12 +3,13 @@ import 'package:flutter/material.dart';
 import '../../record_file_service.dart';
 import '../../records/record_replay.dart';
 import '../../records/widgets/record_playback_page.dart';
+import '../../records/widgets/record_copy.dart';
 import '../gomoku_notation.dart';
 import '../gomoku_storage.dart';
 import 'gomoku_ai_duel_page.dart';
 import 'gomoku_game_page.dart';
 
-enum _RecordAction { sgf, json, delete }
+enum _RecordAction { copySgf, copyJson, sgf, json, delete }
 
 class GomokuLibraryPage extends StatefulWidget {
   const GomokuLibraryPage({super.key});
@@ -21,7 +22,7 @@ class _GomokuLibraryPageState extends State<GomokuLibraryPage> {
   List<GomokuRecord> _records = [];
   bool _loading = true;
   bool _loadFailed = false;
-  bool _exporting = false;
+  bool _sharing = false;
 
   @override
   void initState() {
@@ -83,9 +84,27 @@ class _GomokuLibraryPageState extends State<GomokuLibraryPage> {
     }
   }
 
+  Future<void> _copy(GomokuRecord record, {required bool json}) async {
+    if (_sharing) return;
+    setState(() => _sharing = true);
+    try {
+      await copyRecordText(
+        context,
+        text: json
+            ? GomokuNotation.toJson(record)
+            : GomokuNotation.toSgf(record),
+        label: json ? 'JSON 完整备份' : 'SGF 棋谱',
+      );
+    } catch (error) {
+      _notice('复制失败：$error');
+    } finally {
+      if (mounted) setState(() => _sharing = false);
+    }
+  }
+
   Future<void> _export(GomokuRecord record, {required bool json}) async {
-    if (_exporting) return;
-    setState(() => _exporting = true);
+    if (_sharing) return;
+    setState(() => _sharing = true);
     try {
       final saved = await RecordFileService.saveText(
         json ? GomokuNotation.toJson(record) : GomokuNotation.toSgf(record),
@@ -98,7 +117,7 @@ class _GomokuLibraryPageState extends State<GomokuLibraryPage> {
     } catch (error) {
       _notice('棋谱导出失败：$error');
     } finally {
-      if (mounted) setState(() => _exporting = false);
+      if (mounted) setState(() => _sharing = false);
     }
   }
 
@@ -187,7 +206,10 @@ class _GomokuLibraryPageState extends State<GomokuLibraryPage> {
                   SizedBox(height: 16),
                   Text('还没有棋谱'),
                   SizedBox(height: 8),
-                  Text('对局会自动保存到这里，之后可继续对局或导出。', textAlign: TextAlign.center),
+                  Text(
+                    '对局会自动保存到这里，之后可继续对局、复制或导出。',
+                    textAlign: TextAlign.center,
+                  ),
                 ],
               ),
             ),
@@ -215,24 +237,35 @@ class _GomokuLibraryPageState extends State<GomokuLibraryPage> {
                   title: Text(_title(record)),
                   subtitle: Text(_summary(record)),
                   isThreeLine: true,
-                  onTap: _exporting ? null : () => _open(record),
+                  onTap: _sharing ? null : () => _open(record),
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       IconButton(
                         tooltip: '播放棋谱',
-                        onPressed: _exporting ? null : () => _play(record),
+                        onPressed: _sharing ? null : () => _play(record),
                         icon: const Icon(Icons.play_circle_outline),
                       ),
                       PopupMenuButton<_RecordAction>(
                         tooltip: '棋谱操作',
-                        enabled: !_exporting,
+                        enabled: !_sharing,
                         onSelected: (action) => switch (action) {
+                          _RecordAction.copySgf => _copy(record, json: false),
+                          _RecordAction.copyJson => _copy(record, json: true),
                           _RecordAction.sgf => _export(record, json: false),
                           _RecordAction.json => _export(record, json: true),
                           _RecordAction.delete => _delete(record),
                         },
                         itemBuilder: (_) => const [
+                          PopupMenuItem(
+                            value: _RecordAction.copySgf,
+                            child: Text('复制 SGF'),
+                          ),
+                          PopupMenuItem(
+                            value: _RecordAction.copyJson,
+                            child: Text('复制 JSON 完整备份'),
+                          ),
+                          PopupMenuDivider(),
                           PopupMenuItem(
                             value: _RecordAction.sgf,
                             child: Text('导出 SGF'),
