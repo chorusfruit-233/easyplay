@@ -18,7 +18,7 @@ const root=path.resolve(__dirname,'../build/playback-smoke');
   let browser,lastPage;
   try {
     browser=await chromium.launch({headless:true,args:['--no-sandbox'],executablePath:process.env.CHROME_PATH||undefined});
-    for(const [game,label,length] of [['go','围棋',3],['gomoku','五子棋',12],['draughts','跳棋',12]]) {
+    for(const [game,label,length] of [['go','围棋',3],['gomoku','五子棋',12],['draughts','跳棋',12],['chess','国际象棋',10],['xiangqi','中国象棋',9]]) {
       console.log(`Record playback: ${game}`);
       const context=await browser.newContext({viewport:{width:390,height:844}});
       const page=await context.newPage(),errors=[];
@@ -40,7 +40,7 @@ const root=path.resolve(__dirname,'../build/playback-smoke');
       const state=()=>page.evaluate(()=>JSON.parse(easyplayPlaybackSmoke.state()));
       const stored=()=>page.evaluate(async()=>{
         const s=JSON.parse(await easyplayPlaybackSmoke.storage());
-        return Object.fromEntries(Object.entries(s).filter(([key])=>key==='easyplay.go_records'||/easyplay\.(gomoku|draughts)\.records\.v1/.test(key)));
+        return Object.fromEntries(Object.entries(s).filter(([key])=>key==='easyplay.go_records'||/easyplay\.(gomoku|draughts|chess|xiangqi)\.records\.v1/.test(key)));
       });
       await page.goto(`http://127.0.0.1:${server.address().port}/easyplay/`);
       await page.waitForFunction(()=>!!window.easyplayPlaybackSmoke,undefined,{timeout:60000});
@@ -50,9 +50,24 @@ const root=path.resolve(__dirname,'../build/playback-smoke');
       await page.waitForTimeout(400);
       await page.screenshot({path:path.join(root,`${game}-library.png`)});
       const original=await stored();
+      if(game==='chess'||game==='xiangqi') {
+        for(const [action,extension] of [[game==='chess'?'导出 PGN':'导出 ICCS 着法',game==='chess'?'pgn':'txt'],['导出 JSON 完整备份','json']]) {
+          await click(button('棋谱操作').first());
+          const pending=page.waitForEvent('download');
+          await page.getByRole('menuitem',{name:action,exact:true}).click();
+          const download=await pending;
+          assert.ok(download.suggestedFilename().endsWith('.'+extension));
+          const file=await download.path();
+          const exported=fs.readFileSync(file,'utf8');
+          if(extension==='json')assert.equal(JSON.parse(exported).game,game);
+          if(extension==='pgn')assert.match(exported,/5\. O-O 1-0/);
+          if(extension==='txt')assert.match(exported,/H2-E2/);
+        }
+      }
       await click(button('播放棋谱').first());
       await page.waitForFunction(()=>JSON.parse(easyplayPlaybackSmoke.state()).progress?.startsWith('0 /'));
       assert.equal((await state()).playing,false);
+      if(game==='chess'||game==='xiangqi')assert.equal((await state()).readOnly,true);
       await click(button('下一步'));
       assert.ok((await state()).progress.startsWith('1 /'));
       await click(button('播放棋谱'));
@@ -97,7 +112,7 @@ const root=path.resolve(__dirname,'../build/playback-smoke');
       assert.deepEqual(errors,[]);
       await context.close();
     }
-    console.log('RECORD PLAYBACK WEB PASS: all three libraries, automatic/manual playback, pause, speed, SGF variation, Soosyrv-8 actions, portrait/landscape and unchanged storage');
+    console.log('RECORD PLAYBACK WEB PASS: all five libraries, PGN/ICCS/JSON downloads, automatic/manual playback, pause, speed, SGF variation, Soosyrv-8 actions, portrait/landscape and unchanged storage');
   } catch(error) {
     if(lastPage&&!lastPage.isClosed()) {
       await lastPage.screenshot({path:path.join(root,'failure.png')});

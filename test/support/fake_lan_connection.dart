@@ -10,6 +10,7 @@ import 'package:easyplay/lan/gomoku_lan_game.dart';
 import 'package:easyplay/lan/lan_game.dart';
 import 'package:easyplay/lan/lan_protocol.dart';
 import 'package:easyplay/lan/lan_transport.dart';
+import 'package:easyplay/lan/xiangqi_lan_game.dart';
 
 /// Runs the real authority/replica rules while keeping widget tests off sockets.
 class FakeLanConnection extends LanClientConnection {
@@ -32,6 +33,16 @@ class FakeLanConnection extends LanClientConnection {
       ),
       super.chess() {
     chessReplica = ChessLanReplica();
+    side = localSide;
+    started = true;
+  }
+  FakeLanConnection.xiangqi(Side localSide)
+    : authority = LanHostServer(
+        xiangqiAuthority: XiangqiAuthority(),
+        token: 'test',
+      ),
+      super.xiangqi() {
+    xiangqiReplica = XiangqiLanReplica();
     side = localSide;
     started = true;
   }
@@ -70,7 +81,11 @@ class FakeLanConnection extends LanClientConnection {
   @override
   void send(LanMessage message) {
     sent.add(message);
-    _receive(authority.submit(side!, message));
+    _receive(
+      message.type == LanMessageType.stateRequest
+          ? authority.sync(message)
+          : authority.submit(side!, message),
+    );
   }
 
   void commit(
@@ -90,6 +105,7 @@ class FakeLanConnection extends LanClientConnection {
     if (event.type != LanMessageType.rejected) {
       final accepted =
           chessReplica?.receive(event) ??
+          xiangqiReplica?.receive(event) ??
           gomokuReplica?.receive(event) ??
           draughtsReplica?.receive(event) ??
           replica!.receive(event);
@@ -105,6 +121,7 @@ class FakeLanConnection extends LanClientConnection {
     await _events.close();
     await _disconnects.close();
     chessReplica?.dispose();
+    xiangqiReplica?.dispose();
     await authority.close();
   }
 }

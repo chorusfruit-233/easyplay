@@ -1,4 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
+
+import '../../records/board_record.dart';
+import '../../records/board_record_storage.dart';
+import '../../records/record_replay.dart';
+import '../../records/widgets/record_playback_page.dart';
 import 'package:flutter/material.dart';
 import '../chess.dart';
 import '../chess_match_controller.dart';
@@ -13,18 +19,24 @@ import 'chess_board.dart';
 enum ChessGameMode { local, ai, online }
 
 class ChessGamePage extends StatefulWidget {
-  const ChessGamePage({super.key, this.initialSession})
-    : mode = ChessGameMode.local,
-      humanSide = Side.white,
-      level = ChessAiLevel.normal,
-      connection = null,
-      engine = null;
+  const ChessGamePage({
+    super.key,
+    this.initialSession,
+    this.recordId,
+    this.createdAt,
+  }) : mode = ChessGameMode.local,
+       humanSide = Side.white,
+       level = ChessAiLevel.normal,
+       connection = null,
+       engine = null;
   const ChessGamePage.ai({
     super.key,
     required this.humanSide,
     required this.level,
     this.engine,
     this.initialSession,
+    this.recordId,
+    this.createdAt,
   }) : mode = ChessGameMode.ai,
        connection = null;
   const ChessGamePage.online({super.key, required this.connection})
@@ -32,13 +44,17 @@ class ChessGamePage extends StatefulWidget {
       humanSide = Side.white,
       level = ChessAiLevel.normal,
       engine = null,
-      initialSession = null;
+      initialSession = null,
+      recordId = null,
+      createdAt = null;
   final ChessGameMode mode;
   final Side humanSide;
   final ChessAiLevel level;
   final LanClientConnection? connection;
   final ChessEngine? engine;
   final ChessSession? initialSession;
+  final String? recordId;
+  final DateTime? createdAt;
   @override
   State<ChessGamePage> createState() => _ChessGamePageState();
 }
@@ -56,6 +72,14 @@ class _ChessGamePageState extends State<ChessGamePage>
       _pending = false,
       _choosing = false;
   String? _notice;
+  late String _recordId =
+      widget.recordId ?? BoardGameRecord.newId(BoardRecordGame.chess);
+  late DateTime _createdAt = widget.createdAt ?? DateTime.now().toUtc();
+  late bool _hasRecord = widget.recordId != null;
+  String? _lastSnapshot, _saveError;
+  int _round = 0;
+  bool _active = true, _browsing = false, _restarting = false, _closing = false;
+
   bool get _online => widget.mode == ChessGameMode.online;
   ChessLanReplica get _replica => widget.connection!.chessReplica!;
   ChessSession get _session => _online ? _replica.session : _local!.session;
@@ -65,6 +89,9 @@ class _ChessGamePageState extends State<ChessGamePage>
   bool get _connected => !_disconnected && !_syncing && !_pending;
   bool get _canPlay =>
       !_choosing &&
+      _active &&
+      !_browsing &&
+      !_restarting &&
       (_online
           ? _connected &&
                 widget.connection!.started &&
@@ -79,6 +106,7 @@ class _ChessGamePageState extends State<ChessGamePage>
     WidgetsBinding.instance.addObserver(this);
     _flipped = widget.mode == ChessGameMode.ai && _side == Side.black;
     if (_online) {
+      _round = _replica.round;
       _messages = widget.connection!.messages.listen(_onMessage);
       _disconnects = widget.connection!.disconnections.listen((_) {
         if (mounted) {
@@ -98,20 +126,127 @@ class _ChessGamePageState extends State<ChessGamePage>
         humanSide: widget.humanSide,
         level: widget.level,
       )..addListener(_refresh);
-      unawaited(_local!.runAi());
     }
+    if (widget.recordId != null) _lastSnapshot = jsonEncode(_session.toJson());
+    unawaited(_persist());
+    if (!_online) unawaited(_local!.runAi());
   }
 
   void _refresh() {
-    if (mounted) setState(() {});
+    if (mounted && !_closing) setState(() {});
+    if (!_closing && !_restarting) unawaited(_persist());
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) {
-      unawaited(_local?.runAi());
+    setState(() => _active = state == AppLifecycleState.resumed);
+    if (_active) {
+      if (!_browsing &&
+          !_restarting &&
+          (ModalRoute.of(context)?.isCurrent ?? false)) {
+        unawaited(_local?.resume());
+      }
     } else {
       unawaited(_local?.suspend());
+      unawaited(_persist());
+    }
+  }
+
+  void _newRecord() {
+    _recordId = BoardGameRecord.newId(BoardRecordGame.chess);
+    _createdAt = DateTime.now().toUtc();
+    _hasRecord = false;
+    _lastSnapshot = null;
+  }
+
+  BoardGameRecord _snapshot() => BoardGameRecord.fromChess(
+    _session,
+    id: _recordId,
+    createdAt: _createdAt,
+    kind: _online
+        ? BoardRecordKind.online
+        : widget.mode == ChessGameMode.ai
+        ? BoardRecordKind.ai
+        : BoardRecordKind.local,
+    humanSide: _side,
+    aiLevel: widget.level,
+  );
+
+  Future<bool> _persist({bool force = false}) async {
+    if (_restarting && !force) return true;
+    if (_session.moves.isEmpty && !_session.gameOver && !_hasRecord) {
+      return true;
+    }
+    final snapshot = jsonEncode(_session.toJson());
+    if (!force && snapshot == _lastSnapshot) return true;
+    final record =
+        _snapshot(); // Capture before any await or controller disposal.
+    _lastSnapshot = snapshot;
+    _hasRecord = true;
+    try {
+      await BoardRecordStorage.save(record);
+      if (mounted && !_closing && _saveError != null) {
+        setState(() => _saveError = null);
+      }
+      return true;
+    } catch (_) {
+      if (_lastSnapshot == snapshot) _lastSnapshot = null;
+      if (mounted && !_closing) setState(() => _saveError = '棋谱保存失败，请重试');
+      return false;
+    }
+  }
+
+  Future<void> _playRecord() async {
+    if (_browsing || _restarting || _choosing) return;
+    setState(() {
+      _browsing = true;
+      _selected = null;
+    });
+    try {
+      await _local?.suspend();
+      if (!mounted) return;
+      final replay = ChessRecordReplay(_snapshot());
+      await Navigator.push<void>(
+        context,
+        MaterialPageRoute(builder: (_) => RecordPlaybackPage(record: replay)),
+      );
+    } catch (error) {
+      if (mounted) setState(() => _notice = '无法播放棋谱：$error');
+    } finally {
+      if (mounted) {
+        setState(() => _browsing = false);
+        if (_active && (ModalRoute.of(context)?.isCurrent ?? false)) {
+          unawaited(_local?.resume());
+        }
+      }
+    }
+  }
+
+  Future<void> _restart() async {
+    if (_restarting ||
+        _browsing ||
+        !await _confirm('重新开局', '结束当前对局并重新开始？') ||
+        !mounted) {
+      return;
+    }
+    setState(() {
+      _restarting = true;
+      _selected = null;
+    });
+    try {
+      await _local!.suspend();
+      if (!mounted || !await _persist(force: true)) return;
+      final before = _session;
+      await _local!.restart();
+      if (!identical(before, _session)) _newRecord();
+    } finally {
+      if (mounted) {
+        setState(() => _restarting = false);
+        if (_active && (ModalRoute.of(context)?.isCurrent ?? false)) {
+          unawaited(_local!.resume());
+        }
+        unawaited(_persist());
+      }
     }
   }
 
@@ -190,6 +325,10 @@ class _ChessGamePageState extends State<ChessGamePage>
     if (message.type == LanMessageType.rejected ||
         message.type == LanMessageType.stateSync ||
         LanMessage.eventTypes.contains(message.type)) {
+      if (_replica.round != _round) {
+        _round = _replica.round;
+        _newRecord();
+      }
       _pendingTimer?.cancel();
       setState(() {
         _pending = false;
@@ -198,6 +337,7 @@ class _ChessGamePageState extends State<ChessGamePage>
             ? message.body['reason'] as String?
             : null;
       });
+      if (message.type != LanMessageType.rejected) unawaited(_persist());
       if (message.type == LanMessageType.rejected) {
         try {
           widget.connection!.send(_replica.stateRequest());
@@ -343,6 +483,13 @@ class _ChessGamePageState extends State<ChessGamePage>
           }}',
         ),
         actions: [
+          IconButton(
+            tooltip: '播放棋谱',
+            onPressed: _browsing || _restarting || _choosing
+                ? null
+                : _playRecord,
+            icon: const Icon(Icons.play_circle_outline),
+          ),
           if (!_online)
             IconButton(
               tooltip: '翻转棋盘',
@@ -441,6 +588,14 @@ class _ChessGamePageState extends State<ChessGamePage>
                   textAlign: TextAlign.center,
                 ),
               ),
+            if (_saveError != null)
+              Center(
+                child: TextButton.icon(
+                  onPressed: () => _persist(force: true),
+                  icon: const Icon(Icons.save_outlined),
+                  label: Text(_saveError!),
+                ),
+              ),
             if (_local?.error != null)
               Center(
                 child: TextButton(
@@ -493,12 +648,7 @@ class _ChessGamePageState extends State<ChessGamePage>
                   ),
                 if (!_online)
                   TextButton(
-                    onPressed: () async {
-                      if (await _confirm('重新开局', '结束当前对局并重新开始？') && mounted) {
-                        setState(() => _selected = null);
-                        await _local!.restart();
-                      }
-                    },
+                    onPressed: _restarting || _browsing ? null : _restart,
                     child: const Text('重新开局'),
                   ),
               ],
@@ -511,6 +661,8 @@ class _ChessGamePageState extends State<ChessGamePage>
 
   @override
   void dispose() {
+    _closing = true;
+    unawaited(_persist());
     WidgetsBinding.instance.removeObserver(this);
     _pendingTimer?.cancel();
     _messages?.cancel();

@@ -50,48 +50,52 @@ class ChessBoard extends StatelessWidget {
       pieceKey: (piece) => (piece.side, piece.type),
       configuration: flipped,
       move: BoardMoveMotion(paths: paths),
-      builder: (context, motion) => Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: (MediaQuery.sizeOf(context).height - 260).clamp(240, 600),
-          ),
-          child: AspectRatio(
-            aspectRatio: 1,
-            child: ClipRect(
-              child: CustomPaint(
-                painter: _BoardPainter(
-                  position: position,
-                  last: session.moves.lastOrNull,
-                  check: check,
-                  selected: selected,
-                  targets: List.unmodifiable(targets),
-                  flipped: flipped,
-                  motion: motion,
-                ),
-                child: Column(
-                  children: List.generate(
-                    8,
-                    (visualRow) => Expanded(
-                      child: Row(
-                        children: List.generate(8, (visualCol) {
-                          final cell = _cellAt(visualRow, visualCol, flipped);
-                          final piece = position.pieceAt(cell);
-                          return Expanded(
-                            child: Semantics(
-                              label:
-                                  '${chessSquare(cell)} ${piece == null ? '空格' : '${piece.side.label}${piece.label}'}',
-                              button: onCell != null,
-                              child: GestureDetector(
-                                key: ValueKey('square-${chessSquare(cell)}'),
-                                behavior: HitTestBehavior.opaque,
-                                onTap: onCell == null
-                                    ? null
-                                    : () => onCell!(cell),
-                                child: const SizedBox.expand(),
+      builder: (context, motion) => LayoutBuilder(
+        builder: (context, bounds) => Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: bounds.hasBoundedHeight
+                  ? bounds.maxHeight
+                  : (MediaQuery.sizeOf(context).height - 260).clamp(240, 600),
+            ),
+            child: AspectRatio(
+              aspectRatio: 1,
+              child: ClipRect(
+                child: CustomPaint(
+                  painter: _BoardPainter(
+                    position: position,
+                    last: session.moves.lastOrNull,
+                    check: check,
+                    selected: selected,
+                    targets: List.unmodifiable(targets),
+                    flipped: flipped,
+                    motion: motion,
+                  ),
+                  child: Column(
+                    children: List.generate(
+                      8,
+                      (visualRow) => Expanded(
+                        child: Row(
+                          children: List.generate(8, (visualCol) {
+                            final cell = _cellAt(visualRow, visualCol, flipped);
+                            final piece = position.pieceAt(cell);
+                            return Expanded(
+                              child: Semantics(
+                                label:
+                                    '${chessSquare(cell)} ${piece == null ? '空格' : '${piece.side.label}${piece.label}'}',
+                                button: onCell != null,
+                                child: GestureDetector(
+                                  key: ValueKey('square-${chessSquare(cell)}'),
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: onCell == null
+                                      ? null
+                                      : () => onCell!(cell),
+                                  child: const SizedBox.expand(),
+                                ),
                               ),
-                            ),
-                          );
-                        }),
+                            );
+                          }),
+                        ),
                       ),
                     ),
                   ),

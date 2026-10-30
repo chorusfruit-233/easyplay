@@ -7,6 +7,7 @@ import 'xiangqi_repetition.dart';
 import 'xiangqi_result.dart';
 import 'xiangqi_rules.dart';
 import 'xiangqi_side.dart';
+import 'xiangqi_uci.dart';
 
 const xiangqiRulesVersion = XiangqiRules.version;
 const xiangqiRuleProfile = XiangqiRules.profile;
@@ -25,7 +26,7 @@ class _Snapshot {
   final Map<XiangqiSide, int> checks;
 }
 
-/// Sole rules authority; all history remains temporary and is never persisted.
+/// Sole rules authority; saved records restore repetition history by replay.
 class XiangqiSession {
   XiangqiSession({XiangqiPosition? position})
     : initialPosition = position ?? XiangqiPosition.initial() {
@@ -197,6 +198,67 @@ class XiangqiSession {
     copy._rule60 = _rule60;
     copy._revision = _revision;
     return copy;
+  }
+
+  Map<String, Object?> toJson() => {
+    'version': 1,
+    'game': 'xiangqi',
+    'rulesVersion': xiangqiRulesVersion,
+    'ruleProfile': xiangqiRuleProfile,
+    'initialFen': initialFen,
+    'moves': moves.map(xiangqiMoveToUci).toList(),
+    'result': result == null
+        ? null
+        : {'reason': result!.reason.name, 'winner': result!.winner?.name},
+  };
+
+  factory XiangqiSession.fromJson(Object? value) {
+    Never invalid() => throw const FormatException('无效的中国象棋棋谱');
+    if (value is! Map ||
+        value['version'] != 1 ||
+        value['game'] != 'xiangqi' ||
+        value['rulesVersion'] != xiangqiRulesVersion ||
+        value['ruleProfile'] != xiangqiRuleProfile ||
+        value['initialFen'] is! String ||
+        value['moves'] is! List) {
+      invalid();
+    }
+    final raw = value['moves'] as List;
+    if (raw.length > 10000 || raw.any((m) => m is! String)) invalid();
+    final session = XiangqiSession(
+      position: parseXiangqiFen(value['initialFen'] as String),
+    );
+    for (final move in raw) {
+      if (!session.applyMove(parseXiangqiUciMove(move as String))) invalid();
+    }
+    final ending = value['result'];
+    XiangqiResult? expected;
+    if (ending != null) {
+      if (ending is! Map) invalid();
+      final reason = XiangqiEndReason.values
+          .where((r) => r.name == ending['reason'])
+          .firstOrNull;
+      final winner = XiangqiSide.values
+          .where((s) => s.name == ending['winner'])
+          .firstOrNull;
+      if (reason == null || ending['winner'] != null && winner == null) {
+        invalid();
+      }
+      expected = XiangqiResult(reason: reason, winner: winner);
+    }
+    if (!session.gameOver && expected != null) {
+      switch (expected.reason) {
+        case XiangqiEndReason.resignation:
+          if (expected.winner == null) invalid();
+          session.resign(expected.winner!.opponent);
+        case XiangqiEndReason.drawAgreement:
+          session.agreeDraw();
+        default:
+          break;
+      }
+    }
+    if (session.result != expected) invalid();
+    return session;
   }
 
   void dispose() {

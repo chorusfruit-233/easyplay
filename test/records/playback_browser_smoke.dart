@@ -4,8 +4,13 @@ import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 
 import 'package:easyplay/draughts/draughts.dart';
+import 'package:easyplay/chess/chess.dart';
+import 'package:easyplay/chess/widgets/chess_board.dart';
+import 'package:easyplay/xiangqi/xiangqi.dart';
+import 'package:easyplay/xiangqi/widgets/xiangqi_board.dart';
+import 'package:easyplay/records/board_record.dart';
+import 'package:easyplay/records/board_record_storage.dart';
 import 'package:easyplay/draughts/widgets/draughts_board.dart';
-import 'package:easyplay/game_session.dart';
 import 'package:easyplay/go_storage.dart';
 import 'package:easyplay/gomoku/gomoku_session.dart';
 import 'package:easyplay/gomoku/gomoku_storage.dart';
@@ -36,6 +41,14 @@ Map<String, Object?> state() {
     }
     if (widget is DraughtsBoard) {
       result['session'] = widget.session.toJson();
+    }
+    if (widget is ChessBoard) {
+      result['session'] = widget.session.toJson();
+      result['readOnly'] = widget.onCell == null;
+    }
+    if (widget is XiangqiBoard) {
+      result['session'] = widget.session.toJson();
+      result['readOnly'] = widget.onCell == null;
     }
     if (widget is Text &&
         widget.key == const ValueKey('record-playback-progress')) {
@@ -87,6 +100,32 @@ Future<void> main() async {
       draughts,
       id: 'playback-draughts',
       createdAt: DateTime.utc(2026, 10, 22),
+    ),
+  );
+  final chess = ChessSession();
+  for (final move in 'e2e4 e7e5 g1f3 b8c6 f1b5 a7a6 b5a4 g8f6 e1g1'.split(
+    ' ',
+  )) {
+    if (!chess.applyMove(parseUciMove(move))) throw StateError(move);
+  }
+  chess.resign(Side.black);
+  await BoardRecordStorage.save(
+    BoardGameRecord.fromChess(
+      chess,
+      id: 'playback-chess',
+      createdAt: DateTime.utc(2026, 10, 28),
+    ),
+  );
+  final xiangqi = XiangqiSession();
+  for (final move in 'h2e2 h9g7 h0g2 b9c7 a0a1 a9a8 b2c2 h7h5'.split(' ')) {
+    if (!xiangqi.applyMove(parseXiangqiUciMove(move))) throw StateError(move);
+  }
+  xiangqi.agreeDraw();
+  await BoardRecordStorage.save(
+    BoardGameRecord.fromXiangqi(
+      xiangqi,
+      id: 'playback-xiangqi',
+      createdAt: DateTime.utc(2026, 10, 28),
     ),
   );
   final api = JSObject();

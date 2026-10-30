@@ -5,6 +5,7 @@ import 'chess_move_generator.dart';
 import 'chess_piece.dart';
 import 'chess_position.dart';
 import 'chess_result.dart';
+import 'chess_uci.dart';
 
 const chessRulesVersion = 1;
 
@@ -13,23 +14,28 @@ class ChessSnapshot {
     this.position,
     this.result,
     this.moveCount,
-    Map<String, int> counts,
-  ) : repetitionCounts = Map.unmodifiable(counts);
+    Map<String, int> counts, {
+    this.claimMove,
+  }) : repetitionCounts = Map.unmodifiable(counts);
   final ChessPosition position;
   final ChessResult? result;
   final int moveCount;
   final Map<String, int> repetitionCounts;
+  final ChessMove? claimMove;
 }
 
-/// The sole rules authority for local, AI and LAN games. No persistent storage.
+/// The sole rules authority for local, AI, restored and LAN games.
 class ChessSession {
   ChessSession({ChessPosition? position})
-    : _position = position ?? ChessPosition.initial() {
+    : initialPosition = position ?? ChessPosition.initial() {
+    _position = initialPosition;
     _repetitions[positionKey(_position)] = 1;
     _adjudicate();
   }
-  ChessPosition _position;
+  final ChessPosition initialPosition;
+  late ChessPosition _position;
   ChessResult? _result;
+  ChessMove? _claimMove;
   final _moves = <ChessMove>[];
   final _undo = <ChessSnapshot>[];
   final _repetitions = <String, int>{};
@@ -40,6 +46,7 @@ class ChessSession {
   bool get gameOver => result != null;
   bool get canUndo => _undo.isNotEmpty;
   String get fen => exportFen(position);
+  String get initialFen => exportFen(initialPosition);
   String get status =>
       result?.label ?? '${turn.label}回合${isInCheck(turn) ? ' · 将军' : ''}';
   bool isInCheck(Side side) => ChessMoveGenerator.isInCheck(position, side);
@@ -66,8 +73,15 @@ class ChessSession {
     return fields.take(4).join(' ');
   }
 
-  void _save() =>
-      _undo.add(ChessSnapshot(position, result, _moves.length, _repetitions));
+  void _save() => _undo.add(
+    ChessSnapshot(
+      position,
+      result,
+      _moves.length,
+      _repetitions,
+      claimMove: _claimMove,
+    ),
+  );
 
   bool applyMove(ChessMove move) {
     if (!isLegalMove(move)) return false;
@@ -101,6 +115,7 @@ class ChessSession {
     if (reason == null) return false;
     _save();
     _result = ChessResult(reason: reason);
+    _claimMove = intendedMove;
     return true;
   }
 
@@ -126,6 +141,7 @@ class ChessSession {
     final snapshot = _undo.removeLast();
     _position = snapshot.position;
     _result = snapshot.result;
+    _claimMove = snapshot.claimMove;
     _moves.length = snapshot.moveCount;
     _repetitions
       ..clear()
@@ -169,6 +185,81 @@ class ChessSession {
     } else if (repetitionCount >= 5) {
       _result = const ChessResult(reason: ChessEndReason.fivefoldRepetition);
     }
+  }
+
+  Map<String, Object?> toJson() => {
+    'version': 1,
+    'game': 'chess',
+    'rulesVersion': chessRulesVersion,
+    'initialFen': initialFen,
+    'moves': moves.map(moveToUci).toList(),
+    'result': result == null
+        ? null
+        : {'reason': result!.reason.name, 'winner': result!.winner?.name},
+    if (_claimMove != null) 'claimMove': moveToUci(_claimMove!),
+  };
+
+  /// Rebuild rule history and undo through legal play, never trust saved FEN
+  /// or repetition counters as a replacement for the complete move sequence.
+  factory ChessSession.fromJson(Object? value) {
+    Never invalid() => throw const FormatException('无效的国际象棋棋谱');
+    if (value is! Map ||
+        value['version'] != 1 ||
+        value['game'] != 'chess' ||
+        value['rulesVersion'] != chessRulesVersion ||
+        value['initialFen'] is! String ||
+        value['moves'] is! List) {
+      invalid();
+    }
+    final raw = value['moves'] as List;
+    if (raw.length > 10000 || raw.any((m) => m is! String)) invalid();
+    final session = ChessSession(
+      position: parseFen(value['initialFen'] as String),
+    );
+    for (final move in raw) {
+      if (!session.applyMove(parseUciMove(move as String))) invalid();
+    }
+    final ending = value['result'];
+    ChessResult? expected;
+    if (ending != null) {
+      if (ending is! Map) invalid();
+      final reason = ChessEndReason.values
+          .where((r) => r.name == ending['reason'])
+          .firstOrNull;
+      final winner = Side.values
+          .where((s) => s.name == ending['winner'])
+          .firstOrNull;
+      if (reason == null || ending['winner'] != null && winner == null) {
+        invalid();
+      }
+      expected = ChessResult(reason: reason, winner: winner);
+    }
+    final claim = value['claimMove'];
+    if (claim != null &&
+        (claim is! String ||
+            ![
+              ChessEndReason.threefoldRepetition,
+              ChessEndReason.fiftyMoveRule,
+            ].contains(expected?.reason))) {
+      invalid();
+    }
+    if (!session.gameOver && expected != null) {
+      switch (expected.reason) {
+        case ChessEndReason.resignation:
+          if (expected.winner == null) invalid();
+          session.resign(expected.winner!.opponent);
+        case ChessEndReason.drawAgreement:
+          session.agreeDraw();
+        case ChessEndReason.threefoldRepetition || ChessEndReason.fiftyMoveRule:
+          session.claimDraw(
+            claim == null ? null : parseUciMove(claim as String),
+          );
+        default:
+          break;
+      }
+    }
+    if (session.result != expected) invalid();
+    return session;
   }
 
   void dispose() {

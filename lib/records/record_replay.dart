@@ -2,10 +2,13 @@ import '../draughts/draughts_record.dart';
 import '../draughts/draughts_result.dart';
 import '../draughts/draughts_session.dart';
 import '../draughts/draughts_variant.dart';
-import '../game_session.dart';
 import '../go_record.dart';
 import '../gomoku/gomoku_session.dart';
 import '../gomoku/gomoku_storage.dart';
+import '../chess/chess.dart';
+import '../xiangqi/xiangqi.dart';
+import 'board_record.dart';
+import 'board_record_notation.dart';
 
 /// A projection of a saved record. Replaying never writes to the record store.
 class RecordFrame {
@@ -165,6 +168,81 @@ class DraughtsRecordReplay extends RecordReplay {
     }
     return RecordFrame(
       index == length ? DraughtsSession.fromJson(_full.toJson()) : session,
+      description,
+    );
+  }
+}
+
+class ChessRecordReplay extends RecordReplay {
+  ChessRecordReplay(BoardGameRecord record)
+    : _full = record.restoreChess(),
+      flipped = record.chessSide == Side.black;
+  final ChessSession _full;
+  final bool flipped;
+  bool get _hasEnding => [
+    ChessEndReason.resignation,
+    ChessEndReason.drawAgreement,
+    ChessEndReason.threefoldRepetition,
+    ChessEndReason.fiftyMoveRule,
+  ].contains(_full.result?.reason);
+  @override
+  String get title => '国际象棋棋谱播放';
+  @override
+  int get length => _full.moves.length + (_hasEnding ? 1 : 0);
+  @override
+  RecordFrame frameAt(int index) {
+    checkIndex(index);
+    final session = ChessSession(position: _full.initialPosition);
+    var description = '起始局面 · 国际象棋';
+    for (var i = 0; i < index && i < _full.moves.length; i++) {
+      final move = _full.moves[i];
+      description = '${session.turn.label} · ${chessSan(session, move)}';
+      if (!session.applyMove(move)) throw const FormatException('无法播放的国际象棋着法');
+    }
+    if (index == length && _full.gameOver) {
+      description = _hasEnding
+          ? _full.result!.label
+          : '$description · ${_full.result!.label}';
+    }
+    return RecordFrame(
+      index == length ? ChessSession.fromJson(_full.toJson()) : session,
+      description,
+    );
+  }
+}
+
+class XiangqiRecordReplay extends RecordReplay {
+  XiangqiRecordReplay(BoardGameRecord record)
+    : _full = record.restoreXiangqi(),
+      flipped = record.xiangqiSide == XiangqiSide.black;
+  final XiangqiSession _full;
+  final bool flipped;
+  bool get _hasEnding => [
+    XiangqiEndReason.resignation,
+    XiangqiEndReason.drawAgreement,
+  ].contains(_full.result?.reason);
+  @override
+  String get title => '中国象棋棋谱播放';
+  @override
+  int get length => _full.moves.length + (_hasEnding ? 1 : 0);
+  @override
+  RecordFrame frameAt(int index) {
+    checkIndex(index);
+    final session = XiangqiSession(position: _full.initialPosition);
+    var description = '起始局面 · 中国象棋';
+    for (var i = 0; i < index && i < _full.moves.length; i++) {
+      final move = _full.moves[i];
+      description =
+          '${session.turn.label} · ${xiangqiSquare(move.from).toUpperCase()} → ${xiangqiSquare(move.to).toUpperCase()}';
+      if (!session.applyMove(move)) throw const FormatException('无法播放的中国象棋着法');
+    }
+    if (index == length && _full.gameOver) {
+      description = _hasEnding
+          ? _full.result!.label
+          : '$description · ${_full.result!.label}';
+    }
+    return RecordFrame(
+      index == length ? XiangqiSession.fromJson(_full.toJson()) : session,
       description,
     );
   }
